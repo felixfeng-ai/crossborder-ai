@@ -22,7 +22,14 @@
             envs: JUSTONE_API_TOKEN
             script: |
               set -e
-              ENV_FILE=/opt/veyaship/.env
+              COMPOSE_FILE=$(find /opt/veyaship -maxdepth 4 -name docker-compose.prod.yml -print -quit)
+              if [ -z "$COMPOSE_FILE" ]; then
+                echo "未找到生产 docker-compose.prod.yml，终止部署"
+                exit 1
+              fi
+              PROJECT_DIR=$(dirname "$COMPOSE_FILE")
+              ENV_FILE="$PROJECT_DIR/.env"
+              echo "生产项目目录：$PROJECT_DIR"
               touch "$ENV_FILE"
               if [ -z "${JUSTONE_API_TOKEN:-}" ]; then
                 echo "缺少 JUSTONE_API_TOKEN Secret，终止部署"
@@ -39,8 +46,8 @@
               fi
               echo "Just One API 凭据已注入服务器环境"
               bash /opt/veyaship/cicd-deploy.sh
-              cd /opt/veyaship
-              if docker compose -f docker-compose.prod.yml exec -T backend \
+              cd "$PROJECT_DIR"
+              if docker compose -f "$COMPOSE_FILE" exec -T backend \
                 python -c "from app.core.config import settings; raise SystemExit(0 if settings.JUSTONE_API_TOKEN else 1)"; then
                 echo "Just One API 运行时配置检查通过"
               else

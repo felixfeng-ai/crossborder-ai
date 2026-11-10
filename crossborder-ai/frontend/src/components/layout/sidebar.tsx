@@ -15,6 +15,7 @@ import {
   Upload,
   Bot,
   X,
+  Layers,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { Button } from '@/components/ui/button'
@@ -30,6 +31,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   const navItems = [
     { icon: LayoutDashboard, label: t('nav.dashboard'), path: '/app/dashboard' },
     { icon: Package, label: t('nav.products'), path: '/app/products' },
+    { icon: Layers, label: 'SKU 与 Listing', path: '/app/catalog' },
     { icon: Sparkles, label: t('nav.content'), path: '/app/content' },
     { icon: Bot, label: t('nav.agent'), path: '/app/agent' },
     { icon: Image, label: t('nav.images'), path: '/app/images' },

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -69,9 +69,10 @@ function parseAttributes(text: string): Record<string, string> {
 export default function ProductDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const [showAllPlatforms, setShowAllPlatforms] = useState(false)
-  const [editingListingId, setEditingListingId] = useState('')
+  const [editingListingId, setEditingListingId] = useState(searchParams.get('listing') || '')
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [editBullets, setEditBullets] = useState('')

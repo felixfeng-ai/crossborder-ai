@@ -135,6 +135,9 @@ class Settings(BaseSettings):
     # --- Aliyun DashScope (通义万相) ---
     ALIYUN_DASHSCOPE_API_KEY: Optional[str] = None
     ALIYUN_IMAGE_MODEL: str = "wanx2.1-t2i-turbo"
+    # 商品图片工作台的本地素材目录；上传后统一转码并去除原始元数据。
+    IMAGE_STORAGE_DIR: str = "./storage/images"
+    MAX_IMAGE_UPLOAD_BYTES: int = 12 * 1024 * 1024
 
     # --- Shopify ---
     SHOPIFY_API_KEY: Optional[str] = None

@@ -11,11 +11,16 @@
 """
 
 import json
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Query, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -23,6 +28,7 @@ from app.core.rate_limit import RateLimit
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.models.image_generation_task import ImageGenerationTask
+from app.models.image_asset import ImageAsset
 from app.services.image_task_executor import (
     execute_image_generation_task,
     run_image_generation,
@@ -33,6 +39,12 @@ from app.services.ai.persona_kit import (
     build_persona_kit,
     image_style_phrase,
     strip_banned_words,
+)
+from app.services.image_processing import (
+    create_white_background_image,
+    get_platform_preset,
+    list_platform_presets,
+    normalize_uploaded_image,
 )
 from app.core.access_control import check_feature_access
 from pydantic import BaseModel, Field
@@ -63,6 +75,39 @@ class ImageHistoryItem(BaseModel):
     created_at: str
 
 
+class ImageAssetItem(BaseModel):
+    id: str
+    name: str
+    kind: str
+    image_url: str
+    width: int
+    height: int
+    file_size: int
+    preset_id: Optional[str] = None
+    platform: Optional[str] = None
+    background_mode: Optional[str] = None
+    source_asset_id: Optional[str] = None
+    created_at: str
+
+
+class ImageAssetListResponse(BaseModel):
+    items: list[ImageAssetItem]
+    total: int
+
+
+class ProcessImageRequest(BaseModel):
+    preset_id: str = Field(..., min_length=1)
+
+
+class PlatformPresetItem(BaseModel):
+    id: str
+    platform: str
+    label: str
+    width: int
+    height: int
+    note: str
+
+
 def _parse_urls(raw: Optional[str]) -> list[str]:
     """把 DB 里 image_urls JSON 文本解析为列表（空/损坏返回 []）。"""
     if not raw:
@@ -72,6 +117,216 @@ def _parse_urls(raw: Optional[str]) -> list[str]:
         return parsed if isinstance(parsed, list) else []
     except (json.JSONDecodeError, TypeError):
         return []
+
+
+def _asset_image_url(asset_id) -> str:
+    return f"{settings.API_V1_PREFIX}/images/assets/{asset_id}/file"
+
+
+def _serialize_asset(asset: ImageAsset) -> ImageAssetItem:
+    return ImageAssetItem(
+        id=str(asset.id),
+        name=asset.name,
+        kind=asset.kind,
+        image_url=_asset_image_url(asset.id),
+        width=asset.width,
+        height=asset.height,
+        file_size=asset.file_size,
+        preset_id=asset.preset_id,
+        platform=asset.platform,
+        background_mode=asset.background_mode,
+        source_asset_id=str(asset.source_asset_id) if asset.source_asset_id else None,
+        created_at=str(asset.created_at),
+    )
+
+
+def _asset_path(storage_key: str) -> Path:
+    base = Path(settings.IMAGE_STORAGE_DIR).resolve()
+    target = (base / storage_key).resolve()
+    if base not in target.parents and target != base:
+        raise HTTPException(status_code=404, detail="素材文件不存在")
+    return target
+
+
+async def _get_owned_asset(db: AsyncSession, asset_id: str, user_id) -> ImageAsset:
+    try:
+        parsed_id = uuid.UUID(asset_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="素材不存在")
+    asset = (
+        await db.execute(
+            select(ImageAsset).where(
+                ImageAsset.id == parsed_id,
+                ImageAsset.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="素材不存在")
+    return asset
+
+
+@router.get("/presets")
+async def get_platform_presets(
+    current_user: User = Depends(get_current_user),
+):
+    """返回跨境电商常用图片尺寸。"""
+    return {"items": list_platform_presets()}
+
+
+@router.post("/assets/upload", response_model=ImageAssetItem, status_code=201)
+async def upload_image_asset(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """上传商品原图并规范化为无元数据 WebP。"""
+    raw = await file.read(settings.MAX_IMAGE_UPLOAD_BYTES + 1)
+    try:
+        normalized, width, height = await run_in_threadpool(
+            normalize_uploaded_image,
+            raw,
+            settings.MAX_IMAGE_UPLOAD_BYTES,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    asset_id = uuid.uuid4()
+    storage_key = f"{current_user.id}/{asset_id}.webp"
+    target = _asset_path(storage_key)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(normalized)
+
+    asset = ImageAsset(
+        id=asset_id,
+        user_id=current_user.id,
+        name=(Path(file.filename or "商品图片").stem or "商品图片")[:255],
+        kind="upload",
+        storage_key=storage_key,
+        content_type="image/webp",
+        width=width,
+        height=height,
+        file_size=len(normalized),
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(asset)
+    await db.flush()
+    return _serialize_asset(asset)
+
+
+@router.get("/assets", response_model=ImageAssetListResponse)
+async def list_image_assets(
+    kind: Optional[str] = Query(None, pattern="^(upload|processed)$"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出当前用户的上传素材和处理结果。"""
+    query = select(ImageAsset).where(ImageAsset.user_id == current_user.id)
+    if kind:
+        query = query.where(ImageAsset.kind == kind)
+    result = await db.execute(
+        query.order_by(desc(ImageAsset.created_at), desc(ImageAsset.id))
+    )
+    assets = result.scalars().all()
+    return ImageAssetListResponse(
+        items=[_serialize_asset(asset) for asset in assets],
+        total=len(assets),
+    )
+
+
+@router.get("/assets/{asset_id}/file")
+async def get_image_asset_file(
+    asset_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """通过不可预测 UUID 地址提供图片文件，供 img 标签直接加载。"""
+    try:
+        parsed_id = uuid.UUID(asset_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="素材文件不存在")
+    asset = (
+        await db.execute(select(ImageAsset).where(ImageAsset.id == parsed_id))
+    ).scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="素材文件不存在")
+    path = _asset_path(asset.storage_key)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="素材文件不存在")
+    return FileResponse(
+        path,
+        media_type=asset.content_type,
+        filename=f"{asset.name}.{path.suffix.lstrip('.')}",
+    )
+
+
+@router.post("/assets/{asset_id}/process", response_model=ImageAssetItem, status_code=201)
+async def process_image_asset(
+    asset_id: str,
+    payload: ProcessImageRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """按平台预设生成白底适配图。"""
+    source_asset = await _get_owned_asset(db, asset_id, current_user.id)
+    try:
+        preset = get_platform_preset(payload.preset_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    source_path = _asset_path(source_asset.storage_key)
+    if not source_path.is_file():
+        raise HTTPException(status_code=404, detail="源图片文件不存在")
+    try:
+        output = await run_in_threadpool(
+            create_white_background_image,
+            source_path.read_bytes(),
+            preset["width"],
+            preset["height"],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    processed_id = uuid.uuid4()
+    storage_key = f"{current_user.id}/{processed_id}.jpg"
+    target = _asset_path(storage_key)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(output)
+
+    asset = ImageAsset(
+        id=processed_id,
+        user_id=current_user.id,
+        name=f"{source_asset.name}-{preset['platform']}",
+        kind="processed",
+        storage_key=storage_key,
+        content_type="image/jpeg",
+        width=preset["width"],
+        height=preset["height"],
+        file_size=len(output),
+        preset_id=preset["id"],
+        platform=preset["platform"],
+        background_mode="white",
+        source_asset_id=source_asset.id,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(asset)
+    await db.flush()
+    return _serialize_asset(asset)
+
+
+@router.delete("/assets/{asset_id}", status_code=204)
+async def delete_image_asset(
+    asset_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除当前用户素材及本地文件。"""
+    asset = await _get_owned_asset(db, asset_id, current_user.id)
+    path = _asset_path(asset.storage_key)
+    await db.delete(asset)
+    await db.flush()
+    if path.is_file():
+        path.unlink()
+    return None
 
 
 async def _run_generation_impl(db: AsyncSession, task_id: str, prompt: str, num_outputs: int) -> None:

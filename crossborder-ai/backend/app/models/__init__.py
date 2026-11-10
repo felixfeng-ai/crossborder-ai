@@ -22,6 +22,7 @@ from app.models.listing_draft import ListingDraft, ListingComplianceReport
 from app.models.publication import Publication
 from app.models.platform_connection import PlatformConnection
 from app.models.product_variant import ProductVariant
+from app.models.image_asset import ImageAsset
 
 __all__ = [
     "User",
@@ -42,4 +43,5 @@ __all__ = [
     "Publication",
     "PlatformConnection",
     "ProductVariant",
+    "ImageAsset",
 ]

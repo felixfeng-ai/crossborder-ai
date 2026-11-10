@@ -59,6 +59,9 @@ htmlcov/
 # Vector stores
 qdrant_storage/
 
+# User-uploaded image assets
+backend/storage/
+
 # Production (sensitive data, regenerate on deploy)
 nginx/ssl/
 nginx/www/

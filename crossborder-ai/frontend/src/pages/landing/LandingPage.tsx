@@ -66,59 +66,92 @@ export default function LandingPage() {
       <main className="relative z-10">
         {/* ── HERO ─────────────────────────────────────────── */}
         <section className="relative overflow-hidden">
-          <div className="max-w-4xl mx-auto px-4 pt-24 pb-16 relative">
-            <motion.div variants={container} initial="hidden" animate="show" className="text-center space-y-7">
-
-              <motion.div variants={item}>
-                <span className="inline-flex items-center gap-1.5 rounded border border-border bg-card px-3.5 py-1 text-xs font-medium text-muted-foreground">
-                  <Sparkles className="h-3 w-3" /> 跨境电商 AI 决策引擎 · AI Agent 自动化
-                </span>
-              </motion.div>
-
-              <motion.div variants={item} className="space-y-4">
-                <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-[1.15]">
-                  <span className="text-foreground">这个品能不能做？</span>
-                  <br />
-                  <span className="text-foreground">
-                    AI 帮你做跨境决策
+          <div className="max-w-6xl mx-auto px-4 pt-20 pb-14 relative">
+            <motion.div
+              variants={container}
+              initial="hidden"
+              animate="show"
+              className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center"
+            >
+              <div className="max-w-2xl space-y-6">
+                <motion.div variants={item}>
+                  <span className="inline-flex items-center gap-1.5 rounded border border-border bg-card px-3.5 py-1 text-xs font-medium text-muted-foreground">
+                    <Sparkles className="h-3 w-3" /> 跨境电商 AI 决策引擎 · AI Agent 自动化
                   </span>
-                </h1>
-                <p className="mx-auto max-w-lg text-sm leading-relaxed text-muted-foreground sm:text-base">
-                  说一句话，AI Agent 帮你从选品到上架一条龙完成：
-                  <br />
-                  选品分析 → 生成 Listing → 合规检查 → Shopify 一键发布，每天自动巡检你的店铺。
-                </p>
-              </motion.div>
+                </motion.div>
 
-              {/* AI 分析输入框（真实入口，分析在登录后运行） */}
-              <motion.div variants={item} className="w-full max-w-xl mx-auto space-y-3">
-                <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-1.5">
-                  <input
-                    value={keyword}
-                    onChange={(e) => setKeyword(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
-                    placeholder="输入品类名，如：蓝牙耳机、瑜伽裤、智能手表..."
-                    className="h-10 flex-1 rounded bg-transparent px-3 text-sm outline-none"
-                  />
-                  <Button onClick={handleAnalyze} className="h-10 px-4 gap-1.5 shrink-0">
-                    <Sparkles className="h-4 w-4" /> AI 分析
-                  </Button>
+                <motion.div variants={item} className="space-y-4">
+                  <h1 className="text-3xl font-bold leading-[1.15] tracking-tight text-foreground sm:text-4xl md:text-5xl">
+                    <span className="block">这个品能不能做？</span>
+                    <span className="block">AI 帮你做跨境决策</span>
+                  </h1>
+                  <p className="max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+                    说一句话，AI Agent 帮你从选品到上架一条龙完成：选品分析 → 生成 Listing → 合规检查 → Shopify 一键发布，每天自动巡检你的店铺。
+                  </p>
+                </motion.div>
+
+                {/* AI 分析输入框（真实入口，分析在登录后运行） */}
+                <motion.div variants={item} className="w-full max-w-xl space-y-3">
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-1.5">
+                    <input
+                      value={keyword}
+                      onChange={(e) => setKeyword(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
+                      placeholder="输入品类名，如：蓝牙耳机、瑜伽裤、智能手表..."
+                      className="h-10 min-w-0 flex-1 rounded bg-transparent px-3 text-sm outline-none"
+                    />
+                    <Button onClick={handleAnalyze} className="h-10 shrink-0 gap-1.5 px-4">
+                      <Sparkles className="h-4 w-4" /> AI 分析
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">免费注册即可使用 · 输入品类运行真实 AI 市场分析</p>
+                </motion.div>
+
+                <motion.div variants={item} className="flex flex-wrap items-center gap-5 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />无需信用卡</span>
+                  <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />无需配置 API</span>
+                  <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />注册即用</span>
+                </motion.div>
+
+                <motion.div variants={item} className="flex flex-wrap items-center gap-2 pt-1">
+                  {PLATFORMS.map((p) => (
+                    <span key={p} className="rounded-md border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground">
+                      {p}
+                    </span>
+                  ))}
+                </motion.div>
+              </div>
+
+              {/* 右栏展示真实决策链路，填满首屏空白并给出下一段内容的视觉锚点。 */}
+              <motion.div
+                variants={item}
+                className="border-t border-border pt-7 lg:border-l lg:border-t-0 lg:pl-8"
+                aria-label="AI 商品决策链路"
+              >
+                <div className="mb-5 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">从商品证据到上架</p>
+                    <p className="mt-1 text-xs text-muted-foreground">每一步都留下可复核结果</p>
+                  </div>
+                  <span className="font-mono text-[11px] text-[var(--factory-accent)]">04 STEPS</span>
                 </div>
-                <p className="text-xs text-muted-foreground">免费注册即可使用 · 输入品类运行真实 AI 市场分析</p>
-              </motion.div>
-
-              <motion.div variants={item} className="flex flex-wrap items-center justify-center gap-5 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />无需信用卡</span>
-                <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />无需配置 API</span>
-                <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />注册即用</span>
-              </motion.div>
-
-              <motion.div variants={item} className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                {PLATFORMS.map((p) => (
-                  <span key={p} className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-500 shadow-sm">
-                    {p}
-                  </span>
-                ))}
+                <ol className="space-y-4">
+                  {[
+                    { step: '01', icon: Globe, title: '来源商品', detail: '链接、CSV 或手动录入' },
+                    { step: '02', icon: TrendingUp, title: '市场判断', detail: '竞争、利润与风险' },
+                    { step: '03', icon: Sparkles, title: 'Listing', detail: '标题、详情、卖点与 SEO' },
+                    { step: '04', icon: ShoppingBag, title: '渠道发布', detail: '合规通过后上架' },
+                  ].map((itemData) => (
+                    <li key={itemData.step} className="grid grid-cols-[32px_28px_minmax(0,1fr)] items-start gap-2">
+                      <span className="font-mono text-[11px] leading-6 text-muted-foreground">{itemData.step}</span>
+                      <itemData.icon className="mt-1 h-4 w-4 text-[var(--factory-accent)]" />
+                      <div className="min-w-0 border-b border-border/70 pb-3">
+                        <p className="text-sm font-medium text-foreground">{itemData.title}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{itemData.detail}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
               </motion.div>
             </motion.div>
           </div>

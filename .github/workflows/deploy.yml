@@ -12,11 +12,23 @@
       timeout-minutes: 20
       steps:
         - name: SSH 执行服务器部署脚本
+          env:
+            JUSTONE_API_TOKEN: ${{ secrets.JUSTONE_API_TOKEN }}
           uses: appleboy/ssh-action@v1.2.0
           with:
             host: ${{ secrets.VEYASHIP_HOST }}
             username: root
             key: ${{ secrets.VEYASHIP_SSH_KEY }}
+            envs: JUSTONE_API_TOKEN
             script: |
               set -e
+              ENV_FILE=/opt/veyaship/.env
+              touch "$ENV_FILE"
+              if [ -n "${JUSTONE_API_TOKEN:-}" ]; then
+                if grep -q '^JUSTONE_API_TOKEN=' "$ENV_FILE"; then
+                  sed -i "s|^JUSTONE_API_TOKEN=.*|JUSTONE_API_TOKEN=${JUSTONE_API_TOKEN}|" "$ENV_FILE"
+                else
+                  printf '\nJUSTONE_API_TOKEN=%s\n' "$JUSTONE_API_TOKEN" >> "$ENV_FILE"
+                fi
+              fi
               bash /opt/veyaship/cicd-deploy.sh

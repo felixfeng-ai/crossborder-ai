@@ -150,6 +150,7 @@ async def test_justone_token_is_encrypted_and_masked(
 
     status = await client.get("/api/v1/settings/providers", headers=headers)
     assert status.status_code == 200
+    assert status.json()["providers"]["justone"]["configured"] is True
     assert "****" in status.json()["providers"]["justone"]["fields"]["token"]
     assert token not in status.text
 

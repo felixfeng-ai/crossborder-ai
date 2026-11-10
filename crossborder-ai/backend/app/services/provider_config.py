@@ -145,9 +145,11 @@ def provider_status(provider: str) -> dict[str, Any]:
     for field in PROVIDER_FIELDS[provider]:
         value = get(provider, field)
         fields[field] = mask_secret(value) if field in SECRET_FIELDS else value
-    required = "api_key"
+    # 不同服务商的必填凭据字段不同，Just One 使用 token 而不是 api_key。
+    required = "token" if provider == "justone" else "api_key"
     return {
         "configured": bool(get(provider, required)),
+        "required_field": required,
         "fields": fields,
     }
 

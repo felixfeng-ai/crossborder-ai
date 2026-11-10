@@ -312,6 +312,20 @@ Creem webhook 必须使用原始请求体和 `CREEM_WEBHOOK_SECRET` 计算 HMAC-
 - When 用户访问商品抓取就绪探针
 - Then 系统应显示已配置
 
+#### Scenario
+
+- Given 平台管理员为 Just One 配置了 `token`
+- When 管理端读取服务商状态
+- Then `justone.configured=true`
+- And 必填字段标识为 `token`，不能按 `api_key` 判定
+
+#### Scenario
+
+- Given 生产部署 Secret 中存在 `JUSTONE_API_TOKEN`
+- When 部署工作流同步服务器环境
+- Then 后端环境变量包含该 Token
+- And 数据库配置缺失时抓取链路仍可优先调用 Just One API
+
 ### CAP-15 前端 API 契约门禁
 
 #### Requirement

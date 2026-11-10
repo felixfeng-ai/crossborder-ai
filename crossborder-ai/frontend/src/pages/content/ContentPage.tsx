@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import ListingDescriptionCard from '@/components/content/ListingDescriptionCard'
+import ListingSeoCard from '@/components/content/ListingSeoCard'
 import apiClient from '@/api/client'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { createIdempotencyKey } from '@/utils/idempotency'
@@ -503,50 +505,21 @@ export default function ContentPage() {
                 </CardContent>
               </Card>
 
-              {/* 描述 */}
-              <Card>
-                <CardHeader className="flex flex-row items-start justify-between">
-                  <CardTitle className="text-sm">商品描述</CardTitle>
-                  <Button variant="ghost" size="icon" onClick={() => copyText(generateMutation.data.description, 'desc')}>
-                    {copied === 'desc' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm whitespace-pre-wrap">{generateMutation.data.description || '无'}</p>
-                </CardContent>
-              </Card>
+              {/* 详情使用安全富文本预览，源码放在独立视图，避免格式标记直接铺开。 */}
+              <ListingDescriptionCard
+                description={generateMutation.data.description}
+                copied={copied}
+                onCopy={copyText}
+              />
 
-              {/* SEO */}
+              {/* SEO 描述保持摘要形态，并对历史超长数据提供折叠。 */}
               {(generateMutation.data.seo_title || generateMutation.data.seo_description) && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">SEO 优化</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {generateMutation.data.seo_title && (
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">SEO 标题</p>
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm">{generateMutation.data.seo_title}</p>
-                          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => copyText(generateMutation.data.seo_title, 'seo_title')}>
-                            {copied === 'seo_title' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                    {generateMutation.data.seo_description && (
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">SEO 描述</p>
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm">{generateMutation.data.seo_description}</p>
-                          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => copyText(generateMutation.data.seo_description, 'seo_desc')}>
-                            {copied === 'seo_desc' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                <ListingSeoCard
+                  seoTitle={generateMutation.data.seo_title}
+                  seoDescription={generateMutation.data.seo_description}
+                  copied={copied}
+                  onCopy={copyText}
+                />
               )}
 
               {/* 原文对照 */}

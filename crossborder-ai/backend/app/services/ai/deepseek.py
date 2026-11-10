@@ -20,6 +20,9 @@ API 调用流程：
   前端 ← 结构化 JSON ← 本服务 ← DeepSeek Response ←
 """
 
+import html
+import json
+import re
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -31,6 +34,7 @@ from app.services import provider_config
 # DeepSeek API 基础地址
 # DeepSeek 是国内大模型，API 兼容 OpenAI 格式
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
+SEO_DESCRIPTION_MAX_LENGTH = 160
 
 
 class DeepSeekService:
@@ -236,13 +240,20 @@ class DeepSeekService:
             f"You are an expert cross-border e-commerce copywriter specializing in {platform} listings. "
             f"Write compelling, conversion-optimized product content in a {tone} tone. "
             f"Include relevant SEO keywords naturally. "
-            f"Format the output for the {platform} platform's requirements."
+            f"Return the product description body only, formatted for {platform}. "
+            f"Do not repeat the product title, short description, SEO title, SEO description, "
+            f"section labels, or metadata. Do not wrap the result in Markdown fences. "
+            f"Do not return a complete HTML document; omit html, head, body, style, and script. "
+            f"Use semantic HTML such as <p>, <h2>, <ul>, <li>, and <strong> when the platform supports it."
         )
         if persona_block:
             system_prompt = f"{persona_block}\n\n{system_prompt}"
 
         # user prompt 说明具体任务
-        user_prompt = f"Product: {product_title}\n"
+        user_prompt = (
+            f"Product: {product_title}\n"
+            f"Write only the detailed description body. Start directly with the first product detail.\n"
+        )
         if product_features:
             user_prompt += f"Features: {product_features}\n"
         if target_language:
@@ -348,7 +359,9 @@ class DeepSeekService:
             f"You are an SEO specialist for {platform}. "
             f"Output ONLY a JSON object with 'seo_title' and 'seo_description'. "
             f"No markdown, no bold markers, no extra text. "
-            f"Front-load important keywords. Keep the title under 200 characters."
+            f"Front-load important keywords. Keep the title under 200 characters. "
+            f"Write seo_description as one plain-text paragraph of 140-160 characters. "
+            f"Do not repeat the full product description and do not include HTML."
         )
         if persona_block:
             system_prompt = f"{persona_block}\n\n{system_prompt}"
@@ -356,15 +369,14 @@ class DeepSeekService:
         user_prompt = (
             f"Original Title: {title}\n"
             f"Original Description: {description}\n\n"
-            f"Return JSON: {{\"seo_title\": \"...\", \"seo_description\": \"...\"}}"
+            f"Return JSON: {{\"seo_title\": \"...\", \"seo_description\": \"...\"}}. "
+            f"seo_description must be a concise plain-text summary."
         )
 
         result = await self.generate(system_prompt, user_prompt, max_tokens=500)
 
         # ── 解析 JSON ─────────────────────────────────────────
         # AI 的 JSON 输出有时不标准，用正则提取大括号内容
-        import json
-        import re
         json_match = re.search(r'\{.*\}', result, re.DOTALL)
         if json_match:
             try:
@@ -372,9 +384,52 @@ class DeepSeekService:
                 seo_title = data.get("seo_title", "")
                 seo_description = data.get("seo_description", "")
                 if seo_title and seo_title != "**" and len(seo_title) > 5:
-                    return {"seo_title": seo_title, "seo_description": seo_description or description}
+                    return {
+                        "seo_title": seo_title,
+                        "seo_description": _normalize_seo_description(
+                            seo_description, description
+                        ),
+                    }
             except json.JSONDecodeError:
                 pass
 
-        # Fallback：如果 AI 返回的不是有效 JSON，用原标题
-        return {"seo_title": title, "seo_description": description}
+        # 降级时从正文提取短摘要，不能把整篇 Markdown/HTML 当作 SEO 描述。
+        return {
+            "seo_title": title,
+            "seo_description": _normalize_seo_description("", description),
+        }
+
+
+def _normalize_seo_description(value: str, description: str) -> str:
+    """把任意模型输出规范化为可用于搜索结果展示的纯文本摘要。"""
+    plain = _to_plain_text(value or "")
+    if not plain:
+        plain = _to_plain_text(description or "")
+    return _truncate_text(plain, SEO_DESCRIPTION_MAX_LENGTH)
+
+
+def _to_plain_text(value: str) -> str:
+    """移除代码围栏、HTML 和常见 Markdown 标记，保留可读正文。"""
+    text = re.sub(r"```(?:html)?\s*(.*?)```", r"\1", value, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"^\s*#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*(?:[-*+]|\d+\.)\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"(?:\*\*|__|~~|`)", "", text)
+    text = html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _truncate_text(value: str, max_length: int) -> str:
+    """优先在句末截断，避免 SEO 摘要出现半句话。"""
+    if len(value) <= max_length:
+        return value
+
+    candidate = value[: max_length - 1]
+    sentence_end = max(
+        candidate.rfind(mark) for mark in ("。", "！", "？", ".", "!", "?", "；", ";")
+    )
+    if sentence_end >= int(max_length * 0.6):
+        return candidate[: sentence_end + 1]
+    return candidate.rstrip() + "…"

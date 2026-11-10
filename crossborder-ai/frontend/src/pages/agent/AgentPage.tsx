@@ -2,7 +2,9 @@ import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
+  Bot,
   Send,
+  UserRound,
   Loader2,
   Sparkles,
   Link as LinkIcon,
@@ -397,10 +399,15 @@ export default function AgentPage() {
 function AgentAvatar() {
   return (
     <div
-      className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--factory-accent)]/45 bg-[var(--factory-panel)]"
+      className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[var(--factory-accent)]/45 bg-[var(--factory-panel)]"
       aria-label="VeyaShip AI Agent"
     >
-      <span className="font-mono text-[13px] font-semibold tracking-[0.08em] text-[var(--factory-accent)]">V</span>
+      <Bot className="h-[18px] w-[18px] text-[var(--factory-accent)]" strokeWidth={1.7} />
+      <Sparkles
+        className="absolute -right-1 -top-1 h-3 w-3 text-[var(--factory-mint)]"
+        strokeWidth={1.8}
+        aria-hidden="true"
+      />
       <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--factory-ground)] bg-[var(--factory-mint)]" />
     </div>
   )
@@ -416,10 +423,13 @@ function UserAvatar({
 
   return (
     <div
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-[var(--factory-raised)] text-xs font-semibold text-foreground"
+      className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-[var(--factory-raised)]"
       aria-label={`${name} 的头像`}
     >
-      {initial}
+      <UserRound className="h-[18px] w-[18px] text-foreground" strokeWidth={1.7} />
+      <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-[var(--factory-ground)] bg-[var(--factory-accent)] text-[7px] font-bold text-[var(--factory-ground)]">
+        {initial}
+      </span>
     </div>
   )
 }

@@ -56,7 +56,13 @@ export default function Markdown({
   return (
     // text-foreground：body 的 @apply text-foreground 未编译，裸文本会回退黑色看不清，这里显式声明
     // [&_a:] 后代选择器特异性(0,1,1)高于 a 自身的 .text-primary(0,1,0)，可稳定覆盖链接颜色
-    <div className={`text-sm text-foreground ${inverted ? '[&_a]:text-primary-foreground' : ''}`}>
+    <div
+      className={`text-sm ${
+        inverted
+          ? 'text-primary-foreground [&_a]:text-primary-foreground [&_code]:bg-black/10 [&_pre]:bg-black/10'
+          : 'text-foreground'
+      }`}
+    >
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {content}
       </ReactMarkdown>

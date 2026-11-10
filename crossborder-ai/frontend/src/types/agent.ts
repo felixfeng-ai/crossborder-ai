@@ -18,6 +18,7 @@ export interface MarketMetrics {
 /** 候选商品 —— 对应 data.structured.products[] */
 export interface ProductCandidate {
   name: string
+  url?: string | null // Amazon 搜索结果链接
   suggested_price_usd: number | null // 建议售价（美元）
   cost_cny?: number | null // 1688 采购成本（人民币）
   net_profit_usd: number | null // 单件净利（美元）
@@ -29,6 +30,7 @@ export interface ProductCandidate {
 /** 推荐结论 —— 对应 data.structured.recommendation */
 export interface SelectionRecommendation {
   top_pick: string // 首选商品/方向
+  url?: string | null // 首选商品/方向对应的搜索链接
   verdict: string // 一句话结论
   score?: number | null // 综合评分（0-10）
   reasons: string[] // 推荐理由

@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   DollarSign,
+  ExternalLink,
   type LucideIcon,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -101,7 +102,11 @@ export default function ProductReportCard({ report }: { report: SelectionReport 
               {products.map((p, i) => (
                 <div key={i} className="py-2 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-start justify-between gap-1">
-                    <p className="text-sm font-medium leading-snug">{p.name}</p>
+                    <ExternalProductLink
+                      label={p.name}
+                      url={p.url}
+                      className="text-sm font-medium leading-snug"
+                    />
                     <p className="text-sm font-semibold text-primary">{fmtUsd(p.suggested_price_usd)}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
@@ -140,7 +145,11 @@ export default function ProductReportCard({ report }: { report: SelectionReport 
             </CardTitle>
           </CardHeader>
           <CardContent className="px-3 pb-3 pt-0 space-y-2">
-            {rec.top_pick && <p className="text-sm font-bold text-primary">首选：{rec.top_pick}</p>}
+            {rec.top_pick && (
+              <p className="text-sm font-bold text-primary">
+                首选：<ExternalProductLink label={rec.top_pick} url={rec.url} />
+              </p>
+            )}
             {rec.verdict && <p className="text-sm">{rec.verdict}</p>}
             {rec.score != null && (
               <Badge variant="success" className="text-[11px]">
@@ -223,6 +232,42 @@ function Stars({ level }: { level: number }) {
 /** 列表字段容错：LLM 可能返回 string（"a、b"）而非 string[]，统一归一化为数组 */
 function asList<T>(v: T[] | string | null | undefined): T[] {
   return Array.isArray(v) ? v : []
+}
+
+function ExternalProductLink({
+  label,
+  url,
+  className = '',
+}: {
+  label: string
+  url?: string | null
+  className?: string
+}) {
+  const safeUrl = normalizeExternalUrl(url)
+  if (!safeUrl) return <span className={className}>{label}</span>
+
+  return (
+    <a
+      href={safeUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="在 Amazon 查看相关商品"
+      className={`${className} inline-flex items-start gap-1 transition-colors hover:text-primary hover:underline underline-offset-4`}
+    >
+      <span>{label}</span>
+      <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+    </a>
+  )
+}
+
+function normalizeExternalUrl(value?: string | null): string | null {
+  if (!value) return null
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : null
+  } catch {
+    return null
+  }
 }
 
 function formatNumber(n: number): string {

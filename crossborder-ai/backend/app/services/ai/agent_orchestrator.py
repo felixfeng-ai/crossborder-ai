@@ -21,6 +21,7 @@
 import json
 import re
 from typing import Any, Awaitable, Callable, Optional
+from urllib.parse import quote_plus
 from uuid import UUID
 
 from app.core.config import settings
@@ -56,6 +57,46 @@ def _extract_json(text: str) -> Optional[dict]:
         return json.loads(match.group())
     except json.JSONDecodeError:
         return None
+
+
+def _amazon_search_url(query: str | None) -> str:
+    """用商品名生成真实 Amazon 搜索结果链接，避免伪造具体商品 ID。"""
+    value = (query or "").strip()
+    return f"https://www.amazon.com/s?k={quote_plus(value)}" if value else ""
+
+
+def _attach_product_links(structured: dict) -> dict:
+    """为候选商品和首选方向补齐可点击的 Amazon 搜索链接。"""
+    products = structured.get("products") or []
+    linked_products: list[dict] = []
+    for product in products:
+        if not isinstance(product, dict):
+            continue
+        item = dict(product)
+        if not item.get("url"):
+            item["url"] = _amazon_search_url(item.get("name"))
+        linked_products.append(item)
+    structured["products"] = linked_products
+
+    recommendation = structured.get("recommendation")
+    if isinstance(recommendation, dict) and not recommendation.get("url"):
+        top_pick = recommendation.get("top_pick") or ""
+        matched = next(
+            (
+                item
+                for item in linked_products
+                if top_pick
+                and (
+                    top_pick in (item.get("name") or "")
+                    or (item.get("name") or "") in top_pick
+                )
+            ),
+            None,
+        )
+        recommendation["url"] = (
+            matched.get("url") if matched else _amazon_search_url(top_pick)
+        )
+    return structured
 
 
 def _render_report_markdown(structured: dict, keyword: str, mode: str = "select") -> str:
@@ -863,6 +904,7 @@ class AgentOrchestrator:
 
             structured = _extract_json(raw)
             if structured:
+                structured = _attach_product_links(structured)
                 data = {
                     "keyword": keyword,
                     "structured": structured,
@@ -908,6 +950,7 @@ class AgentOrchestrator:
 
             structured = _extract_json(raw)
             if structured:
+                structured = _attach_product_links(structured)
                 data = {
                     "keyword": keyword,
                     "structured": structured,

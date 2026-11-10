@@ -123,37 +123,6 @@ def upgrade() -> None:
         sa.Column("processed_at", sa.DateTime(timezone=True), nullable=True),
     )
 
-    # ── 内容生成记录表 ─────────────────────────────────────
-    op.create_table(
-        "content_generations",
-        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("user_id", UUID(as_uuid=True),
-                  sa.ForeignKey("users.id", ondelete="CASCADE"),
-                  nullable=False, index=True),
-        sa.Column("listing_id", sa.Integer,
-                  sa.ForeignKey("listings.id", ondelete="SET NULL"),
-                  nullable=True),
-        sa.Column("content_type", sa.String(50), nullable=False),
-        sa.Column("status", sa.String(20), server_default="pending"),
-        sa.Column("source_language", sa.String(20), server_default="en"),
-        sa.Column("target_language", sa.String(20), nullable=True),
-        sa.Column("source_text", sa.Text, nullable=True),
-        sa.Column("source_image_url", sa.String(1000), nullable=True),
-        sa.Column("generated_text", sa.Text, nullable=True),
-        sa.Column("generated_image_url", sa.String(1000), nullable=True),
-        sa.Column("model_used", sa.String(100), nullable=False),
-        sa.Column("prompt_template", sa.Text, nullable=True),
-        sa.Column("prompt_parameters", sa.Text, nullable=True),
-        sa.Column("tokens_used", sa.Integer, nullable=True),
-        sa.Column("credits_cost", sa.Integer, nullable=True),
-        sa.Column("user_rating", sa.Integer, nullable=True),
-        sa.Column("user_edited", sa.Boolean, server_default="false"),
-        sa.Column("created_at", sa.DateTime(timezone=True),
-                  server_default=sa.func.now()),
-        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("error_message", sa.Text, nullable=True),
-    )
-
     # ── 内容模板表 ─────────────────────────────────────────
     op.create_table(
         "content_templates",
@@ -210,6 +179,38 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True),
                   server_default=sa.func.now()),
         sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
+    )
+
+    # ── 内容生成记录表 ─────────────────────────────────────
+    # 必须放在 listings 之后，否则 PostgreSQL 会拒绝尚未存在的外键目标。
+    op.create_table(
+        "content_generations",
+        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column("user_id", UUID(as_uuid=True),
+                  sa.ForeignKey("users.id", ondelete="CASCADE"),
+                  nullable=False, index=True),
+        sa.Column("listing_id", sa.Integer,
+                  sa.ForeignKey("listings.id", ondelete="SET NULL"),
+                  nullable=True),
+        sa.Column("content_type", sa.String(50), nullable=False),
+        sa.Column("status", sa.String(20), server_default="pending"),
+        sa.Column("source_language", sa.String(20), server_default="en"),
+        sa.Column("target_language", sa.String(20), nullable=True),
+        sa.Column("source_text", sa.Text, nullable=True),
+        sa.Column("source_image_url", sa.String(1000), nullable=True),
+        sa.Column("generated_text", sa.Text, nullable=True),
+        sa.Column("generated_image_url", sa.String(1000), nullable=True),
+        sa.Column("model_used", sa.String(100), nullable=False),
+        sa.Column("prompt_template", sa.Text, nullable=True),
+        sa.Column("prompt_parameters", sa.Text, nullable=True),
+        sa.Column("tokens_used", sa.Integer, nullable=True),
+        sa.Column("credits_cost", sa.Integer, nullable=True),
+        sa.Column("user_rating", sa.Integer, nullable=True),
+        sa.Column("user_edited", sa.Boolean, server_default="false"),
+        sa.Column("created_at", sa.DateTime(timezone=True),
+                  server_default=sa.func.now()),
+        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("error_message", sa.Text, nullable=True),
     )
 
     # ── Listing 变体表（颜色/尺寸等） ──────────────────────

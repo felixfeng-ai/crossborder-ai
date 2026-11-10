@@ -2,9 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Bot,
   Send,
-  User,
   Loader2,
   Sparkles,
   Link as LinkIcon,
@@ -25,6 +23,8 @@ import type { AgentStep } from '@/types'
 import apiClient, { API_BASE } from '@/api/client'
 import { readSseUntil, TaskTimeoutError } from '@/api/sse'
 import { toErrorMessage } from '@/utils/errorMessage'
+import { getActionLabel } from '@/lib/agent/actionLabels'
+import { useAuthStore } from '@/stores/authStore'
 
 /**
  * AgentPage - AI 智能助手聊天页
@@ -108,6 +108,7 @@ async function streamTaskStatus(
 }
 
 export default function AgentPage() {
+  const user = useAuthStore((state) => state.user)
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
@@ -237,12 +238,8 @@ export default function AgentPage() {
         animate={{ opacity: 1, y: 0 }}
         className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}
       >
-        {/* 头像 */}
-        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-          isUser ? 'bg-primary' : 'bg-amber-500'
-        }`}>
-          {isUser ? <User className="h-4 w-4 text-primary-foreground" /> : <Bot className="h-4 w-4 text-white" />}
-        </div>
+        {/* 用品牌标识和用户首字母替代通用机器人/用户图标。 */}
+        {isUser ? <UserAvatar user={user} /> : <AgentAvatar />}
 
         {/* 消息内容 */}
         <div className={`max-w-[80%] space-y-2 ${isUser ? 'items-end' : ''}`}>
@@ -286,7 +283,7 @@ export default function AgentPage() {
                     <Loader2 className="h-4 w-4 animate-spin mt-0.5 shrink-0" />
                   )}
                   <div>
-                    <span className="font-medium text-xs">{actionLabel(step.action)}</span>
+                    <span className="font-medium text-xs">{getActionLabel(step.action)}</span>
                     {step.summary && <p className="text-xs text-muted-foreground">{step.summary}</p>}
                     {step.error && <p className="text-xs text-destructive">{step.error}</p>}
                   </div>
@@ -314,9 +311,7 @@ export default function AgentPage() {
             animate={{ opacity: 1, y: 0 }}
             className="flex gap-3"
           >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500">
-              <Bot className="h-4 w-4 text-white" />
-            </div>
+            <AgentAvatar />
             <div className="flex-1 space-y-2">
               <div className="bg-muted rounded-2xl rounded-tl-[4px] px-4 py-3 w-fit">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -336,7 +331,7 @@ export default function AgentPage() {
                         <Loader2 className="h-4 w-4 animate-spin mt-0.5 shrink-0" />
                       )}
                       <div>
-                        <span className="font-medium text-xs">{actionLabel(step.action)}</span>
+                        <span className="font-medium text-xs">{getActionLabel(step.action)}</span>
                         {step.summary && <p className="text-xs text-muted-foreground">{step.summary}</p>}
                         {step.error && <p className="text-xs text-destructive">{step.error}</p>}
                       </div>
@@ -399,17 +394,32 @@ export default function AgentPage() {
   )
 }
 
-// ── 操作名称映射 ──────────────────────────────────────────────
-function actionLabel(action: string): string {
-  const labels: Record<string, string> = {
-    scrape_1688: '抓取 1688 商品',
-    create_product: '创建商品',
-    generate_listing: 'AI 生成 Listing',
-    compliance_check: '合规审查',
-    calculate_profit: '净利计算',
-    select_products: 'AI 选品',
-    analyze_category: '品类市场分析',
-    answer: '回答',
-  }
-  return labels[action] || action
+function AgentAvatar() {
+  return (
+    <div
+      className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--factory-accent)]/45 bg-[var(--factory-panel)]"
+      aria-label="VeyaShip AI Agent"
+    >
+      <span className="font-mono text-[13px] font-semibold tracking-[0.08em] text-[var(--factory-accent)]">V</span>
+      <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--factory-ground)] bg-[var(--factory-mint)]" />
+    </div>
+  )
+}
+
+function UserAvatar({
+  user,
+}: {
+  user: { username?: string | null; full_name?: string | null; email?: string | null } | null
+}) {
+  const name = user?.username || user?.full_name || user?.email || '你'
+  const initial = name.trim().charAt(0).toUpperCase() || '你'
+
+  return (
+    <div
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-[var(--factory-raised)] text-xs font-semibold text-foreground"
+      aria-label={`${name} 的头像`}
+    >
+      {initial}
+    </div>
+  )
 }

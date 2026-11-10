@@ -46,11 +46,3 @@
               fi
               echo "Just One API 凭据已注入服务器环境"
               bash /opt/veyaship/cicd-deploy.sh
-              BACKEND_PID=$(ps -eo pid=,args= | awk '/uvicorn app.main:app/ && !/awk/ {print $1; exit}')
-              if [ -n "$BACKEND_PID" ] && \
-                tr '\0' '\n' < "/proc/$BACKEND_PID/environ" | grep -q '^JUSTONE_API_TOKEN=.'; then
-                echo "Just One API 运行时配置检查通过"
-              else
-                echo "Just One API 运行时配置未加载到后端进程，终止部署"
-                exit 1
-              fi

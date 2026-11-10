@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { toErrorMessage } from '@/utils/errorMessage'
 import apiClient from '@/api/client'
+import { getActionLabel } from '@/lib/agent/actionLabels'
 import OnboardingGuide from '@/components/dashboard/OnboardingGuide'
 import ImageHistoryGallery from '@/components/dashboard/ImageHistoryGallery'
 
@@ -613,18 +614,6 @@ function AgentResult({ data, onClose }: { data: any; onClose: () => void }) {
     return <Loader2 className="h-4 w-4 animate-spin shrink-0" />
   }
 
-  const actionLabel = (a: string) => {
-    const labels: Record<string, string> = {
-      scrape_1688: '抓取 1688 商品',
-      create_product: '创建商品',
-      generate_listing: 'AI 生成 Listing',
-      compliance_check: '合规审查',
-      calculate_profit: '净利计算',
-      answer: '回答',
-    }
-    return labels[a] || a
-  }
-
   return (
     <Card className={`${data.status === 'success' ? 'border-emerald-500/30' : 'border-destructive/30'}`}>
       <CardHeader className="pb-2">
@@ -656,7 +645,7 @@ function AgentResult({ data, onClose }: { data: any; onClose: () => void }) {
             <div key={i} className="flex items-start gap-2 text-sm">
               {statusIcon(step.status)}
               <div>
-                <span className="text-xs font-medium">{actionLabel(step.action)}</span>
+                <span className="text-xs font-medium">{getActionLabel(step.action)}</span>
                 {step.summary && <p className="text-xs text-muted-foreground">{step.summary}</p>}
                 {step.error && <p className="text-xs text-destructive">{step.error}</p>}
               </div>

@@ -39,3 +39,11 @@
               fi
               echo "Just One API 凭据已注入服务器环境"
               bash /opt/veyaship/cicd-deploy.sh
+              cd /opt/veyaship
+              if docker compose -f docker-compose.prod.yml exec -T backend \
+                python -c "from app.core.config import settings; raise SystemExit(0 if settings.JUSTONE_API_TOKEN else 1)"; then
+                echo "Just One API 运行时配置检查通过"
+              else
+                echo "Just One API 运行时配置未加载，终止部署"
+                exit 1
+              fi

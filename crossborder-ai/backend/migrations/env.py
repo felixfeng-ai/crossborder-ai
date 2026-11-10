@@ -25,12 +25,14 @@ Alembic 是 SQLAlchemy 的数据库迁移工具，类似于 Git 但管的是数�
 """
 
 from logging.config import fileConfig
+import asyncio
 import sys
 import os
 from pathlib import Path
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
 
 # 把 backend/ 加到 Python 路径，让 Alembic 能找到 app 包
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -48,7 +50,7 @@ if config.config_file_name is not None:
 # 2. app settings 中的 DB_URL（从 .env 读取）
 # 3. alembic.ini 中的 sqlalchemy.url（本地开发备用）
 #
-# 注意：Alembic 需要同步 URL（去掉 +asyncpg 后缀）
+# Alembic 与运行时共用 asyncpg / aiosqlite，避免再依赖第二套同步驱动。
 db_url = os.environ.get("DATABASE_URL") or ""
 if not db_url:
     try:
@@ -58,9 +60,6 @@ if not db_url:
         pass
 
 if db_url:
-    # 把异步 URL 转成同步（asyncpg → psycopg2）
-    db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
-    db_url = db_url.replace("sqlite+aiosqlite://", "sqlite://")
     config.set_main_option("sqlalchemy.url", db_url)
 
 # ── 导入所有模型（让 Alembic 能检测到表结构变化） ──────────
@@ -94,19 +93,30 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def run_migrations_online() -> None:
-    connectable = engine_from_config(
+def do_run_migrations(connection) -> None:
+    """在异步连接上执行同步 Alembic 迁移上下文。"""
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_async_migrations() -> None:
+    """使用应用同一套异步驱动完成迁移。"""
+    connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
+
+
+def run_migrations_online() -> None:
+    asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

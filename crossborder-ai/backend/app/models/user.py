@@ -6,7 +6,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, func, select
+from sqlalchemy import DateTime, Integer, String, func, select, update
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -87,22 +87,27 @@ class User(Base):
         Raises:
             ValueError: 积分不足时抛出
         """
-        # begin_nested() = 开启数据库保存点（子事务）
-        # 即使这个方法失败，也不会影响外层事务
+        # 条件 UPDATE 在数据库内完成“判断 + 扣减”，比先读后写更可靠。
+        # 两个并发事务同时到达时，只有一个能命中 credits >= amount。
         async with db.begin_nested():
-            # select ... FOR UPDATE = 行级锁
-            # 这一行数据在事务结束前，其他请求不能修改
             result = await db.execute(
-                select(User).where(User.id == self.id).with_for_update()
+                update(User)
+                .where(User.id == self.id, User.credits >= amount)
+                .values(credits=User.credits - amount)
+                .returning(User.credits)
             )
-            user = result.scalar_one()
+            remaining = result.scalar_one_or_none()
+            if remaining is None:
+                current = await db.scalar(
+                    select(User.credits).where(User.id == self.id)
+                )
+                current_value = 0 if current is None else current
+                raise InsufficientCreditsError(
+                    f"积分不足，需要 {amount}，当前 {current_value}"
+                )
 
-            if user.credits < amount:
-                raise InsufficientCreditsError(f"积分不足，需要 {amount}，当前 {user.credits}")
-
-            user.credits -= amount
-            await db.flush()  # 刷新到数据库（但还没提交）
-            return user.credits
+            self.credits = remaining
+            return remaining
 
     def __repr__(self) -> str:
         return f"<User {self.id}: {self.email} ({self.plan}, credits={self.credits})>"

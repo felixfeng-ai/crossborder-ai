@@ -32,7 +32,7 @@ pytestmark = [
 ]
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture
 async def pg_engine():
     engine = create_async_engine(POSTGRES_TEST_URL, pool_pre_ping=True)
     yield engine

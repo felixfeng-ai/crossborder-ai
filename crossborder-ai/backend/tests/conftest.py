@@ -22,6 +22,8 @@ from typing import AsyncGenerator
 # 测试默认走 SQLite 模式：config 的 validate_secrets 校验依赖此开关
 # （生产 PG 模式要求 JWT_SECRET_KEY 非空，测试无 .env 需跳过该校验）
 os.environ.setdefault("USE_SQLITE", "true")
+os.environ.setdefault("SECRET_KEY", "test-only-app-secret")
+os.environ.setdefault("JWT_SECRET_KEY", "test-only-jwt-secret")
 
 import pytest
 import pytest_asyncio

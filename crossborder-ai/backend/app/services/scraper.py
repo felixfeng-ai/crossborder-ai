@@ -2,7 +2,7 @@
 
 数据流向：
   卖家粘贴 1688 链接 → products 路由（平台 Key 就绪检查）
-  → scrape_1688（优先 Onebound API → 失败自动降级直抓 HTML）
+  → scrape_1688（Just One → Onebound → 失败再降级直抓 HTML）
   → 统一清洗字段 → 返回 data_source 标注 + 结构化数据 → 落库
 
 为什么做这套「错误分类」而不直接抛底层异常？
@@ -129,16 +129,20 @@ async def scrape_1688(
     url: str,
     api_key: str = "",
     api_secret: str = "",
+    justone_token: str = "",
 ) -> dict[str, Any]:
-    """抓取 1688 商品（优先 Onebound → 自动降级直抓），返回清洗后的数据。
+    """抓取 1688 商品。
+
+    数据源优先级：Just One API -> Onebound -> 直抓 HTML。
 
     Args:
         url: 1688 商品详情页 URL。
         api_key: Onebound API Key（平台管理员在设置页配置，存于 SystemConfig）。
         api_secret: Onebound API Secret。
+        justone_token: Just One API Token。
 
     Returns:
-        dict: url / data_source(onebound|direct) / title / main_image_url /
+        dict: url / data_source(justone|onebound|direct) / title / main_image_url /
         price / sales_count / shop_name。缺失字段为 None（字段兜底，不整单失败）。
 
     Raises:
@@ -147,7 +151,9 @@ async def scrape_1688(
         ParseError: 信息解析异常（标题空 / 价格显式异常）。
         AntiBotError / ScrapeTimeoutError / ServiceUnavailableError: 抓取被拦 / 超时 / 服务不可用。
     """
-    # 优先用 .env 配置的平台级 Key，未配置则用调用方传入的 Key
+    # 环境变量只作为数据库配置缺失时的兜底。
+    if not justone_token and settings.JUSTONE_API_TOKEN:
+        justone_token = settings.JUSTONE_API_TOKEN
     if not api_key and settings.ONEBOUND_API_KEY:
         api_key = settings.ONEBOUND_API_KEY
         api_secret = settings.ONEBOUND_API_SECRET or api_secret
@@ -161,12 +167,24 @@ async def scrape_1688(
             "（示例：https://detail.1688.com/offer/123456789.html）"
         )
 
+    justone_err: ScrapeError | None = None
     onebound_err: ScrapeError | None = None
     raw: Optional[dict] = None
     source = ""
 
-    # ── 2. 方案一：Onebound API（平台数据服务）─────────────────
-    if api_key:
+    # ── 2. 方案一：Just One API（最高优先级）──────────────────
+    if justone_token:
+        try:
+            raw = await _fetch_justone(offer_id, justone_token)
+            source = "justone"
+        except ProductNotFoundError:
+            # 明确不存在时停止降级，避免继续消耗其他数据源额度。
+            raise
+        except ScrapeError as e:
+            justone_err = e
+
+    # ── 3. 方案二：Onebound API（Just One 未配置或失败时）──────
+    if raw is None and api_key:
         try:
             raw = await _fetch_onebound(offer_id, api_key, api_secret)
             source = "onebound"
@@ -177,7 +195,7 @@ async def scrape_1688(
             # 超时 / 服务异常等暂时性失败 → 记为一次失败，继续尝试直抓
             onebound_err = e
 
-    # ── 3. 方案二：直抓 HTML（Onebound 失败或未配置时降级）──────
+    # ── 4. 方案三：直抓 HTML（两个数据 API 均不可用时）────────
     if raw is None:
         try:
             raw = await _direct_fetch(url)
@@ -185,19 +203,27 @@ async def scrape_1688(
         except ProductNotFoundError:
             raise
         except ScrapeError as e:
-            # Onebound 与直抓都失败：优先保留数据服务的分类（平台侧问题更该先暴露）
+            # 所有数据源失败时，优先暴露最高优先级数据源的错误。
+            if justone_err is not None:
+                raise justone_err from e
             if onebound_err is not None:
                 raise onebound_err from e
             raise
 
     # 理论上 _fetch_onebound/_direct_fetch 不会返回 None 且不抛错；兜底防御
     if raw is None:
+        if justone_err is not None:
+            raise justone_err
         if onebound_err is not None:
             raise onebound_err
         raise ServiceUnavailableError("获取商品信息失败，请稍后再试")
 
-    # ── 4. 统一清洗 + 字段兜底 ───────────────────────────────
-    product = _normalize_product(raw, source=source)
+    # ── 5. 统一清洗 + 字段兜底 ───────────────────────────────
+    product = (
+        _normalize_justone_product(raw)
+        if source == "justone"
+        else _normalize_product(raw, source=source)
+    )
     return {"url": url, "data_source": source, **product}
 
 
@@ -255,7 +281,144 @@ def _extract_offer_id(url: str) -> str | None:
 
 
 # ════════════════════════════════════════════════════════════════
-# 方案一：Onebound API
+# 方案一：Just One API
+# ════════════════════════════════════════════════════════════════
+
+JUSTONE_URL = "https://api.justoneapi.com/api/1688/get-item-detail/v2"
+
+
+async def _fetch_justone(offer_id: str, token: str) -> dict:
+    """调用 Just One API V2 获取 1688 商品详情。
+
+    Just One 的业务结果必须通过返回体 `code` 判断：
+    - 0：成功
+    - 100：Token 无效
+    - 301：采集失败，可重试
+    - 302/303：限流或配额耗尽
+    - 600/601/602：权限、余额或 Token 限额问题
+    """
+    params = {
+        "token": token,
+        "itemId": offer_id,
+        "language": "zh",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.get(JUSTONE_URL, params=params)
+    except httpx.TimeoutException:
+        raise ScrapeTimeoutError("Just One API 响应超时，请稍后再试")
+    except Exception:
+        raise ServiceUnavailableError("Just One API 暂时不可用，请稍后再试")
+
+    if response.status_code in (401, 403):
+        raise ServiceUnavailableError("Just One API Token 无效或权限不足")
+    if response.status_code == 429:
+        raise ServiceUnavailableError("Just One API 调用过于频繁，请稍后再试")
+    if response.status_code >= 500:
+        raise ServiceUnavailableError("Just One API 暂时不可用，请稍后再试")
+    if response.status_code != 200:
+        raise ServiceUnavailableError("Just One API 请求失败，请稍后再试")
+
+    try:
+        result = response.json()
+    except ValueError:
+        raise ServiceUnavailableError("Just One API 返回格式异常")
+
+    code = result.get("code")
+    if code == 0:
+        data = result.get("data")
+        if not data:
+            # 官方约定：商品不存在是成功计费查询，data 为空。
+            raise ProductNotFoundError("该商品不存在或已下架，请换一个 1688 商品链接试试")
+        return data
+
+    if code in (100, 600):
+        raise ServiceUnavailableError("Just One API Token 无效或权限不足")
+    if code in (302, 303, 602):
+        raise ServiceUnavailableError("Just One API 配额或调用频率已达上限")
+    if code in (601,):
+        raise ServiceUnavailableError("Just One API 账户余额不足")
+    if code == 301:
+        raise ServiceUnavailableError("Just One API 采集失败，请稍后再试")
+    raise ServiceUnavailableError("Just One API 暂时不可用，请稍后再试")
+
+
+def _normalize_justone_product(data: dict) -> dict:
+    """把 Just One V1/V2 常见字段结构归一成项目商品字段。"""
+    if not data:
+        raise ProductNotFoundError("该商品不存在或已下架，请换一个 1688 商品链接试试")
+
+    title_node = data.get("title")
+    item = data.get("item") or {}
+    price_node = data.get("price") or {}
+    main_pic = data.get("mainPic") or {}
+
+    title = None
+    if isinstance(title_node, dict):
+        title = title_node.get("title")
+    elif isinstance(title_node, str):
+        title = title_node
+    title = title or item.get("offerTitle") or data.get("offerTitle")
+    title = _clean_text(title, max_len=500)
+    if not title:
+        raise ParseError(
+            "未能从 Just One API 识别商品标题，请稍后重试，或手动录入该商品"
+        )
+
+    # V2 使用 main_imgs；V1 使用 mainPic.offerImgList。
+    images = data.get("main_imgs") or main_pic.get("offerImgList") or []
+    main_image_url = images[0] if images else item.get("defaultOfferImg")
+    if not main_image_url:
+        for image in data.get("images") or []:
+            if isinstance(image, dict):
+                main_image_url = image.get("fullPathImageURI")
+                if main_image_url:
+                    break
+
+    raw_price = item.get("price")
+    if raw_price is None:
+        price_info = data.get("price_info") or {}
+        raw_price = price_info.get("price_min") or price_info.get("price")
+    if raw_price is None:
+        price_model = price_node.get("priceModel") or {}
+        prices = price_model.get("currentPrices") or []
+        if prices and isinstance(prices[0], dict):
+            raw_price = prices[0].get("price")
+        if raw_price is None:
+            raw_price = price_model.get("originalPriceDisplay")
+    price, price_present = _clean_price(raw_price)
+    if price_present and (price is None or price <= 0):
+        raise ParseError("Just One API 商品价格解析异常，请稍后重试")
+
+    sales = item.get("saledCount")
+    if sales is None:
+        sale_info = data.get("sale_info") or {}
+        sales = (
+            sale_info.get("sale_quantity_year")
+            or sale_info.get("sale_quantity_90days")
+            or data.get("sale_count")
+        )
+    if sales is None and isinstance(title_node, dict):
+        sales = title_node.get("selledNumber")
+
+    shop_info = data.get("shop_info") or {}
+    return {
+        "title": title,
+        "main_image_url": _clean_image_url(main_image_url),
+        "price": round(price, 2) if price is not None else None,
+        "sales_count": _clean_int(sales),
+        "shop_name": _clean_text(
+            shop_info.get("shop_name")
+            or shop_info.get("seller_login_id")
+            or item.get("companyName")
+            or item.get("sellerLoginId"),
+            max_len=255,
+        ),
+    }
+
+
+# ════════════════════════════════════════════════════════════════
+# 方案二：Onebound API
 # ════════════════════════════════════════════════════════════════
 
 ONEBOUND_URL = "https://api-gw.onebound.cn/1688/item_get"

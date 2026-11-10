@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ShoppingBag, Link, ExternalLink, Plus, AlertCircle, Loader2,
@@ -10,10 +10,21 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import apiClient from '@/api/client'
+import { toErrorMessage } from '@/utils/errorMessage'
 
 export default function ShopifyPage() {
   const [shopName, setShopName] = useState('')
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
+
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.post('/shopify/connect', { shop: shopName.trim() })
+      return response.data as { auth_url: string }
+    },
+    onSuccess: (data) => {
+      window.location.href = data.auth_url
+    },
+  })
 
   // 已绑定店铺
   const { data: channels } = useQuery({
@@ -70,12 +81,21 @@ export default function ShopifyPage() {
             <CardContent className="flex gap-2">
               <Input value={shopName} onChange={(e) => setShopName(e.target.value)}
                 placeholder="输入店铺名" className="text-sm" />
-              <Button disabled={!shopName.trim()} onClick={() => {
-                window.open(`/api/v1/shopify/auth?shop=${shopName.trim()}.myshopify.com`)
-              }} size="sm">
-                <Link className="h-4 w-4 mr-1" />授权
+              <Button
+                disabled={!shopName.trim() || connectMutation.isPending}
+                onClick={() => connectMutation.mutate()}
+                size="sm"
+              >
+                {connectMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link className="h-4 w-4 mr-1" />}
+                授权
               </Button>
             </CardContent>
+            {connectMutation.isError && (
+              <CardContent className="pt-0 text-sm text-destructive flex items-center gap-1">
+                <AlertCircle className="h-4 w-4" />
+                {toErrorMessage(connectMutation.error, '授权发起失败')}
+              </CardContent>
+            )}
           </Card>
 
           {/* 已绑定列表 */}

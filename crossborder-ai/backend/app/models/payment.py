@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -33,8 +34,11 @@ class Subscription(Base):
     __tablename__ = "subscriptions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    user_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     # --- Plan ---
@@ -97,7 +101,8 @@ class Subscription(Base):
     )
 
     # --- Relationships ---
-    user = relationship("User", back_populates="subscriptions")
+    # 旧支付接口仍在使用该模型；不声明反向属性，避免 User 未加载时污染全局 mapper。
+    user = relationship("User")
     invoices = relationship(
         "PaymentInvoice", back_populates="subscription", cascade="all, delete-orphan"
     )
@@ -125,8 +130,11 @@ class PaymentInvoice(Base):
         nullable=True,
         index=True,
     )
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    user_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     # --- Creem.io ---

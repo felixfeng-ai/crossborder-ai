@@ -11,7 +11,7 @@
 import math
 from datetime import datetime
 from typing import Optional
-from uuid import UUID as UUIDType
+from uuid import UUID, UUID as UUIDType
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select, func
@@ -22,11 +22,11 @@ from app.core.rate_limit import RateLimit
 from app.core.redis import cache_clear
 from app.dependencies import get_current_user
 from app.models.product import Product
-from app.core.config import settings
-from app.core.crypto import decrypt_value
-from app.models.system_config import SystemConfig
+from app.models.listing_draft import ListingDraft
 from app.models.user import User
 from app.services.scraper import SERVICE_NOT_CONFIGURED_MSG, ScrapeError, scrape_1688
+from app.services.listing_service import serialize_listing
+from app.services import provider_config
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -76,30 +76,21 @@ class ProductListResponse(BaseModel):
     total_pages: int  # 总共多少页
 
 
-async def _load_onebound_credentials(db: AsyncSession) -> tuple[str, str]:
-    """读取平台级 Onebound 凭据并解密。
+async def _load_scrape_credentials(db: AsyncSession) -> tuple[str, str, str]:
+    """读取 Just One 与 Onebound 的平台级抓取凭据。
 
     优先级：SystemConfig（设置页密文存储）> settings（.env 兜底）。
     Key 对卖家不可见，此处只读不暴露任何明文给前端。
 
     Returns:
-        (api_key, api_secret)：两者为空串即代表平台未配置数据服务。
+        (justone_token, onebound_key, onebound_secret)。
     """
-    config_rows = await db.execute(
-        select(SystemConfig).where(
-            SystemConfig.key.in_(["onebound_api_key", "onebound_api_secret"])
-        )
+    await provider_config.refresh(db)
+    return (
+        provider_config.get("justone", "token"),
+        provider_config.get("onebound", "api_key"),
+        provider_config.get("onebound", "api_secret"),
     )
-    # 密文解密后传给抓取器（设置页写入时已加密）
-    sys_config = {row.key: decrypt_value(row.value or "") for row in config_rows.scalars().all()}
-
-    api_key = sys_config.get("onebound_api_key", "")
-    api_secret = sys_config.get("onebound_api_secret", "")
-    # .env 兜底（本地/自托管开发）：未在网页配置时才回退
-    if not api_key and settings.ONEBOUND_API_KEY:
-        api_key = settings.ONEBOUND_API_KEY
-        api_secret = settings.ONEBOUND_API_SECRET or api_secret
-    return api_key, api_secret
 
 
 @router.get("/scrape/status")
@@ -112,8 +103,14 @@ async def scrape_service_status(
     前端据此在 Key 未配置时禁用「自动抓取」按钮并提示联系客服，
     而不是等卖家点下去才拿到错误。
     """
-    api_key, _secret = await _load_onebound_credentials(db)
-    return {"configured": bool(api_key)}
+    justone_token, api_key, _secret = await _load_scrape_credentials(db)
+    return {
+        "configured": bool(justone_token or api_key),
+        "providers": {
+            "justone": bool(justone_token),
+            "onebound": bool(api_key),
+        },
+    }
 
 
 @router.post("/scrape", status_code=status.HTTP_201_CREATED)
@@ -130,12 +127,12 @@ async def scrape_product(
     1. 就绪检查：平台数据服务 Key 未配置 → 400 中文「联系客服开通」，不发网络请求
     2. 查 products 表是否已抓过（防重复）
     3. 扣积分前校验余额
-    4. 调用爬虫（Onebound → 降级直抓），分类错误转 HTTPException（中文 detail）
+    4. 调用爬虫（Just One -> Onebound -> 直抓），分类错误转 HTTPException
     5. 成功扣 1 积分并 INSERT 新商品
     """
     # ── 就绪检查：平台级数据服务 Key（CAP-01 / C1）────────────
-    api_key, api_secret = await _load_onebound_credentials(db)
-    if not api_key:
+    justone_token, api_key, api_secret = await _load_scrape_credentials(db)
+    if not justone_token and not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "service_not_configured", "message": SERVICE_NOT_CONFIGURED_MSG},
@@ -143,7 +140,12 @@ async def scrape_product(
 
     # ── 查重 ───────────────────────────────────────────────
     # 检查是否已抓取过这个 URL
-    result = await db.execute(select(Product).where(Product.url == payload.url))
+    result = await db.execute(
+        select(Product).where(
+            Product.url == payload.url,
+            Product.user_id == current_user.id,
+        )
+    )
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="该商品已抓取过")
 
@@ -154,7 +156,12 @@ async def scrape_product(
     # ── 调用爬虫（外部服务，不是数据库操作） ────────────────
     # ScrapeError 已分类：稳定 code + 中文 message，绝不裸抛底层异常给卖家
     try:
-        data = await scrape_1688(payload.url, api_key=api_key, api_secret=api_secret)
+        data = await scrape_1688(
+            payload.url,
+            api_key=api_key,
+            api_secret=api_secret,
+            justone_token=justone_token,
+        )
     except ScrapeError as e:
         raise HTTPException(
             status_code=e.http_status,
@@ -203,7 +210,12 @@ async def create_product_manual(
 ):
     """手动录入商品（兜底方案，抓取失败时用）"""
     # 查重
-    result = await db.execute(select(Product).where(Product.url == payload.url))
+    result = await db.execute(
+        select(Product).where(
+            Product.url == payload.url,
+            Product.user_id == current_user.id,
+        )
+    )
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="该商品链接已存在")
 
@@ -305,6 +317,42 @@ async def get_product(
         raise HTTPException(status_code=404, detail="商品不存在")
 
     return ProductResponse.model_validate(product).model_dump()
+
+
+@router.get("/{product_id}/listings")
+async def list_product_listings(
+    product_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List persisted listing drafts for one owned product."""
+    try:
+        pid = UUID(product_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的商品 ID")
+
+    owned = await db.execute(
+        select(Product.id).where(
+            Product.id == pid,
+            Product.user_id == current_user.id,
+        )
+    )
+    if owned.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="商品不存在")
+
+    result = await db.execute(
+        select(ListingDraft)
+        .where(
+            ListingDraft.product_id == pid,
+            ListingDraft.user_id == current_user.id,
+        )
+        .order_by(ListingDraft.created_at.desc())
+    )
+    drafts = result.scalars().all()
+    return {
+        "items": [serialize_listing(draft) for draft in drafts],
+        "total": len(drafts),
+    }
 
 
 @router.delete("/{product_id}", status_code=status.HTTP_200_OK)

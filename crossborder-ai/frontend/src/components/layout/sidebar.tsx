@@ -13,9 +13,8 @@ import {
   ChevronLeft,
   Sparkles,
   Upload,
-  Radar,
-  Calculator,
   Bot,
+  X,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { Button } from '@/components/ui/button'
@@ -46,58 +45,76 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   return (
     <aside
       className={cn(
-        'flex flex-col border-r border-glass-border bg-glass backdrop-blur-xl transition-all duration-300',
-        collapsed ? 'w-16' : 'w-60',
+        'flex h-full flex-col border-r border-border bg-[var(--factory-side)]',
+        collapsed ? 'w-16' : 'w-[232px]',
       )}
     >
       {/* Logo */}
-      <div className="flex h-14 items-center border-b px-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
-            <Globe className="h-4 w-4 text-primary-foreground" />
+      <div className="flex h-[58px] items-center justify-between border-b border-border px-4">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded border border-border bg-secondary shrink-0">
+            <Globe className="h-4 w-4 text-foreground" />
           </div>
           {!collapsed && (
-            <span className="font-bold text-sm tracking-tight whitespace-nowrap">
-              VeyaShip AI
-            </span>
+            <div className="min-w-0">
+              <span className="block whitespace-nowrap text-[14px] font-semibold leading-5">
+                VeyaShip
+              </span>
+              <span className="block whitespace-nowrap text-[11px] leading-4 text-muted-foreground">
+                跨境决策台
+              </span>
+            </div>
           )}
         </div>
+        {onClose && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden"
+            onClick={onClose}
+            aria-label="关闭导航"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-2">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
             onClick={onClose}
+            title={item.label}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                'flex min-h-9 items-center gap-3 rounded px-2.5 text-[13px]',
                 isActive
-                  ? 'bg-primary/10 text-primary font-medium shadow-[0_0_20px_-6px_var(--glow-primary)]'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                  ? 'bg-secondary font-medium text-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                 collapsed && 'justify-center px-2',
               )
             }
           >
-            <item.icon className="h-4 w-4 shrink-0" />
+            <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
             {!collapsed && <span>{item.label}</span>}
           </NavLink>
         ))}
       </nav>
 
       {/* Collapse toggle */}
-      <div className="border-t p-2">
+      <div className="border-t border-border p-2">
         <Button
           variant="ghost"
           size="icon"
           className={cn('w-full', collapsed && 'mx-auto')}
           onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? '展开侧栏' : '收起侧栏'}
         >
           <ChevronLeft
             className={cn(
-              'h-4 w-4 transition-transform',
+              'h-4 w-4 transition-transform duration-150',
               collapsed && 'rotate-180',
             )}
           />

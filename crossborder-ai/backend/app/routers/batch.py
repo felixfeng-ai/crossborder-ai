@@ -18,12 +18,15 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.rate_limit import RateLimit
 from app.core.access_control import check_feature_access
 from app.dependencies import get_current_user
 from app.models.batch_job import BatchJob
 from app.models.product import Product
 from app.models.user import User
+from app.services.listing_service import persist_generated_listing
+from app.services import provider_config
 from pydantic import BaseModel
 
 logger = logging.getLogger("veyaship")
@@ -121,6 +124,8 @@ async def list_jobs(
                 "row_index": j.row_index,
                 "title": j.title,
                 "url": j.url,
+                "product_id": str(j.product_id) if j.product_id else None,
+                "listing_id": str(j.listing_id) if j.listing_id else None,
                 "status": j.status,
                 "error": j.error,
                 "created_at": str(j.created_at),
@@ -163,11 +168,14 @@ async def process_job(
     # 处理：创建商品
     try:
         product = Product(
+            user_id=current_user.id,
             title=job.title or "",
             url=job.url or f"batch://{job.id}",
             price=float(job.price) if job.price else None,
         )
         db.add(product)
+        await db.flush()
+        job.product_id = product.id
         job.status = "processed"
         job.processed_at = datetime.now(timezone.utc)
         await db.flush()
@@ -202,11 +210,14 @@ async def cron_process_batch(
     for job in jobs:
         try:
             product = Product(
+                user_id=current_user.id,
                 title=job.title or "",
                 url=job.url or f"batch://{job.id}",
                 price=float(job.price) if job.price else None,
             )
             db.add(product)
+            await db.flush()
+            job.product_id = product.id
             job.status = "processed"
             job.processed_at = datetime.now(timezone.utc)
             results.append({"job_id": str(job.id), "status": "success"})
@@ -238,56 +249,119 @@ async def batch_process_with_ai(
     if not check_feature_access(current_user, "batch_ai"):
         raise HTTPException(status_code=403, detail="批量 AI 处理仅限 Standard 及以上套餐使用")
 
-    if current_user.credits < len([1]):
-        raise HTTPException(status_code=402, detail="积分不足")
-
     result = await db.execute(
-        select(BatchJob).where(BatchJob.user_id == current_user.id, BatchJob.status == "pending").limit(20)
+        select(BatchJob)
+        .where(BatchJob.user_id == current_user.id, BatchJob.status == "pending")
+        .limit(20)
     )
     jobs = result.scalars().all()
     if not jobs:
         return {"message": "没有待处理的任务", "processed": 0}
+    if current_user.credits < 1:
+        raise HTTPException(status_code=402, detail="积分不足")
 
     from app.services.ai.deepseek import DeepSeekService
+    from app.services.ai.compliance import check_text, merge_banned_words
+    from app.services.ai.persona_kit import (
+        build_persona_kit,
+        fetch_persona,
+        format_persona_block,
+    )
+
     llm = DeepSeekService()
+    persona = await fetch_persona(db, current_user.id)
+    persona_kit = build_persona_kit(persona) if persona else None
+    persona_block = format_persona_block(persona_kit) if persona_kit else ""
+    banned_words = merge_banned_words(
+        (persona_kit or {}).get("banned_words") or []
+    )
     results = []
 
     for job in jobs:
-        try:
-            # 创建商品
-            product = Product(
-                user_id=current_user.id,
-                title=job.title or "",
-                url=job.url or f"batch://{job.id}",
-                price=float(job.price) if job.price else None,
-                description=job.description or "",
-            )
-            db.add(product)
-            await db.flush()
-
-            # AI 生成 Listing
-            title = await llm.generate(
-                f"You are a professional {platform} listing copywriter.",
-                f"Generate an optimized {platform} product title (max 200 chars) in {language}.\nProduct: {product.title}\nPrice: {product.price}",
-                max_tokens=300,
-            )
-            desc = await llm.generate_product_description(
-                product_title=product.title or "",
-                platform=platform,
-            )
-            bullets = await llm.generate_bullet_points(
-                product_title=product.title or "",
-                features=f"Price: {product.price}" if product.price else "",
-                platform=platform,
-            )
-
-            job.status = "processed"
-            job.processed_at = datetime.now(timezone.utc)
+        if current_user.credits < 1:
             results.append({
-                "job_id": str(job.id), "product_id": str(product.id),
-                "title": title[:50], "bullet_count": len(bullets),
-                "status": "success",
+                "job_id": str(job.id),
+                "status": "failed",
+                "error": "积分不足",
             })
+            continue
+        try:
+            async with db.begin_nested():
+                product = Product(
+                    user_id=current_user.id,
+                    title=job.title or "",
+                    url=job.url or f"batch://{job.id}",
+                    price=float(job.price) if job.price else None,
+                    description=job.description or "",
+                )
+                db.add(product)
+                await db.flush()
+
+                title = await llm.generate(
+                    f"You are a professional {platform} listing copywriter.",
+                    (
+                        f"Generate an optimized {platform} product title "
+                        f"(max 200 chars) in {language}.\n"
+                        f"Product: {product.title}\nPrice: {product.price}"
+                    ),
+                    max_tokens=300,
+                    persona_block=persona_block,
+                )
+                desc = await llm.generate_product_description(
+                    product_title=product.title or "",
+                    platform=platform,
+                    target_language=language,
+                    persona_block=persona_block,
+                )
+                bullets = await llm.generate_bullet_points(
+                    product_title=product.title or "",
+                    features=f"Price: {product.price}" if product.price else "",
+                    platform=platform,
+                    persona_block=persona_block,
+                )
+
+                violations: list[str] = []
+                for text in [title, desc, *bullets]:
+                    for word in check_text(text or "", banned_words):
+                        if word not in violations:
+                            violations.append(word)
+                blocked = bool(violations)
+                draft = await persist_generated_listing(
+                    db,
+                    user=current_user,
+                    product=product,
+                    platform=platform,
+                    language=language,
+                    tone="professional",
+                    title=title,
+                    description=desc,
+                    bullet_points=bullets,
+                    seo_title="",
+                    seo_description="",
+                    violations=violations,
+                    blocked=blocked,
+                    ai_model_used=provider_config.get(
+                        "deepseek",
+                        "model",
+                        settings.DEEPSEEK_MODEL,
+                    ),
+                )
+                await current_user.deduct_credits(db, 1)
+
+                job.product_id = product.id
+                job.listing_id = draft.id
+                job.status = "processed"
+                job.processed_at = datetime.now(timezone.utc)
+                results.append({
+                    "job_id": str(job.id),
+                    "product_id": str(product.id),
+                    "listing_id": str(draft.id),
+                    "listing_status": draft.status,
+                    "compliance_status": draft.compliance_status,
+                    "title": title[:50],
+                    "bullet_count": len(bullets),
+                    "status": "success",
+                })
         except Exception:
             logger.exception("批量任务处理失败 job_id=%s", job.id)
             job.status = "failed"

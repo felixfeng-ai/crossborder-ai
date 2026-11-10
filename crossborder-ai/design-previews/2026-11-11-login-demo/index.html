@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VeyaShip 登录页方案样机</title>
+  <style>
+    @font-face {
+      font-family: "Inter";
+      src: url("../2026-11-11-layout-theme/assets/inter-latin-variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 100 900;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "JetBrains Mono";
+      src: url("../2026-11-11-layout-theme/assets/jetbrains-mono-latin.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400 500;
+      font-display: swap;
+    }
+
+    :root {
+      --canvas: #0d0e0e;
+      --side: #101110;
+      --panel: #151615;
+      --raised: #1b1c1a;
+      --line: rgba(243, 242, 237, 0.1);
+      --line-strong: rgba(243, 242, 237, 0.18);
+      --ink: #f3f2ed;
+      --muted: #b4b0a8;
+      --faint: #8f8c85;
+      --accent: #d8b56d;
+      --font-cjk: "PingFang SC", "Noto Sans SC", "Microsoft YaHei",
+        "HarmonyOS Sans SC", "MiSans", "Hiragino Sans GB", sans-serif;
+      --font-ui: var(--font-cjk), "Inter", sans-serif;
+      --font-latin: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
+        monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      color-scheme: dark;
+      background: var(--canvas);
+    }
+
+    body {
+      min-width: 320px;
+      min-height: 100dvh;
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      line-height: 1.64;
+      letter-spacing: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button,
+    a {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1.16fr) minmax(420px, 0.84fr);
+      min-height: 100dvh;
+    }
+
+    .story {
+      position: relative;
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      padding: 34px clamp(32px, 5vw, 78px) 40px;
+      overflow: hidden;
+      background: var(--side);
+      border-right: 1px solid var(--line);
+    }
+
+    .story::after {
+      position: absolute;
+      top: 0;
+      right: 10%;
+      bottom: 0;
+      width: 1px;
+      content: "";
+      background: rgba(243, 242, 237, 0.035);
+    }
+
+    .brand {
+      position: relative;
+      z-index: 1;
+      display: inline-flex;
+      align-items: center;
+      align-self: flex-start;
+      gap: 10px;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      border-radius: 5px;
+      background: var(--panel);
+    }
+
+    .brand-mark svg {
+      width: 17px;
+      height: 17px;
+      fill: none;
+      stroke: var(--ink);
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .brand-name {
+      display: block;
+      font-family: var(--font-latin);
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .brand-sub {
+      display: block;
+      margin-top: 4px;
+      color: var(--faint);
+      font-size: 11px;
+      line-height: 1.3;
+    }
+
+    .story-copy {
+      position: relative;
+      z-index: 1;
+      width: min(660px, 100%);
+      margin-top: clamp(82px, 12vh, 142px);
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .eyebrow::before {
+      width: 24px;
+      height: 1px;
+      content: "";
+      background: var(--accent);
+    }
+
+    h1 {
+      max-width: 600px;
+      margin: 18px 0 0;
+      color: var(--ink);
+      font-size: clamp(36px, 3.6vw, 56px);
+      font-weight: 600;
+      line-height: 1.2;
+      letter-spacing: 0;
+      text-wrap: balance;
+    }
+
+    .story-copy > p {
+      max-width: 520px;
+      margin: 20px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    .decision-board {
+      position: relative;
+      z-index: 1;
+      width: min(680px, 100%);
+      margin-top: clamp(50px, 8vh, 88px);
+      border-top: 1px solid var(--line-strong);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .board-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 42px;
+      color: var(--faint);
+      font-size: 11px;
+    }
+
+    .board-head span:last-child {
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+
+    .rail {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      border-top: 1px solid var(--line);
+    }
+
+    .stage {
+      min-width: 0;
+      padding: 16px 12px 15px;
+      border-right: 1px solid var(--line);
+    }
+
+    .stage:last-child {
+      border-right: 0;
+    }
+
+    .stage-index {
+      color: var(--faint);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .stage-title {
+      display: block;
+      margin-top: 12px;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 18px;
+      white-space: nowrap;
+    }
+
+    .stage-copy {
+      display: block;
+      margin-top: 4px;
+      overflow: hidden;
+      color: var(--faint);
+      font-size: 11px;
+      line-height: 16px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .stage.is-running {
+      background: var(--panel);
+    }
+
+    .stage.is-running .stage-index,
+    .stage.is-running .stage-copy {
+      color: var(--accent);
+    }
+
+    .story-foot {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: auto;
+      padding-top: 30px;
+      color: var(--faint);
+      font-size: 11px;
+    }
+
+    .story-foot .status-dot {
+      width: 5px;
+      height: 5px;
+      flex: 0 0 5px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .story-foot .mono {
+      margin-left: auto;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .login-side {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 42px clamp(28px, 5vw, 72px);
+      background: var(--canvas);
+    }
+
+    .login-panel {
+      width: min(100%, 380px);
+    }
+
+    .login-kicker {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+
+    .login-kicker::before {
+      width: 5px;
+      height: 5px;
+      content: "";
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .login-panel h2 {
+      margin: 17px 0 0;
+      color: var(--ink);
+      font-size: 30px;
+      font-weight: 600;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    .login-intro {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .login-form {
+      display: grid;
+      gap: 18px;
+      margin-top: 30px;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field label {
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 18px;
+    }
+
+    .field input {
+      width: 100%;
+      height: 44px;
+      padding: 0 13px;
+      border: 1px solid var(--line-strong);
+      border-radius: 5px;
+      outline: none;
+      color: var(--ink);
+      background: var(--panel);
+      caret-color: var(--accent);
+      font-size: 14px;
+      transition: border-color 140ms cubic-bezier(0.23, 1, 0.32, 1);
+    }
+
+    .field input::placeholder {
+      color: var(--faint);
+    }
+
+    .field input:focus {
+      border-color: var(--accent);
+    }
+
+    .password-wrap {
+      position: relative;
+    }
+
+    .password-wrap input {
+      padding-right: 44px;
+    }
+
+    .password-toggle {
+      position: absolute;
+      top: 50%;
+      right: 11px;
+      display: grid;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      place-items: center;
+      transform: translateY(-50%);
+      border: 0;
+      color: var(--faint);
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .password-toggle:hover {
+      color: var(--ink);
+    }
+
+    .password-toggle svg {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .login-submit {
+      height: 44px;
+      margin-top: 4px;
+      border: 1px solid var(--ink);
+      border-radius: 5px;
+      color: #12110f;
+      background: var(--ink);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition:
+        background-color 140ms cubic-bezier(0.23, 1, 0.32, 1),
+        transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+    }
+
+    .login-submit:hover {
+      background: #e3e1da;
+    }
+
+    .login-submit:active {
+      transform: scale(0.985);
+    }
+
+    .login-submit:focus-visible,
+    .login-links a:focus-visible,
+    .password-toggle:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    .login-links {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 14px;
+      color: var(--faint);
+      font-size: 11px;
+    }
+
+    .login-links a {
+      color: var(--muted);
+    }
+
+    .login-links a:hover {
+      color: var(--ink);
+    }
+
+    .login-links strong {
+      color: var(--ink);
+      font-weight: 500;
+    }
+
+    .form-note {
+      margin: 22px 0 0;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+      font-size: 11px;
+      line-height: 1.65;
+    }
+
+    .mobile-brand {
+      display: none;
+    }
+
+    @media (max-width: 980px) {
+      .shell {
+        grid-template-columns: minmax(0, 0.9fr) minmax(390px, 1.1fr);
+      }
+
+      .story {
+        padding: 28px 30px 30px;
+      }
+
+      .story-copy {
+        margin-top: 94px;
+      }
+
+      h1 {
+        font-size: 38px;
+      }
+
+      .rail {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .stage:nth-child(4),
+      .stage:nth-child(5) {
+        display: none;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .shell {
+        display: block;
+      }
+
+      .story {
+        min-height: 220px;
+        padding: 22px 20px 28px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .story::after,
+      .story-copy > p,
+      .decision-board,
+      .story-foot {
+        display: none;
+      }
+
+      .story-copy {
+        margin-top: 36px;
+      }
+
+      .eyebrow {
+        font-size: 11px;
+      }
+
+      h1 {
+        max-width: 350px;
+        margin-top: 12px;
+        font-size: 28px;
+        line-height: 1.3;
+      }
+
+      .login-side {
+        min-height: calc(100dvh - 220px);
+        align-items: flex-start;
+        padding: 34px 20px 28px;
+      }
+
+      .login-panel {
+        margin: 0 auto;
+      }
+
+      .login-panel h2 {
+        margin-top: 14px;
+        font-size: 26px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="story" aria-label="VeyaShip 产品说明">
+      <a class="brand" href="#" aria-label="返回 VeyaShip 首页">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 20 20">
+            <circle cx="10" cy="10" r="7"></circle>
+            <path d="M3 10h14M10 3c2.1 2.1 3.2 4.4 3.2 7S12.1 14.9 10 17M10 3C7.9 5.1 6.8 7.4 6.8 10s1.1 4.9 3.2 7"></path>
+          </svg>
+        </span>
+        <span>
+          <span class="brand-name">VeyaShip</span>
+          <span class="brand-sub">AI 跨境决策引擎</span>
+        </span>
+      </a>
+
+      <div class="story-copy">
+        <div class="eyebrow">AI Agent · 跨境决策与执行</div>
+        <h1>从选品判断到真正上架，<br>让 AI 把整条链路跑完。</h1>
+        <p>
+          说一句话，AI Agent 自动完成品类分析、利润测算、Listing、合规检查与店铺巡检。
+        </p>
+      </div>
+
+      <div class="decision-board" aria-label="商品经营链路">
+        <div class="board-head">
+          <span>AI Agent 执行链</span>
+          <span>DECIDE → GENERATE → PUBLISH</span>
+        </div>
+        <div class="rail">
+          <div class="stage">
+            <span class="stage-index">01</span>
+            <strong class="stage-title">AI 选品决策</strong>
+            <span class="stage-copy">市场 · 竞争 · 机会</span>
+          </div>
+          <div class="stage">
+            <span class="stage-index">02</span>
+            <strong class="stage-title">利润测算</strong>
+            <span class="stage-copy">成本 · 运费 · 佣金</span>
+          </div>
+          <div class="stage is-running">
+            <span class="stage-index">03</span>
+            <strong class="stage-title">AI Listing</strong>
+            <span class="stage-copy">标题 · 五点 · SEO</span>
+          </div>
+          <div class="stage">
+            <span class="stage-index">04</span>
+            <strong class="stage-title">合规检查</strong>
+            <span class="stage-copy">违禁词 · 平台规则</span>
+          </div>
+          <div class="stage">
+            <span class="stage-index">05</span>
+            <strong class="stage-title">上架与巡检</strong>
+            <span class="stage-copy">Shopify · 每日检查</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="story-foot">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>对话即操作</span>
+        <span>合规即闭环</span>
+        <span>卖家零配置</span>
+        <span class="mono">AGENT / COMPLIANCE / ZERO CONFIG</span>
+      </div>
+    </section>
+
+    <section class="login-side" aria-labelledby="login-title">
+      <div class="login-panel">
+        <div class="login-kicker">AI 决策工作台 · 安全登录</div>
+        <h2 id="login-title">登录 VeyaShip</h2>
+        <p class="login-intro">继续你的 AI 跨境决策、内容生成与商品上架任务。</p>
+
+        <form class="login-form">
+          <div class="field">
+            <label for="email">邮箱</label>
+            <input id="email" name="email" type="email" autocomplete="email" placeholder="you@company.com">
+          </div>
+
+          <div class="field">
+            <label for="password">密码</label>
+            <div class="password-wrap">
+              <input id="password" name="password" type="password" autocomplete="current-password" placeholder="输入密码">
+              <button class="password-toggle" type="button" aria-label="显示密码">
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M2.5 10s2.7-4.5 7.5-4.5 7.5 4.5 7.5 4.5-2.7 4.5-7.5 4.5S2.5 10 2.5 10Z"></path>
+                  <circle cx="10" cy="10" r="2.2"></circle>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <button class="login-submit" type="submit">登录</button>
+        </form>
+
+        <div class="login-links">
+          <a href="#">返回首页</a>
+          <span>还没有账号？<a href="#"><strong>注册</strong></a></span>
+        </div>
+
+        <p class="form-note">登录后继续查看 AI 的判断依据、执行进度与渠道结果。商品、库存和发布操作共享同一工作区身份。</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

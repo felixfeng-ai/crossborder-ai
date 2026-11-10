@@ -78,68 +78,66 @@ export default function OnboardingGuide() {
   }
 
   return (
-    <Card className="relative overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-glass to-glass">
+    <Card className="overflow-hidden">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow">
-              <Rocket className="h-4 w-4" />
-            </span>
-            <div>
-              <CardTitle className="text-base">
-                3 步跑通第一个「商品 → AI 素材」闭环
+          <div>
+            <div className="flex items-center gap-2">
+              <Rocket className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <CardTitle className="text-sm font-medium">
+                跑通第一条商品链路
               </CardTitle>
-              <CardDescription className="mt-0.5 text-xs">
-                完成后，上新发布、文案撰写、商品配图都能自动完成，不用再逐条手工做
-              </CardDescription>
             </div>
+            <CardDescription className="mt-1 text-xs">
+              连接店铺、设置品牌调性并生成第一张主图。
+            </CardDescription>
           </div>
           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground shrink-0" onClick={handleSkip}>
-            跳过引导
+            跳过
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-2">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="font-medium text-primary">已完成 {doneCount}/3</span>
+      <CardContent className="p-0">
+        <div className="flex items-center gap-3 border-y border-border px-5 py-2 text-xs text-muted-foreground">
+          <span className="metric-number">已完成 {doneCount}/3</span>
           <span className="h-px flex-1 bg-border" />
         </div>
 
         {steps.map((step, index) => (
-          <div
+          <button
             key={step.path}
+            type="button"
             onClick={!step.done ? () => navigate(step.path) : undefined}
-            className={`flex items-center gap-3 rounded-xl border bg-background/70 px-3 py-2.5 transition-colors ${
+            disabled={step.done}
+            className={`flex w-full items-center gap-3 border-b border-border px-5 py-3 text-left last:border-b-0 ${
               step.done
-                ? 'border-emerald-500/20'
-                : 'cursor-pointer hover:border-primary/40 hover:bg-background'
+                ? 'cursor-default'
+                : 'hover:bg-accent'
             }`}
           >
+            <span className="metric-number w-5 shrink-0 text-xs text-muted-foreground">
+              {String(index + 1).padStart(2, '0')}
+            </span>
             <span className="flex shrink-0 items-center justify-center">
               {step.done ? (
-                <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+                <CheckCircle2 className="h-4 w-4 text-[var(--factory-mint)]" />
               ) : (
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                  {index + 1}
-                </span>
+                <step.icon className="h-4 w-4 text-muted-foreground" />
               )}
             </span>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground">
-              <step.icon className="h-4 w-4" />
-            </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{step.title}</p>
-              <p className="text-xs text-muted-foreground truncate">{step.subtitle}</p>
+              <p className="text-[13px] font-medium">{step.title}</p>
+              <p className="text-xs text-muted-foreground line-clamp-1">{step.subtitle}</p>
             </div>
             {step.done ? (
               <Badge variant="success" className="shrink-0">已完成</Badge>
             ) : (
-              <Button size="sm" className="h-8 gap-0.5 shrink-0">
+              <span className="flex shrink-0 items-center gap-0.5 text-xs font-medium">
                 {step.cta}
                 <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
+              </span>
             )}
-          </div>
+          </button>
         ))}
       </CardContent>
     </Card>

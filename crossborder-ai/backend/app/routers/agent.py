@@ -165,11 +165,19 @@ def _sse_event(fresh: AgentTask, last_status: str | None, last_step_count: int) 
     if not changed:
         return False, None, len(steps)
 
-    if status in ("succeeded", "failed"):
+    if status in ("succeeded", "partial", "failed"):
         if status == "succeeded":
             result = json.loads(fresh.result) if fresh.result else {}
             payload = {
                 "status": "succeeded",
+                "summary": result.get("summary", ""),
+                "steps": result.get("steps") or steps,
+                "conversation_id": result.get("conversation_id", ""),
+            }
+        elif status == "partial":
+            result = json.loads(fresh.result) if fresh.result else {}
+            payload = {
+                "status": "partial",
                 "summary": result.get("summary", ""),
                 "steps": result.get("steps") or steps,
                 "conversation_id": result.get("conversation_id", ""),

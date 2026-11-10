@@ -1,0 +1,13 @@
+{
+  "id": "A",
+  "label": "选 A：石墨决策台",
+  "name": "石墨决策台",
+  "notes": "用户确认可以处理，按推荐方向进入正式实现",
+  "dials": {
+    "variance": 5,
+    "motion": 3,
+    "density": 6
+  },
+  "adjustments": "字体与 drama-outline 保持一致；布局按跨境决策平台重做",
+  "source": "conversation"
+}

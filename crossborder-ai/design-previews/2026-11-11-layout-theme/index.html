@@ -1,0 +1,1692 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VeyaShip 布局与主题方向</title>
+  <style>
+    @font-face {
+      font-family: "Inter";
+      src: url("./assets/inter-latin-variable.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 100 900;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "JetBrains Mono";
+      src: url("./assets/jetbrains-mono-latin.woff2") format("woff2");
+      font-style: normal;
+      font-weight: 400 500;
+      font-display: swap;
+    }
+    :root {
+      --shell-ground: #f2f2ef;
+      --shell-surface: #fbfbf8;
+      --shell-ink: #171816;
+      --shell-muted: #666861;
+      --shell-line: #d9dad4;
+      --shell-accent: #1d1f1d;
+      --shell-radius: 8px;
+      --font-ui: "PingFang SC", "Noto Sans SC", "Microsoft YaHei",
+        "HarmonyOS Sans SC", "MiSans", "Hiragino Sans GB", "Inter", sans-serif;
+      --font-latin: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { color-scheme: light; }
+    body {
+      margin: 0;
+      background: var(--shell-ground);
+      color: var(--shell-ink);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      line-height: 1.55;
+      letter-spacing: 0;
+    }
+    button, textarea, input { font: inherit; }
+    button { cursor: pointer; }
+
+    .preview-topbar {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 9px 28px;
+      border-bottom: 1px solid var(--shell-line);
+      background: var(--shell-surface);
+    }
+    .preview-title {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      min-width: 0;
+    }
+    .preview-title strong {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .preview-title span,
+    .preview-shortcuts {
+      color: var(--shell-muted);
+      font-size: 12px;
+    }
+    .preview-shortcuts {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      white-space: nowrap;
+    }
+    .return-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--shell-muted);
+    }
+    .return-status::before {
+      width: 6px;
+      height: 6px;
+      content: "";
+      border-radius: 50%;
+      background: #7d8178;
+    }
+    .return-status.is-ready {
+      color: #3c6748;
+    }
+    .return-status.is-ready::before { background: #4d7a59; }
+
+    .dials {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 22px;
+      padding: 18px 28px 16px;
+      border-bottom: 1px solid var(--shell-line);
+      background: var(--shell-surface);
+    }
+    .dial {
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+    }
+    .dial-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .dial-head span:last-child {
+      color: var(--shell-muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    .dial input {
+      width: 100%;
+      accent-color: var(--shell-accent);
+    }
+
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+      padding: 24px 28px 28px;
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+    .direction-card {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--shell-line);
+      border-radius: var(--shell-radius);
+      background: var(--shell-surface);
+      overflow: hidden;
+      transition: border-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    .direction-card.is-selected {
+      border-color: #292b27;
+      box-shadow: 0 0 0 1px #292b27;
+    }
+    .direction-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid var(--shell-line);
+    }
+    .direction-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .direction-letter {
+      display: grid;
+      width: 24px;
+      height: 24px;
+      flex: 0 0 24px;
+      place-items: center;
+      border: 1px solid var(--shell-line);
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .direction-name strong {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .recommended {
+      padding: 2px 7px;
+      border: 1px solid #c9b47f;
+      border-radius: 4px;
+      color: #725c26;
+      background: #f3eddd;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .direction-tag {
+      flex: none;
+      color: var(--shell-muted);
+      font-size: 12px;
+      text-align: right;
+    }
+    .mock-stage {
+      position: relative;
+      min-height: 345px;
+      padding: 16px;
+      background: #e8e8e4;
+      overflow: hidden;
+    }
+    .direction-meta {
+      padding: 12px 16px 0;
+      font-size: 12px;
+      color: var(--shell-muted);
+    }
+    .pick-button {
+      min-height: 42px;
+      margin: 12px 16px 16px;
+      border: 1px solid #23241f;
+      border-radius: 5px;
+      color: #f8f7f2;
+      background: #23241f;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .pick-button:hover { background: #343630; border-color: #343630; }
+    .pick-button:focus-visible {
+      outline: 2px solid #94783d;
+      outline-offset: 2px;
+    }
+
+    .notes {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0 28px 40px;
+    }
+    .notes-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 0 12px;
+    }
+    .notes-head h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .notes-head p {
+      margin: 0;
+      color: var(--shell-muted);
+      font-size: 12px;
+    }
+    .notes-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-top: 1px solid var(--shell-line);
+      border-bottom: 1px solid var(--shell-line);
+    }
+    .note {
+      min-width: 0;
+      padding: 16px;
+    }
+    .note + .note { border-left: 1px solid var(--shell-line); }
+    .note strong {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .note dl {
+      display: grid;
+      grid-template-columns: 50px minmax(0, 1fr);
+      gap: 5px 9px;
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .note dt { color: var(--shell-muted); }
+    .note dd { margin: 0; }
+    .recommendation {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--shell-line);
+      border-radius: var(--shell-radius);
+      background: var(--shell-surface);
+    }
+    .recommendation strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+    .recommendation p {
+      max-width: 90ch;
+      margin: 0;
+      color: var(--shell-muted);
+      font-size: 13px;
+    }
+
+    .confirm-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: none;
+      place-items: center;
+      padding: 20px;
+      background: rgba(20, 21, 18, 0.42);
+    }
+    .confirm-backdrop.is-open { display: grid; }
+    .confirm-dialog {
+      width: min(520px, 100%);
+      padding: 20px;
+      border: 1px solid #cfd0c9;
+      border-radius: 8px;
+      background: #fbfbf8;
+      box-shadow: 0 20px 60px rgba(18, 20, 16, 0.18);
+    }
+    .confirm-dialog h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .confirm-dialog p {
+      margin: 8px 0 14px;
+      color: var(--shell-muted);
+      font-size: 13px;
+    }
+    .confirm-dialog label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--shell-muted);
+      font-size: 12px;
+    }
+    .confirm-dialog textarea {
+      width: 100%;
+      min-height: 88px;
+      resize: vertical;
+      padding: 10px 11px;
+      border: 1px solid #cfd0c9;
+      border-radius: 5px;
+      color: var(--shell-ink);
+      background: #fff;
+      font-size: 13px;
+    }
+    .confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .confirm-actions button {
+      min-height: 38px;
+      padding: 0 14px;
+      border: 1px solid #cfd0c9;
+      border-radius: 5px;
+      background: #fff;
+      color: var(--shell-ink);
+      font-size: 13px;
+    }
+    .confirm-actions .confirm-primary {
+      border-color: #23241f;
+      color: #fff;
+      background: #23241f;
+    }
+    .toast {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 70;
+      max-width: min(420px, calc(100vw - 48px));
+      padding: 12px 14px;
+      border: 1px solid #2e312b;
+      border-radius: 6px;
+      color: #f7f6f1;
+      background: #252721;
+      font-size: 13px;
+      opacity: 0;
+      transform: translateY(8px);
+      pointer-events: none;
+      transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1),
+        transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    .toast.is-visible { opacity: 1; transform: translateY(0); }
+
+    /* Direction A: graphite operating desk */
+    .mock-a {
+      width: 100%;
+      min-height: 313px;
+      display: grid;
+      grid-template-columns: 190px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid #2d2e29;
+      border-radius: 4px;
+      color: #f3f2ed;
+      background: #0d0e0e;
+      font-family: var(--font-ui);
+    }
+    .mock-a aside {
+      display: flex;
+      flex-direction: column;
+      padding: 13px 12px;
+      background: #101110;
+      border-right: 1px solid #292a25;
+    }
+    .mock-a .a-brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding-bottom: 13px;
+      border-bottom: 1px solid #292a25;
+    }
+    .mock-a .a-mark {
+      display: grid;
+      width: 25px;
+      height: 25px;
+      place-items: center;
+      border: 1px solid #44463e;
+      border-radius: 3px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .mock-a .a-brand b {
+      display: block;
+      font-size: 13px;
+      line-height: 1.1;
+    }
+    .mock-a .a-brand small {
+      display: block;
+      margin-top: 3px;
+      color: #8c8c83;
+      font-size: 9px;
+    }
+    .mock-a nav {
+      display: grid;
+      gap: 4px;
+      margin-top: 12px;
+    }
+    .mock-a .a-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 30px;
+      padding: 0 8px;
+      border-radius: 3px;
+      color: #92938b;
+      font-size: 11px;
+    }
+    .mock-a .a-nav.is-active {
+      color: #f3f2ed;
+      background: #1b1c19;
+    }
+    .mock-a .a-nav em {
+      color: #8b8b82;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-style: normal;
+    }
+    .mock-a .a-side-foot {
+      margin-top: auto;
+      padding-top: 12px;
+      border-top: 1px solid #292a25;
+    }
+    .mock-a .a-side-foot span,
+    .mock-a .a-side-foot small {
+      display: block;
+      color: #85867d;
+      font-size: 9px;
+    }
+    .mock-a .a-side-foot strong {
+      display: block;
+      margin-top: 4px;
+      color: #f3f2ed;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .mock-a main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+    }
+    .mock-a .a-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #292a25;
+      color: #8b8c84;
+      font-size: 10px;
+    }
+    .mock-a .a-top b { color: #cfcdc5; font-weight: 500; }
+    .mock-a .a-status {
+      color: #d8b56d;
+      font-family: var(--font-mono);
+      font-size: 9px;
+    }
+    .mock-a h3 {
+      margin: 15px 0 4px;
+      font-size: 22px;
+      font-weight: 600;
+      line-height: 1.15;
+    }
+    .mock-a .a-intro {
+      margin: 0;
+      color: #8d8e85;
+      font-size: 11px;
+    }
+    .mock-a .a-product {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 14px;
+      padding: 9px 10px;
+      border: 1px solid #292a25;
+      border-radius: 3px;
+      background: #151615;
+      font-size: 11px;
+    }
+    .mock-a .a-product span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mock-a .a-product b {
+      color: #e2e0d8;
+      font-family: var(--font-mono);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .mock-a ol {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 5px;
+      margin: 13px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .mock-a li {
+      min-width: 0;
+      padding-top: 8px;
+      border-top: 1px solid #31322d;
+      color: #77786f;
+      font-size: 9px;
+      line-height: 1.35;
+    }
+    .mock-a li b {
+      display: block;
+      margin-bottom: 4px;
+      color: #65665e;
+      font-family: var(--font-mono);
+      font-weight: 500;
+    }
+    .mock-a li.is-done { border-top-color: #8b8d82; color: #bbb9b1; }
+    .mock-a li.is-run { border-top-color: #d8b56d; color: #e7e4db; }
+    .mock-a li.is-run b { color: #d8b56d; }
+    .mock-a .a-action {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 34px;
+      margin-top: auto;
+      padding: 0 11px;
+      border: 0;
+      border-radius: 3px;
+      color: #151613;
+      background: #f3f2ed;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .mock-a .a-action span:last-child { font-family: var(--font-mono); }
+
+    /* Direction B: editorial merchant ledger */
+    .mock-b {
+      min-height: 313px;
+      padding: 16px 18px;
+      border: 1px solid rgba(23, 23, 20, 0.2);
+      color: #171714;
+      background: #f1f2ee;
+      font-family: var(--font-ui);
+    }
+    .mock-b .b-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(23, 23, 20, 0.18);
+    }
+    .mock-b .b-brand {
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .mock-b .b-brand span {
+      margin-left: 4px;
+      color: #5b6248;
+      font-family: var(--font-mono);
+      font-size: 9px;
+    }
+    .mock-b nav {
+      display: flex;
+      gap: 16px;
+      color: rgba(23, 23, 20, 0.55);
+      font-size: 10px;
+    }
+    .mock-b nav b { color: #171714; font-weight: 600; }
+    .mock-b .b-date {
+      color: rgba(23, 23, 20, 0.56);
+      font-family: var(--font-mono);
+      font-size: 9px;
+    }
+    .mock-b .b-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 125px;
+      gap: 18px;
+      padding-top: 14px;
+    }
+    .mock-b .b-kicker {
+      color: #5b6248;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.04em;
+    }
+    .mock-b h3 {
+      margin: 8px 0 5px;
+      font-family: var(--font-ui);
+      font-size: 35px;
+      font-weight: 600;
+      line-height: 1;
+    }
+    .mock-b .b-line {
+      margin: 0;
+      color: rgba(23, 23, 20, 0.6);
+      font-size: 10px;
+    }
+    .mock-b .b-recent {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 30px;
+      padding-top: 9px;
+      border-top: 1px solid rgba(23, 23, 20, 0.18);
+      font-size: 10px;
+    }
+    .mock-b .b-recent span:first-child {
+      color: rgba(23, 23, 20, 0.54);
+    }
+    .mock-b .b-recent b {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mock-b .b-recent strong {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+    .mock-b .b-facts {
+      padding-top: 4px;
+    }
+    .mock-b .b-facts > span {
+      color: rgba(23, 23, 20, 0.55);
+      font-size: 9px;
+    }
+    .mock-b .b-credit {
+      margin-top: 9px;
+      font-family: var(--font-mono);
+      font-size: 44px;
+      line-height: 1;
+    }
+    .mock-b .b-note {
+      margin-top: 5px;
+      color: #5b6248;
+      font-size: 9px;
+      line-height: 1.45;
+    }
+    .mock-b .b-fact-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(23, 23, 20, 0.15);
+      font-size: 9px;
+    }
+    .mock-b .b-fact-row span { color: rgba(23, 23, 20, 0.55); }
+    .mock-b .b-fact-row b { font-family: var(--font-mono); font-weight: 500; }
+    .mock-b .b-pipeline {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(23, 23, 20, 0.18);
+    }
+    .mock-b .b-pipeline-head {
+      display: flex;
+      justify-content: space-between;
+      color: rgba(23, 23, 20, 0.54);
+      font-size: 9px;
+    }
+    .mock-b ol {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin: 9px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .mock-b li {
+      min-width: 0;
+      padding-top: 7px;
+      border-top: 1px solid rgba(91, 98, 72, 0.5);
+      font-size: 9px;
+      line-height: 1.35;
+    }
+    .mock-b li b {
+      display: block;
+      margin-bottom: 4px;
+      color: #5b6248;
+      font-family: var(--font-mono);
+      font-weight: 500;
+    }
+
+    /* Direction C: command-rail workspace */
+    .mock-c {
+      min-height: 313px;
+      overflow: hidden;
+      border: 1px solid #2a2b27;
+      color: #eceae0;
+      background: #121312;
+      font-family: var(--font-ui);
+    }
+    .mock-c .c-top {
+      display: flex;
+      align-items: stretch;
+      min-height: 43px;
+      border-bottom: 1px solid #2a2b27;
+      background: #191a18;
+    }
+    .mock-c .c-brand {
+      display: flex;
+      align-items: center;
+      width: 120px;
+      padding: 0 11px;
+      border-right: 1px solid #2a2b27;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .mock-c nav {
+      display: flex;
+      align-items: center;
+      gap: 17px;
+      padding: 0 14px;
+      color: #909289;
+      font-size: 10px;
+    }
+    .mock-c nav b {
+      padding: 14px 0 12px;
+      border-bottom: 1px solid #eceae0;
+      color: #eceae0;
+      font-weight: 500;
+    }
+    .mock-c .c-state {
+      display: flex;
+      align-items: center;
+      margin-left: auto;
+      padding: 0 11px;
+      border-left: 1px solid #2a2b27;
+      color: #b7b8af;
+      font-family: var(--font-mono);
+      font-size: 8px;
+    }
+    .mock-c .c-shell {
+      display: grid;
+      grid-template-columns: 45px minmax(0, 1fr) 184px;
+      min-height: 269px;
+    }
+    .mock-c .c-rail {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding-top: 10px;
+      border-right: 1px solid #2a2b27;
+      background: #151614;
+    }
+    .mock-c .c-rail span {
+      display: grid;
+      width: 29px;
+      height: 29px;
+      place-items: center;
+      border: 1px solid transparent;
+      color: #6f7169;
+      font-family: var(--font-mono);
+      font-size: 9px;
+    }
+    .mock-c .c-rail span:first-child {
+      border-color: #343631;
+      color: #eceae0;
+      background: #1c1d1a;
+    }
+    .mock-c .c-main {
+      min-width: 0;
+      padding: 14px;
+    }
+    .mock-c .c-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .mock-c .c-kicker {
+      color: #7f8178;
+      font-family: var(--font-mono);
+      font-size: 8px;
+    }
+    .mock-c h3 {
+      margin: 3px 0 0;
+      font-size: 20px;
+      font-weight: 500;
+      line-height: 1.1;
+    }
+    .mock-c .c-date {
+      color: #66685f;
+      font-family: var(--font-mono);
+      font-size: 8px;
+    }
+    .mock-c .c-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      margin-top: 13px;
+      border-top: 1px solid #2a2b27;
+      border-bottom: 1px solid #2a2b27;
+    }
+    .mock-c .c-metric {
+      padding: 9px 8px;
+    }
+    .mock-c .c-metric + .c-metric { border-left: 1px solid #2a2b27; }
+    .mock-c .c-metric span {
+      display: block;
+      color: #85877e;
+      font-size: 9px;
+    }
+    .mock-c .c-metric b {
+      display: block;
+      margin-top: 4px;
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 500;
+    }
+    .mock-c .c-product {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 9px;
+      min-height: 39px;
+      border-bottom: 1px solid #242520;
+      color: #b8b9b0;
+      font-size: 9px;
+    }
+    .mock-c .c-product span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mock-c .c-product b {
+      color: #eceae0;
+      font-family: var(--font-mono);
+      font-weight: 500;
+    }
+    .mock-c .c-flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 4px;
+      margin-top: 9px;
+    }
+    .mock-c .c-flow span {
+      padding-top: 6px;
+      border-top: 1px solid #30312d;
+      color: #686a62;
+      font-size: 8px;
+    }
+    .mock-c .c-flow span.is-run {
+      border-top-color: #b98255;
+      color: #d3b89f;
+    }
+    .mock-c .c-dock {
+      display: flex;
+      flex-direction: column;
+      padding: 12px 11px;
+      border-left: 1px solid #2a2b27;
+      background: #191a18;
+    }
+    .mock-c .c-dock-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      color: #eceae0;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .mock-c .c-dock-head span {
+      color: #6e7068;
+      font-family: var(--font-mono);
+      font-size: 7px;
+    }
+    .mock-c .c-run {
+      margin-top: 11px;
+      padding: 8px;
+      border: 1px solid #35332d;
+      background: #151614;
+    }
+    .mock-c .c-run-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: #d7b18e;
+      font-size: 9px;
+    }
+    .mock-c .c-run-head span:last-child {
+      color: #77796f;
+      font-family: var(--font-mono);
+      font-size: 7px;
+    }
+    .mock-c .c-run p {
+      margin: 5px 0 7px;
+      color: #8d8f86;
+      font-size: 8px;
+    }
+    .mock-c .c-progress {
+      height: 2px;
+      background: #292a25;
+    }
+    .mock-c .c-progress span {
+      display: block;
+      width: 58%;
+      height: 2px;
+      background: #b98255;
+    }
+    .mock-c .c-trace {
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px solid #2a2b27;
+    }
+    .mock-c .c-trace-title {
+      display: flex;
+      justify-content: space-between;
+      color: #7d7f76;
+      font-size: 8px;
+    }
+    .mock-c .c-trace-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 23px;
+      border-bottom: 1px solid #242520;
+      color: #92948b;
+      font-size: 8px;
+    }
+    .mock-c .c-trace-row em {
+      color: #676960;
+      font-family: var(--font-mono);
+      font-size: 7px;
+      font-style: normal;
+    }
+    .mock-c .c-command {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 30px;
+      margin-top: auto;
+      padding: 0 8px;
+      border: 1px solid #343631;
+      color: #77796f;
+      font-size: 8px;
+    }
+    .mock-c .c-command b {
+      color: #d7b18e;
+      font-family: var(--font-mono);
+      font-size: 7px;
+      font-weight: 500;
+    }
+
+    /* Direction D: porcelain AI dock */
+    .mock-d {
+      min-height: 313px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 174px;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid #d6dcdb;
+      color: #16191a;
+      background: #eef1f2;
+      font-family: var(--font-ui);
+    }
+    .mock-d .d-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 14px;
+      border: 1px solid #d8dddb;
+      border-radius: 4px;
+      background: #f8f8f4;
+      box-shadow: 0 8px 20px rgba(27, 42, 43, 0.06);
+    }
+    .mock-d .d-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: #2f4a4d;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .mock-d .d-top span:last-child {
+      color: rgba(22, 25, 26, 0.55);
+      font-size: 8px;
+      font-weight: 400;
+      letter-spacing: 0;
+    }
+    .mock-d .d-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 118px;
+      gap: 12px;
+      align-items: end;
+      margin-top: 19px;
+    }
+    .mock-d .d-kicker {
+      color: #2f4a4d;
+      font-size: 9px;
+      font-weight: 500;
+    }
+    .mock-d h3 {
+      margin: 6px 0 0;
+      font-size: 25px;
+      font-weight: 400;
+      line-height: 1.08;
+    }
+    .mock-d h3 span { color: rgba(22, 25, 26, 0.46); }
+    .mock-d .d-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      padding: 7px 0;
+      border-top: 1px solid rgba(22, 25, 26, 0.13);
+      border-bottom: 1px solid rgba(22, 25, 26, 0.13);
+    }
+    .mock-d .d-metric {
+      padding-left: 7px;
+      border-left: 1px solid rgba(22, 25, 26, 0.09);
+    }
+    .mock-d .d-metric:first-child { padding-left: 0; border-left: 0; }
+    .mock-d .d-metric b {
+      display: block;
+      color: #2f4a4d;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+    .mock-d .d-metric span {
+      display: block;
+      margin-top: 3px;
+      color: rgba(22, 25, 26, 0.5);
+      font-size: 8px;
+      white-space: nowrap;
+    }
+    .mock-d .d-product {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 49px;
+      border-bottom: 1px solid rgba(22, 25, 26, 0.12);
+    }
+    .mock-d .d-product span {
+      min-width: 0;
+      overflow: hidden;
+      color: rgba(22, 25, 26, 0.57);
+      font-size: 9px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mock-d .d-product b {
+      color: #2f4a4d;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .mock-d .d-flow {
+      margin-top: auto;
+      padding-top: 11px;
+    }
+    .mock-d .d-flow-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #2f4a4d;
+      font-size: 9px;
+      font-weight: 500;
+    }
+    .mock-d .d-flow-head span:last-child {
+      color: #c59a55;
+      font-size: 8px;
+      font-weight: 400;
+    }
+    .mock-d ol {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+      margin: 12px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .mock-d li {
+      position: relative;
+      padding-top: 13px;
+      color: rgba(22, 25, 26, 0.42);
+      font-size: 8px;
+      line-height: 1.3;
+    }
+    .mock-d li::before {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 7px;
+      height: 7px;
+      content: "";
+      border: 1px solid #9caaa8;
+      border-radius: 50%;
+      background: #f8f8f4;
+    }
+    .mock-d li.is-done { color: rgba(47, 74, 77, 0.72); }
+    .mock-d li.is-done::before { background: #2f4a4d; border-color: #2f4a4d; }
+    .mock-d li.is-ai { color: #2f4a4d; font-weight: 500; }
+    .mock-d li.is-ai::before { background: #c59a55; border-color: #c59a55; }
+    .mock-d .d-ai {
+      display: flex;
+      flex-direction: column;
+      padding: 13px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.92);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.76);
+      box-shadow: 0 16px 32px rgba(23, 39, 40, 0.12);
+      backdrop-filter: blur(12px);
+    }
+    .mock-d .d-ai-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: #2f4a4d;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .mock-d .d-ai-head span:last-child {
+      color: #b08443;
+      font-size: 8px;
+      font-weight: 500;
+    }
+    .mock-d .d-ai-copy {
+      margin: 31px 0 0;
+      color: #2f4a4d;
+      font-size: 18px;
+      line-height: 1.16;
+    }
+    .mock-d .d-ai-copy span {
+      display: block;
+      margin-top: 7px;
+      color: rgba(47, 74, 77, 0.52);
+      font-size: 9px;
+      line-height: 1.4;
+    }
+    .mock-d .d-task {
+      margin-top: 25px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(47, 74, 77, 0.12);
+    }
+    .mock-d .d-task-head {
+      display: flex;
+      justify-content: space-between;
+      color: rgba(22, 25, 26, 0.45);
+      font-size: 8px;
+    }
+    .mock-d .d-task-name {
+      margin-top: 7px;
+      color: #2f4a4d;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .mock-d .d-progress {
+      height: 2px;
+      margin-top: 11px;
+      background: rgba(47, 74, 77, 0.12);
+    }
+    .mock-d .d-progress span {
+      display: block;
+      width: 65%;
+      height: 2px;
+      background: #2f4a4d;
+    }
+    .mock-d .d-command {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 31px;
+      margin-top: auto;
+      padding: 0 8px;
+      border: 1px solid rgba(47, 74, 77, 0.16);
+      border-radius: 4px;
+      color: rgba(22, 25, 26, 0.42);
+      background: rgba(255, 255, 255, 0.72);
+      font-size: 8px;
+    }
+    .mock-d .d-command b {
+      display: grid;
+      width: 20px;
+      height: 20px;
+      place-items: center;
+      border-radius: 3px;
+      color: #fff;
+      background: #2f4a4d;
+      font-family: var(--font-mono);
+      font-weight: 500;
+    }
+
+    @media (max-width: 980px) {
+      .notes-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .note:nth-child(3) { border-left: 0; border-top: 1px solid var(--shell-line); }
+      .note:nth-child(4) { border-top: 1px solid var(--shell-line); }
+    }
+    @media (max-width: 760px) {
+      .preview-topbar {
+        align-items: flex-start;
+        padding: 12px 16px;
+      }
+      .preview-title {
+        display: grid;
+        gap: 2px;
+      }
+      .preview-title span { max-width: 30ch; }
+      .preview-shortcuts > span:last-child { display: none; }
+      .dials {
+        grid-template-columns: 1fr;
+        gap: 14px;
+        padding: 16px;
+      }
+      .preview-grid {
+        grid-template-columns: 1fr;
+        padding: 16px;
+      }
+      .notes { padding: 0 16px 30px; }
+      .notes-head {
+        display: block;
+      }
+      .notes-head p { margin-top: 4px; }
+      .notes-grid { grid-template-columns: 1fr; }
+      .note + .note { border-left: 0; border-top: 1px solid var(--shell-line); }
+      .mock-stage { min-height: 0; padding: 10px; }
+      .mock-a { grid-template-columns: 118px minmax(0, 1fr); font-size: 10px; }
+      .mock-a aside { padding: 10px 8px; }
+      .mock-a .a-brand small,
+      .mock-a .a-nav:nth-child(3),
+      .mock-a .a-side-foot small { display: none; }
+      .mock-a main { padding: 11px 10px; }
+      .mock-a h3 { font-size: 17px; }
+      .mock-a .a-intro { display: none; }
+      .mock-a ol { grid-template-columns: 1fr; gap: 0; }
+      .mock-a li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 0;
+        border-top: 0;
+        border-bottom: 1px solid #292a25;
+      }
+      .mock-a li b { margin: 0; }
+      .mock-b .b-grid { grid-template-columns: 1fr; gap: 12px; }
+      .mock-b .b-facts { padding-top: 9px; border-top: 1px solid rgba(23, 23, 20, 0.18); }
+      .mock-b .b-credit { font-size: 32px; }
+      .mock-b .b-fact-row { max-width: 180px; }
+      .mock-b ol { gap: 6px; }
+      .mock-b .b-top { align-items: flex-start; }
+      .mock-b nav { gap: 8px; font-size: 9px; }
+      .mock-c .c-brand { display: none; }
+      .mock-c nav { padding: 0 10px; gap: 12px; }
+      .mock-c .c-shell { grid-template-columns: 38px minmax(0, 1fr); }
+      .mock-c .c-dock { display: none; }
+      .mock-c .c-main { padding: 11px 10px; }
+      .mock-d { grid-template-columns: 1fr; }
+      .mock-d .d-ai { display: none; }
+      .mock-d .d-hero { grid-template-columns: 1fr; gap: 10px; margin-top: 14px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="preview-topbar">
+    <div class="preview-title">
+      <strong>VeyaShip 布局与主题方向</strong>
+      <span>方向样机，不是最终 App / 最终页面；选择后才进入正式实现。</span>
+    </div>
+    <div class="preview-shortcuts">
+      <span>键盘 1–4 选择</span>
+      <span class="return-status" id="returnStatus">等待选择</span>
+    </div>
+  </header>
+
+  <section class="dials" data-qmdp-dials aria-label="设计拨盘">
+    <label class="dial">
+      <span class="dial-head"><span>视觉冒险度</span><span data-output="variance" data-qmdp-output="variance">5 / 10</span></span>
+      <input type="range" min="1" max="10" value="5" data-dial="variance" data-qmdp-dial="variance">
+    </label>
+    <label class="dial">
+      <span class="dial-head"><span>动效强度</span><span data-output="motion" data-qmdp-output="motion">3 / 10</span></span>
+      <input type="range" min="1" max="10" value="3" data-dial="motion" data-qmdp-dial="motion">
+    </label>
+    <label class="dial">
+      <span class="dial-head"><span>信息密度</span><span data-output="density" data-qmdp-output="density">6 / 10</span></span>
+      <input type="range" min="1" max="10" value="6" data-dial="density" data-qmdp-dial="density">
+    </label>
+  </section>
+
+  <main class="preview-grid">
+    <article class="direction-card" data-direction="A">
+      <header class="direction-head">
+        <div class="direction-name">
+          <span class="direction-letter">A</span>
+          <strong>石墨决策台</strong>
+          <span class="recommended">推荐</span>
+        </div>
+        <span class="direction-tag">稳定 · 精密 · 高频</span>
+      </header>
+      <div class="mock-stage">
+        <div class="mock-a">
+          <aside>
+            <div class="a-brand">
+              <span class="a-mark">V</span>
+              <div><b>VeyaShip AI</b><small>跨境经营工作台</small></div>
+            </div>
+            <nav aria-label="方向 A 导航">
+              <span class="a-nav is-active">经营总览 <em>01</em></span>
+              <span class="a-nav">商品 <em>01</em></span>
+              <span class="a-nav">发布 <em>05</em></span>
+            </nav>
+            <div class="a-side-foot">
+              <span>剩余积分</span>
+              <strong>30</strong>
+              <small>用于 Listing 与图片任务</small>
+            </div>
+          </aside>
+          <main>
+            <div class="a-top"><span>工作台 / <b>经营总览</b></span><span class="a-status">AI 空闲</span></div>
+            <h3>跨境经营决策</h3>
+            <p class="a-intro">从来源商品到多平台发布，所有判断围绕同一条商品链路。</p>
+            <div class="a-product"><span>批量库存 UI 验收商品</span><b>¥29.90</b></div>
+            <ol>
+              <li class="is-done"><b>01</b>抓取商品</li>
+              <li class="is-done"><b>02</b>AI Listing</li>
+              <li class="is-run"><b>03</b>图片优化</li>
+              <li><b>04</b>SKU / 库存</li>
+              <li><b>05</b>多平台发布</li>
+            </ol>
+            <button class="a-action" type="button"><span>继续处理</span><span>→</span></button>
+          </main>
+        </div>
+      </div>
+      <div class="direction-meta">中性石墨层级 + 纸白主操作；连续工作面替代卡片墙。</div>
+      <button class="pick-button qmdp-pick-button" data-qmdp-native-handler="true" data-pick="A" type="button">选择 A · 石墨决策台</button>
+    </article>
+
+    <article class="direction-card" data-direction="B">
+      <header class="direction-head">
+        <div class="direction-name">
+          <span class="direction-letter">B</span>
+          <strong>纸墨决策台</strong>
+        </div>
+        <span class="direction-tag">克制 · 编辑 · 明亮</span>
+      </header>
+      <div class="mock-stage">
+        <div class="mock-b">
+          <div class="b-top">
+            <div class="b-brand">VeyaShip <span>AI</span></div>
+            <nav aria-label="方向 B 导航"><b>经营总览</b><span>商品</span><span>发布</span></nav>
+            <span class="b-date">2026.11.11</span>
+          </div>
+          <div class="b-grid">
+            <div>
+              <div class="b-kicker">MERCHANT DESK / OPERATIONS</div>
+              <h3>经营总览</h3>
+              <p class="b-line">跨境卖家 AI 经营工作台 · 链路已就绪</p>
+              <div class="b-recent"><span>最近商品</span><b>批量库存 UI 验收商品</b><strong>¥29.90</strong></div>
+            </div>
+            <aside class="b-facts">
+              <span>经营事实</span>
+              <div class="b-credit">30</div>
+              <div class="b-note">剩余积分，用于 Listing 与图片任务</div>
+              <div class="b-fact-row"><span>商品</span><b>01</b></div>
+              <div class="b-fact-row"><span>待处理</span><b>00</b></div>
+            </aside>
+          </div>
+          <div class="b-pipeline">
+            <div class="b-pipeline-head"><span>经营流程</span><span>CRAWL TO COMMERCE</span></div>
+            <ol>
+              <li><b>01</b>抓取商品</li>
+              <li><b>02</b>AI Listing</li>
+              <li><b>03</b>图片优化</li>
+              <li><b>04</b>SKU / 库存</li>
+              <li><b>05</b>多平台发布</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+      <div class="direction-meta">珍珠灰纸面 + 编辑式左右关系；标题更有编辑感，工具区仍克制。</div>
+      <button class="pick-button qmdp-pick-button" data-qmdp-native-handler="true" data-pick="B" type="button">选择 B · 纸墨决策台</button>
+    </article>
+
+    <article class="direction-card" data-direction="C">
+      <header class="direction-head">
+        <div class="direction-name">
+          <span class="direction-letter">C</span>
+          <strong>指挥轨工作台</strong>
+        </div>
+        <span class="direction-tag">高密 · 运行 · 指挥</span>
+      </header>
+      <div class="mock-stage">
+        <div class="mock-c">
+          <div class="c-top">
+            <div class="c-brand">VeyaShip AI</div>
+            <nav aria-label="方向 C 导航"><b>总览</b><span>商品</span><span>内容</span><span>发布</span></nav>
+            <span class="c-state">AI 在线</span>
+          </div>
+          <div class="c-shell">
+            <div class="c-rail" aria-hidden="true"><span>01</span><span>02</span><span>03</span><span>04</span><span>05</span></div>
+            <main class="c-main">
+              <div class="c-head">
+                <div><div class="c-kicker">WORKSPACE / OVERVIEW</div><h3>经营总览</h3></div>
+                <span class="c-date">11 NOV / 09:41</span>
+              </div>
+              <div class="c-metrics">
+                <div class="c-metric"><span>商品</span><b>1</b></div>
+                <div class="c-metric"><span>待处理</span><b>0</b></div>
+                <div class="c-metric"><span>剩余积分</span><b>30</b></div>
+              </div>
+              <div class="c-product"><span>批量库存 UI 验收商品</span><b>¥29.90</b></div>
+              <div class="c-flow">
+                <span>抓取商品</span><span>AI Listing</span><span class="is-run">图片优化</span><span>SKU / 库存</span><span>多平台发布</span>
+              </div>
+            </main>
+            <aside class="c-dock">
+              <div class="c-dock-head">AI 指挥台 <span>DOCK 01</span></div>
+              <div class="c-run">
+                <div class="c-run-head"><span>AI 正在执行</span><span>00:42</span></div>
+                <p>生成 Listing 与卖点结构</p>
+                <div class="c-progress"><span></span></div>
+              </div>
+              <div class="c-trace">
+                <div class="c-trace-title"><span>工具轨迹</span><span>3 CALLS</span></div>
+                <div class="c-trace-row"><span>抓取商品</span><em>JustOne</em></div>
+                <div class="c-trace-row"><span>生成 Listing</span><em>DeepSeek</em></div>
+              </div>
+              <div class="c-command">继续优化标题与五点 <b>ENTER</b></div>
+            </aside>
+          </div>
+        </div>
+      </div>
+      <div class="direction-meta">顶部工作导航 + 图标轨 + 停靠 AI 指挥台；适合长时间运行与工具追踪。</div>
+      <button class="pick-button qmdp-pick-button" data-qmdp-native-handler="true" data-pick="C" type="button">选择 C · 指挥轨工作台</button>
+    </article>
+
+    <article class="direction-card" data-direction="D">
+      <header class="direction-head">
+        <div class="direction-name">
+          <span class="direction-letter">D</span>
+          <strong>瓷白 AI 舱</strong>
+        </div>
+        <span class="direction-tag">通透 · 轻量 · 智能</span>
+      </header>
+      <div class="mock-stage">
+        <div class="mock-d">
+          <div class="d-main">
+            <div class="d-top"><span>VEYASHIP AI</span><span>经营总览</span></div>
+            <div class="d-hero">
+              <div><div class="d-kicker">跨境经营工作台</div><h3>把商品经营<br><span>收进一条链路。</span></h3></div>
+              <div class="d-metrics">
+                <div class="d-metric"><b>01</b><span>商品</span></div>
+                <div class="d-metric"><b>00</b><span>待处理</span></div>
+                <div class="d-metric"><b>30</b><span>剩余积分</span></div>
+              </div>
+            </div>
+            <div class="d-product"><span>最近商品 · 批量库存 UI 验收商品</span><b>¥29.90</b></div>
+            <div class="d-flow">
+              <div class="d-flow-head"><span>AI 经营流程</span><span>AI 正在推进</span></div>
+              <ol>
+                <li class="is-done">抓取商品</li>
+                <li class="is-done">AI Listing</li>
+                <li class="is-ai">图片优化</li>
+                <li>SKU / 库存</li>
+                <li>多平台发布</li>
+              </ol>
+            </div>
+          </div>
+          <aside class="d-ai">
+            <div class="d-ai-head">AI 指令舱 <span>运行中</span></div>
+            <p class="d-ai-copy">你在经营，<br>AI 在推进。<span>围绕当前商品继续工作</span></p>
+            <div class="d-task">
+              <div class="d-task-head"><span>当前任务</span><span>处理中</span></div>
+              <div class="d-task-name">图片发布优化</div>
+              <div class="d-progress"><span></span></div>
+            </div>
+            <div class="d-command">下达经营指令 <b>↑</b></div>
+          </aside>
+        </div>
+      </div>
+      <div class="direction-meta">瓷白主画布 + 独立 AI 舱；只让 AI 面板承担浮层语义，保持运营数据清晰。</div>
+      <button class="pick-button qmdp-pick-button" data-qmdp-native-handler="true" data-pick="D" type="button">选择 D · 瓷白 AI 舱</button>
+    </article>
+  </main>
+
+  <section class="notes">
+    <div class="notes-head">
+      <h2>方向说明</h2>
+      <p>也可以只选细节，例如“A 的布局 + B 的标题气质 + D 的 AI 舱”。</p>
+    </div>
+    <div class="notes-grid">
+      <article class="note">
+        <strong>A · 石墨决策台</strong>
+        <dl>
+          <dt>气质</dt><dd>成熟、精密、可信</dd>
+          <dt>字体</dt><dd>中文系统栈优先 + Inter + JetBrains Mono</dd>
+          <dt>布局</dt><dd>232px 侧栏 + 连续工作区 + 运行管线</dd>
+          <dt>记忆点</dt><dd>纸白“继续处理”命令贯穿石墨工作台</dd>
+          <dt>适合</dt><dd>每日高频操作，最贴近 drama-outline</dd>
+        </dl>
+      </article>
+      <article class="note">
+        <strong>B · 纸墨决策台</strong>
+        <dl>
+          <dt>气质</dt><dd>编辑感、克制、明亮</dd>
+          <dt>字体</dt><dd>与 drama-outline 相同的中文系统栈 + Inter + Mono</dd>
+          <dt>布局</dt><dd>窄顶栏 + 编辑式左标题 + 右经营事实</dd>
+          <dt>记忆点</dt><dd>商品运营像一份每日商业简报</dd>
+          <dt>适合</dt><dd>品牌感更强，但不适合极高频密集操作</dd>
+        </dl>
+      </article>
+      <article class="note">
+        <strong>C · 指挥轨工作台</strong>
+        <dl>
+          <dt>气质</dt><dd>高密度、运行感、控制台</dd>
+          <dt>字体</dt><dd>同一字体事实，仅用密度和布局区分方向</dd>
+          <dt>布局</dt><dd>顶部导航 + 图标轨 + 固定 AI 指挥台</dd>
+          <dt>记忆点</dt><dd>AI 运行状态和工具轨迹始终在位</dd>
+          <dt>适合</dt><dd>高级用户、批量任务与 Agent 深度使用</dd>
+        </dl>
+      </article>
+      <article class="note">
+        <strong>D · 瓷白 AI 舱</strong>
+        <dl>
+          <dt>气质</dt><dd>通透、轻量、智能</dd>
+          <dt>字体</dt><dd>同一字体事实，亮色方向不更换字族</dd>
+          <dt>布局</dt><dd>非对称主画布 + 独立 AI 舱</dd>
+          <dt>记忆点</dt><dd>商品工作区与 AI 对话有明确空间分工</dd>
+          <dt>适合</dt><dd>偏好亮色与轻量 AI 产品感</dd>
+        </dl>
+      </article>
+    </div>
+    <div class="recommendation">
+      <strong>推荐 A：石墨决策台</strong>
+      <p>它不是短剧制作台的复制：两者共享中文系统栈、Inter 西文/数字、JetBrains Mono 标识、石墨明度层级、纸白主操作和低饱和状态色纪律；跨境平台则把剧情与镜头替换为商品证据、利润、合规、SKU、渠道状态和待决策队列。视觉最成熟，也最能承受每天长时间的商品、图片与发布操作。</p>
+    </div>
+  </section>
+
+  <div class="confirm-backdrop" id="confirmBackdrop" role="presentation">
+    <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <h2 id="confirmTitle">确认设计方向</h2>
+      <p id="confirmMeta"></p>
+      <label for="adjustments">调整建议</label>
+      <textarea id="adjustments" placeholder="例如：要 A 的布局 + B 的标题气质，更稳一点"></textarea>
+      <div class="confirm-actions">
+        <button type="button" id="cancelPick">取消</button>
+        <button type="button" class="confirm-primary" id="confirmPick">确认并回传</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const directionNames = {
+      A: "石墨决策台",
+      B: "纸墨决策台",
+      C: "指挥轨工作台",
+      D: "瓷白 AI 舱"
+    };
+    let pendingDirection = "";
+
+    function readDials() {
+      return {
+        variance: Number(document.querySelector('[data-dial="variance"]').value),
+        motion: Number(document.querySelector('[data-dial="motion"]').value),
+        density: Number(document.querySelector('[data-dial="density"]').value)
+      };
+    }
+
+    function updateDialOutputs() {
+      document.querySelectorAll("[data-dial]").forEach((input) => {
+        const output = document.querySelector(`[data-output="${input.dataset.dial}"]`);
+        output.textContent = `${input.value} / 10`;
+      });
+    }
+
+    function openConfirm(direction) {
+      pendingDirection = direction;
+      const dials = readDials();
+      document.getElementById("confirmMeta").textContent =
+        `${direction} · ${directionNames[direction]}；视觉冒险度 ${dials.variance}，动效强度 ${dials.motion}，信息密度 ${dials.density}`;
+      document.getElementById("confirmBackdrop").classList.add("is-open");
+      document.getElementById("adjustments").focus();
+    }
+
+    function closeConfirm() {
+      document.getElementById("confirmBackdrop").classList.remove("is-open");
+      pendingDirection = "";
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.classList.add("is-visible");
+      window.setTimeout(() => toast.classList.remove("is-visible"), 3200);
+    }
+
+    async function submitSelection() {
+      if (!pendingDirection) return;
+      const payload = {
+        id: pendingDirection,
+        label: `选 ${pendingDirection}：${directionNames[pendingDirection]}`,
+        name: directionNames[pendingDirection],
+        notes: "VeyaShip 布局与主题方向选择",
+        dials: readDials(),
+        adjustments: document.getElementById("adjustments").value.trim()
+      };
+      let ok = false;
+      try {
+        const response = await fetch("/api/select", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        ok = response.ok;
+      } catch {
+        ok = false;
+      }
+      document.querySelectorAll(".direction-card").forEach((card) => {
+        card.classList.toggle("is-selected", card.dataset.direction === pendingDirection);
+      });
+      const status = document.getElementById("returnStatus");
+      status.textContent = ok ? "已回传" : "当前未能回传";
+      status.classList.add("is-ready");
+      showToast(ok ? `${payload.label}，已回传` : `${payload.label}，当前未能回传`);
+      closeConfirm();
+    }
+
+    document.querySelectorAll("[data-dial]").forEach((input) => {
+      input.addEventListener("input", updateDialOutputs);
+    });
+
+    document.querySelectorAll("[data-pick]").forEach((button) => {
+      button.addEventListener("click", () => openConfirm(button.dataset.pick));
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeConfirm();
+      const direction = ["A", "B", "C", "D"][Number(event.key) - 1];
+      if (direction && !event.target.matches("input, textarea")) openConfirm(direction);
+    });
+
+    document.getElementById("cancelPick").addEventListener("click", closeConfirm);
+    document.getElementById("confirmPick").addEventListener("click", submitSelection);
+    document.getElementById("confirmBackdrop").addEventListener("click", (event) => {
+      if (event.target === event.currentTarget) closeConfirm();
+    });
+  </script>
+</body>
+</html>

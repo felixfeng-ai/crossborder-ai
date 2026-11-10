@@ -79,7 +79,12 @@ export default function ProductsPage() {
   // 自动抓取
   const scrapeMutation = useMutation({
     mutationFn: async (productUrl: string) => {
-      const res = await apiClient.post('/products/scrape', { url: productUrl })
+      // Just One/数据源可能耗时较长，单独放宽抓取请求超时，避免前端先断开。
+      const res = await apiClient.post(
+        '/products/scrape',
+        { url: productUrl },
+        { timeout: 120000 },
+      )
       return res.data
     },
     onSuccess: () => { setUrl(''); queryClient.invalidateQueries({ queryKey: ['products'] }) },
@@ -285,67 +290,107 @@ export default function ProductsPage() {
         </motion.div>
       )}
 
-      {/* 搜索 + 总数 */}
+      {/* 搜索与商品总量 */}
       <div className="flex items-center justify-between">
         <div className="relative max-w-sm flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} placeholder="搜索商品..." className="pl-10" />
+          <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} placeholder="搜索商品…" className="pl-10" />
         </div>
-        {data && <span className="text-sm text-muted-foreground">{data.total} 个商品</span>}
+        {data && (
+          <span className="metric-number text-xs text-muted-foreground">
+            {data.total} 个商品
+          </span>
+        )}
       </div>
 
-      {/* 全选 */}
-      {data && data.items.length > 0 && (
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input type="checkbox" checked={selected.size === data.items.length} onChange={toggleAll} className="rounded" />
-          全选
-        </label>
-      )}
-
-      {/* 商品列表 */}
+      {/* 商品目录 */}
       {isLoading ? (
         <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
       ) : data?.items?.length ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {data.items.map((product) => (
-              <Card key={product.id} className="overflow-hidden transition-shadow hover:shadow-md">
-                <div className="relative">
-                  <div className="absolute top-2 left-2 z-10">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(product.id)}
-                      onChange={() => toggleSelect(product.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="rounded"
-                    />
-                  </div>
-                  <div className="absolute top-2 right-2 z-10">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDeleteClick(product.id) }}
-                      className="p-1.5 rounded-full bg-background/80 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <div className="aspect-square bg-muted flex items-center justify-center cursor-pointer" onClick={() => navigate(`/app/products/${product.id}`)}>
+          <Card className="overflow-hidden">
+            <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={selected.size === data.items.length}
+                  onChange={toggleAll}
+                  aria-label="全选当前页商品"
+                  className="rounded border-input"
+                />
+                全选
+              </label>
+              <div className="flex items-center gap-3">
+                {selected.size > 0 && (
+                  <span className="text-xs text-muted-foreground">已选 {selected.size} 个</span>
+                )}
+                <span className="text-xs text-muted-foreground">按最近录入排序</span>
+              </div>
+            </div>
+            <div className="divide-y divide-border">
+              {data.items.map((product) => (
+                <div
+                  key={product.id}
+                  className="grid grid-cols-[20px_56px_minmax(0,1fr)_36px] items-center gap-3 px-4 py-3 hover:bg-accent/60"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(product.id)}
+                    onChange={() => toggleSelect(product.id)}
+                    aria-label={`选择 ${product.title || '无标题商品'}`}
+                    className="rounded border-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/app/products/${product.id}`)}
+                    className="flex h-14 w-14 items-center justify-center overflow-hidden rounded border border-border bg-secondary"
+                    aria-label={`打开 ${product.title || '无标题商品'}`}
+                  >
                     {product.main_image_url ? (
-                      <img src={product.main_image_url} alt="" className="h-full w-full object-cover" />
+                      <img
+                        src={product.main_image_url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
                     ) : (
-                      <ShoppingBag className="h-12 w-12 text-muted-foreground/40" />
+                      <ShoppingBag className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
                     )}
+                  </button>
+                  <div className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/app/products/${product.id}`)}
+                      className="block max-w-full truncate text-left text-[13px] font-medium hover:underline"
+                    >
+                      {product.title || '无标题商品'}
+                    </button>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {product.shop_name || '来源商品'}
+                      {product.sales_count != null ? ` · 已售 ${product.sales_count}` : ''}
+                      {` · ${new Date(product.created_at).toLocaleDateString('zh-CN')}`}
+                    </p>
+                    <div className="mt-1.5 flex items-center gap-3">
+                      {product.price != null && (
+                        <span className="metric-number text-sm font-medium">
+                          ¥{product.price.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    onClick={() => handleDeleteClick(product.id)}
+                    aria-label={`删除 ${product.title || '无标题商品'}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
-                <CardContent className="p-3 space-y-2" onClick={() => navigate(`/app/products/${product.id}`)}>
-                  <p className="text-sm font-medium line-clamp-2 leading-snug h-10">{product.title || '无标题'}</p>
-                  <div className="flex items-center justify-between">
-                    {product.price != null && <span className="text-base font-bold text-primary">¥{product.price.toFixed(2)}</span>}
-                    {product.sales_count != null && <Badge variant="secondary" className="text-xs">已售 {product.sales_count}</Badge>}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+              ))}
+            </div>
+          </Card>
           {data.total_pages > 1 && (
             <div className="flex justify-center gap-2 mt-4">
               <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button>

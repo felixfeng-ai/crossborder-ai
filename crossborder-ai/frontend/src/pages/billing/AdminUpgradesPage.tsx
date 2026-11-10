@@ -53,7 +53,10 @@ export default function AdminUpgradesPage() {
 
   const handleMutation = useMutation({
     mutationFn: async ({ id, action }: { id: string; action: 'approve' | 'reject' }) => {
-      const res = await apiClient.post(`/billing/upgrades/${id}/${action}`, { note: '' })
+      const path = action === 'approve'
+        ? `/billing/upgrades/${id}/approve`
+        : `/billing/upgrades/${id}/reject`
+      const res = await apiClient.post(path, { note: '' })
       return res.data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-upgrades'] }),

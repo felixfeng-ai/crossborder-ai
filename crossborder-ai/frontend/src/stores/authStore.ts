@@ -39,7 +39,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const response = await authApi.login({ email, password })
       localStorage.setItem('access_token', response.access_token)
-      localStorage.setItem('refresh_token', response.refresh_token)
       set({
         token: response.access_token,
         isAuthenticated: true,
@@ -58,7 +57,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const response = await authApi.register(data)
       localStorage.setItem('access_token', response.access_token)
-      localStorage.setItem('refresh_token', response.refresh_token)
       set({
         token: response.access_token,
         isAuthenticated: true,
@@ -74,7 +72,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   logout: () => {
     localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
     set({
       user: null,
       token: null,

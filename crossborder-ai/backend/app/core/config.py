@@ -141,6 +141,12 @@ class Settings(BaseSettings):
     SHOPIFY_API_SECRET: Optional[str] = None
     SHOPIFY_REDIRECT_URI: Optional[str] = None
 
+    # --- Amazon SP-API ---
+    AMAZON_APP_ID: Optional[str] = None
+    AMAZON_CLIENT_ID: Optional[str] = None
+    AMAZON_CLIENT_SECRET: Optional[str] = None
+    AMAZON_REDIRECT_URI: Optional[str] = None
+
     # --- Creem.io ---
     CREEM_API_KEY: Optional[str] = None
     CREEM_WEBHOOK_SECRET: Optional[str] = None
@@ -151,6 +157,8 @@ class Settings(BaseSettings):
     # 用户无需感知，由 VeyaShip 统一提供
     ONEBOUND_API_KEY: Optional[str] = None
     ONEBOUND_API_SECRET: Optional[str] = None
+    # Just One API 的 1688 商品详情 Token；网页配置优先于环境变量。
+    JUSTONE_API_TOKEN: Optional[str] = None
 
     # --- Redis ---
     REDIS_URL: Optional[str] = None

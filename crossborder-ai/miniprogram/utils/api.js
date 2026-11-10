@@ -14,7 +14,7 @@ function request(method, path, data = {}) {
       data,
       timeout: 30000,
       success: (res) => {
-        if (res.statusCode === 200 || res.statusCode === 201) {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(res.data)
         } else if (res.statusCode === 401) {
           wx.removeStorageSync('token')
@@ -48,6 +48,7 @@ module.exports = {
 
   // AI 助手
   agentRun: (instruction) => request('POST', '/agent/run', { instruction }),
+  getAgentTask: (taskId) => request('GET', `/agent/tasks/${taskId}`),
 
   // 整店巡检
   getStoreCheckHistory: () => request('GET', '/analytics/store-check-history'),

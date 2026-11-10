@@ -73,6 +73,10 @@ from app.models.shopify_channel import ShopifyChannel  # noqa: F401
 from app.models.batch_job import BatchJob  # noqa: F401
 from app.models.content import ContentGeneration, ContentTemplate  # noqa: F401
 from app.models.listing import Listing, ListingVariant  # noqa: F401
+from app.models.listing_draft import ListingDraft, ListingComplianceReport  # noqa: F401
+from app.models.publication import Publication  # noqa: F401
+from app.models.platform_connection import PlatformConnection  # noqa: F401
+from app.models.product_variant import ProductVariant  # noqa: F401
 from app.models.payment import Subscription, PaymentInvoice  # noqa: F401
 
 target_metadata = Base.metadata

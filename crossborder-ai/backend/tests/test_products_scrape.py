@@ -37,6 +37,47 @@ async def _configure_onebound(db) -> None:
     await db.flush()
 
 
+def _justone_raw() -> dict:
+    """最小 Just One V2 返回样本，覆盖当前商品字段映射。"""
+    return {
+        "title": {"title": "Just One 测试商品", "selledNumber": "88"},
+        "mainPic": {"offerImgList": ["https://img.example.com/justone-main.jpg"]},
+        "price": {
+            "priceModel": {
+                "currentPrices": [{"price": "12.50", "beginAmount": 1}],
+            }
+        },
+        "item": {
+            "offerTitle": "Just One 测试商品",
+            "companyName": "Just One 测试店铺",
+            "defaultOfferImg": "https://img.example.com/justone-main.jpg",
+            "saledCount": 88,
+        },
+    }
+
+
+def _justone_v2_raw() -> dict:
+    """真实 Just One V2 风格字段样本。"""
+    return {
+        "title": "智能感应垃圾桶家用卧室带盖",
+        "item_id": 649418033224,
+        "main_imgs": ["https://img.example.com/v2-main.jpg"],
+        "price_info": {
+            "price": "13.90",
+            "price_min": "13.90",
+            "price_max": "56.00",
+        },
+        "sale_info": {
+            "sale_quantity_year": 268,
+            "sale_quantity_90days": None,
+        },
+        "shop_info": {
+            "shop_name": "义乌市测试日用百货有限公司",
+            "seller_login_id": "测试日用百货",
+        },
+    }
+
+
 # ── R1 平台级 Key 未配置 → 就绪校验 ──────────────────────────────
 
 @pytest.mark.asyncio
@@ -280,3 +321,108 @@ def test_clean_int_handles_chinese_magnitude():
     assert _clean_int("5,000") == 5000
     assert _clean_int(None) is None
     assert _clean_int("") is None
+
+
+# ── Just One API 优先与降级 ─────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_justone_is_preferred_over_onebound(monkeypatch):
+    """同时配置两个数据源时，只能先调用 Just One。"""
+    calls: list[str] = []
+
+    async def fake_justone(offer_id, token):
+        calls.append("justone")
+        assert offer_id == "610699151352"
+        assert token == "justone-token"
+        return _justone_raw()
+
+    async def fail_onebound(*args, **kwargs):
+        calls.append("onebound")
+        raise AssertionError("Just One 成功时不应调用 Onebound")
+
+    monkeypatch.setattr(scraper_mod, "_fetch_justone", fake_justone)
+    monkeypatch.setattr(scraper_mod, "_fetch_onebound", fail_onebound)
+
+    result = await scrape_1688(
+        OFFER_URL,
+        api_key="onebound-key",
+        api_secret="onebound-secret",
+        justone_token="justone-token",
+    )
+
+    assert calls == ["justone"]
+    assert result["data_source"] == "justone"
+    assert result["title"] == "Just One 测试商品"
+    assert result["price"] == 12.5
+    assert result["sales_count"] == 88
+    assert result["shop_name"] == "Just One 测试店铺"
+
+
+@pytest.mark.asyncio
+async def test_justone_failure_falls_back_to_onebound(monkeypatch):
+    """Just One 暂时失败后，继续使用 Onebound。"""
+    calls: list[str] = []
+
+    async def fail_justone(offer_id, token):
+        calls.append("justone")
+        raise ServiceUnavailableError("Just One 暂时不可用")
+
+    async def fake_onebound(offer_id, key, secret):
+        calls.append("onebound")
+        return {
+            "title": "Onebound 降级商品",
+            "main_image_url": "https://img.example.com/onebound.jpg",
+            "price": "18.8",
+            "sales_count": "66",
+            "shop_name": "Onebound 店铺",
+        }
+
+    monkeypatch.setattr(scraper_mod, "_fetch_justone", fail_justone)
+    monkeypatch.setattr(scraper_mod, "_fetch_onebound", fake_onebound)
+
+    result = await scrape_1688(
+        OFFER_URL,
+        api_key="onebound-key",
+        api_secret="onebound-secret",
+        justone_token="justone-token",
+    )
+
+    assert calls == ["justone", "onebound"]
+    assert result["data_source"] == "onebound"
+    assert result["title"] == "Onebound 降级商品"
+
+
+def test_justone_empty_data_is_product_not_found():
+    """Just One code=0 但 data 为空表示商品不存在。"""
+    with pytest.raises(ProductNotFoundError):
+        scraper_mod._normalize_justone_product({})
+
+
+def test_justone_v2_field_mapping():
+    """解析真实 V2 字段：main_imgs/price_info/sale_info/shop_info。"""
+    product = scraper_mod._normalize_justone_product(_justone_v2_raw())
+    assert product["title"] == "智能感应垃圾桶家用卧室带盖"
+    assert product["main_image_url"] == "https://img.example.com/v2-main.jpg"
+    assert product["price"] == 13.9
+    assert product["sales_count"] == 268
+    assert product["shop_name"] == "义乌市测试日用百货有限公司"
+
+
+@pytest.mark.asyncio
+async def test_scrape_status_configured_by_justone_only(
+    client: AsyncClient,
+    auth_headers: dict,
+    db_session,
+):
+    """只配置 Just One Token 时，抓取服务也应显示就绪。"""
+    db_session.add(
+        SystemConfig(key="provider:justone:token", value="justone-only-token")
+    )
+    await db_session.flush()
+
+    response = await client.get(
+        "/api/v1/products/scrape/status",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["configured"] is True

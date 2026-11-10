@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -41,8 +42,11 @@ class ContentGeneration(Base):
     __tablename__ = "content_generations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    user_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     listing_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("listings.id", ondelete="SET NULL"), nullable=True
@@ -97,7 +101,8 @@ class ContentGeneration(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # --- Relationships ---
-    user = relationship("User", back_populates="content_generations")
+    # 保留生成记录到用户的正向关系，但不要求 User 模型声明反向集合。
+    user = relationship("User")
 
     def __repr__(self) -> str:
         return f"<ContentGeneration {self.id}: {self.content_type.value} [{self.status.value}]>"

@@ -7,7 +7,16 @@ import uuid
 from datetime import datetime
 from uuid import UUID as UUIDType
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,6 +31,9 @@ class Product(Base):
     """
 
     __tablename__ = "products"
+    __table_args__ = (
+        UniqueConstraint("user_id", "url", name="uq_products_user_url"),
+    )
 
     # ── 主键 ──────────────────────────────────────────────────
     id: Mapped[uuid.UUID] = mapped_column(
@@ -38,9 +50,9 @@ class Product(Base):
     )
 
     # ── 核心数据 ──────────────────────────────────────────────
-    # url 加了唯一索引，防止重复抓取同一个商品
+    # 同一用户不能重复录入同一个商品；不同用户可以各自拥有相同来源 URL。
     url: Mapped[str] = mapped_column(
-        String(500), unique=True, index=True, nullable=False
+        String(500), index=True, nullable=False
     )
     # title 可为空，因为手动录入时可以只填链接不填标题
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)

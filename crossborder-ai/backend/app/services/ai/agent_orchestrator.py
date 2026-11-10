@@ -21,10 +21,17 @@
 import json
 import re
 from typing import Any, Awaitable, Callable, Optional
+from uuid import UUID
 
 from app.core.config import settings
 from app.models.user import User
 from app.services.ai.deepseek import DeepSeekService
+from app.services.listing_service import (
+    get_current_compliance_report,
+    get_owned_listing,
+    persist_generated_listing,
+)
+from app.services import provider_config
 from app.services.scraper import scrape_1688
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -176,6 +183,25 @@ class AgentOrchestrator:
         {
             "type": "function",
             "function": {
+                "name": "create_product",
+                "description": "把抓取到的商品保存到当前用户商品库",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "商品链接"},
+                        "title": {"type": "string"},
+                        "main_image_url": {"type": "string"},
+                        "price": {"type": "number"},
+                        "sales_count": {"type": "integer"},
+                        "shop_name": {"type": "string"},
+                    },
+                    "required": ["url"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "generate_listing",
                 "description": "为商品生成 AI Listing 文案",
                 "parameters": {
@@ -186,6 +212,21 @@ class AgentOrchestrator:
                         "language": {"type": "string", "description": "目标语言"},
                     },
                     "required": ["product_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "push_to_shopify",
+                "description": "发布一个已通过合规审查的 Listing 到 Shopify",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "listing_id": {"type": "string", "description": "ListingDraft ID"},
+                        "channel_id": {"type": "string", "description": "可选，指定 Shopify 渠道"},
+                    },
+                    "required": ["listing_id"],
                 },
             },
         },
@@ -269,6 +310,15 @@ class AgentOrchestrator:
         self.steps: list[dict] = []  # 记录执行步骤
         self.on_step = on_step  # 步骤进度回调（流式输出用），每完成一步触发
 
+    def _status_from_steps(self) -> str:
+        failed = any(step.get("status") == "failed" for step in self.steps)
+        succeeded = any(step.get("status") == "success" for step in self.steps)
+        if failed and succeeded:
+            return "partial"
+        if failed:
+            return "failed"
+        return "success"
+
     async def _emit_step(self) -> None:
         """步骤追加后触发进度回调（流式输出用）。
 
@@ -310,7 +360,7 @@ class AgentOrchestrator:
                 final_answer = response.get("content", "已完成")
                 return {
                     "summary": final_answer,
-                    "status": "success",
+                    "status": self._status_from_steps(),
                     "steps": self.steps,
                 }
 
@@ -349,7 +399,7 @@ class AgentOrchestrator:
         # 达到最大轮数
         return {
             "summary": "处理步骤较多，以下是已完成的步骤",
-            "status": "success",
+            "status": self._status_from_steps(),
             "steps": self.steps,
         }
 
@@ -399,7 +449,6 @@ class AgentOrchestrator:
                 {"action": "scrape_1688", "critical": True, "description": "抓取 1688 商品"},
                 {"action": "create_product", "critical": True, "description": "创建商品"},
                 {"action": "generate_listing", "critical": False, "description": "AI 生成 Listing"},
-                {"action": "compliance_check", "critical": False, "description": "合规审查"},
                 {"action": "push_to_shopify", "critical": False, "description": "发布到 Shopify"},
             ],
         },
@@ -466,6 +515,8 @@ class AgentOrchestrator:
             # 从上下文补充参数
             if "product_id" not in step_params and context.get("product_id"):
                 step_params["product_id"] = context["product_id"]
+            if "listing_id" not in step_params and context.get("listing_id"):
+                step_params["listing_id"] = context["listing_id"]
             if "url" not in step_params and context.get("url"):
                 step_params["url"] = context["url"]
             if "title" not in step_params and context.get("title"):
@@ -482,6 +533,7 @@ class AgentOrchestrator:
             if data.get("url"): context["url"] = data["url"]
             if data.get("title"): context["title"] = data["title"]
             if data.get("product_id"): context["product_id"] = data["product_id"]
+            if data.get("listing_id"): context["listing_id"] = data["listing_id"]
             if data.get("image_url"): context["image_url"] = data["image_url"]
             if step_result.get("summary"): context["last_summary"] = step_result["summary"]
 
@@ -615,20 +667,13 @@ class AgentOrchestrator:
         if not url:
             return {"action": "scrape_1688", "status": "failed", "error": "缺少URL"}
 
-        # 从数据库读取 API Key 配置（密文解密后使用）
-        from app.core.crypto import decrypt_value
-        from app.models.system_config import SystemConfig
-        config_rows = await self.db.execute(
-            select(SystemConfig).where(
-                SystemConfig.key.in_(["onebound_api_key", "onebound_api_secret"])
-            )
-        )
-        sys_config = {row.key: decrypt_value(row.value or "") for row in config_rows.scalars().all()}
+        await provider_config.refresh(self.db)
 
         data = await scrape_1688(
             url,
-            api_key=sys_config.get("onebound_api_key", ""),
-            api_secret=sys_config.get("onebound_api_secret", ""),
+            justone_token=provider_config.get("justone", "token"),
+            api_key=provider_config.get("onebound", "api_key"),
+            api_secret=provider_config.get("onebound", "api_secret"),
         )
 
         # 自动创建商品
@@ -655,7 +700,10 @@ class AgentOrchestrator:
 
         # 查重
         result = await self.db.execute(
-            select(Product).where(Product.url == params.get("url", ""))
+            select(Product).where(
+                Product.url == params.get("url", ""),
+                Product.user_id == self.user.id,
+            )
         )
         existing = result.scalar_one_or_none()
         if existing:
@@ -696,7 +744,12 @@ class AgentOrchestrator:
         language = params.get("language", "en")
 
         try:
-            result = await self.db.execute(select(Product).where(Product.id == UUID(product_id)))
+            result = await self.db.execute(
+                select(Product).where(
+                    Product.id == UUID(product_id),
+                    Product.user_id == self.user.id,
+                )
+            )
         except ValueError:
             return {"action": "generate_listing", "status": "failed", "error": "无效的商品ID"}
 
@@ -707,7 +760,8 @@ class AgentOrchestrator:
         # 统一品牌档案注入（CAP-04）：编排器生成 Listing 时把用户 Persona 拼入 system prompt
         from app.services.ai.persona_kit import fetch_persona, build_persona_kit, format_persona_block
         persona = await fetch_persona(self.db, self.user.id)
-        persona_block = format_persona_block(build_persona_kit(persona)) if persona else ""
+        persona_kit = build_persona_kit(persona) if persona else None
+        persona_block = format_persona_block(persona_kit) if persona_kit else ""
 
         llm = DeepSeekService()
         title = await llm.generate(
@@ -728,10 +782,54 @@ class AgentOrchestrator:
             persona_block=persona_block,
         )
 
+        from app.services.ai.compliance import (
+            check_text,
+            merge_banned_words,
+        )
+
+        banned_words = (persona_kit or {}).get("banned_words") or []
+        texts = [title, description, *bullets]
+        violations: list[str] = []
+        word_list = merge_banned_words(banned_words)
+        for text in texts:
+            for word in check_text(text or "", word_list):
+                if word not in violations:
+                    violations.append(word)
+        blocked = bool(violations)
+        draft = await persist_generated_listing(
+            self.db,
+            user=self.user,
+            product=product,
+            platform=platform,
+            language=language,
+            tone="professional",
+            title=title,
+            description=description,
+            bullet_points=bullets,
+            seo_title="",
+            seo_description="",
+            violations=violations,
+            blocked=blocked,
+            ai_model_used=provider_config.get(
+                "deepseek",
+                "model",
+                settings.DEEPSEEK_MODEL,
+            ),
+        )
+
         return {
             "action": "generate_listing",
             "status": "success",
-            "data": {"title": title, "description": description, "bullet_points": bullets},
+            "data": {
+                "listing_id": str(draft.id),
+                "product_id": str(product.id),
+                "listing_status": draft.status,
+                "compliance_status": draft.compliance_status,
+                "title": title,
+                "description": description,
+                "bullet_points": bullets,
+                "violations": violations,
+            },
             "summary": f"已为 {platform} 生成 Listing：{title[:50]}...",
         }
 
@@ -1007,7 +1105,13 @@ class AgentOrchestrator:
 
         # 1. 抓取商品
         try:
-            data = await scrape_1688(url, api_key=params.get("api_key", ""), api_secret=params.get("api_secret", ""))
+            await provider_config.refresh(self.db)
+            data = await scrape_1688(
+                url,
+                justone_token=provider_config.get("justone", "token"),
+                api_key=provider_config.get("onebound", "api_key"),
+                api_secret=provider_config.get("onebound", "api_secret"),
+            )
         except Exception as e:
             return {"action": "analyze_product_decision", "status": "failed", "error": f"抓取失败：{str(e)}"}
 
@@ -1113,46 +1217,81 @@ class AgentOrchestrator:
             }
 
     async def _do_push_to_shopify(self, params: dict) -> dict:
-        """发布到 Shopify"""
-        product_id = params.get("product_id")
-        if not product_id:
-            return {"action": "push_to_shopify", "status": "failed", "error": "缺少商品ID"}
+        """Publish an owned, compliance-approved listing to Shopify."""
+        listing_id = params.get("listing_id")
+        if not listing_id:
+            return {"action": "push_to_shopify", "status": "failed", "error": "缺少 Listing ID"}
+
+        listing = await get_owned_listing(self.db, listing_id, self.user.id)
+        if listing is None:
+            return {"action": "push_to_shopify", "status": "failed", "error": "Listing 不存在"}
+        if listing.status != "ready" or listing.compliance_status != "pass":
+            return {
+                "action": "push_to_shopify",
+                "status": "failed",
+                "error": "Listing 未通过合规审查，无法发布",
+            }
+        report = await get_current_compliance_report(self.db, listing)
+        if report is None or report.status != "pass":
+            return {
+                "action": "push_to_shopify",
+                "status": "failed",
+                "error": "Listing 合规报告已失效，请重新检查",
+            }
 
         # 获取用户已绑定的 Shopify 店铺
         from app.models.shopify_channel import ShopifyChannel
+        channel_id = params.get("channel_id", "")
+        channel_query = select(ShopifyChannel).where(
+            ShopifyChannel.user_id == self.user.id,
+            ShopifyChannel.is_active == True,
+        )
+        if channel_id:
+            try:
+                channel_query = channel_query.where(
+                    ShopifyChannel.id == UUID(channel_id)
+                )
+            except ValueError:
+                return {
+                    "action": "push_to_shopify",
+                    "status": "failed",
+                    "error": "无效的 Shopify 渠道 ID",
+                }
         result = await self.db.execute(
-            select(ShopifyChannel).where(
-                ShopifyChannel.user_id == self.user.id,
-                ShopifyChannel.is_active == True,
-            )
+            channel_query
         )
         channels = result.scalars().all()
         if not channels:
             return {"action": "push_to_shopify", "status": "failed", "error": "未绑定 Shopify 店铺，请先在 Shopify 页面绑定"}
 
-        # 推送到第一个绑定的店铺
         import httpx
         from app.core.config import settings
+        from app.core.crypto import decrypt_value
+        from app.routers.shopify import _channel_domain
         from app.models.product import Product
-        from uuid import UUID
 
-        prod_result = await self.db.execute(select(Product).where(Product.id == UUID(product_id)))
+        prod_result = await self.db.execute(
+            select(Product).where(
+                Product.id == listing.product_id,
+                Product.user_id == self.user.id,
+            )
+        )
         product = prod_result.scalar_one_or_none()
         if not product:
             return {"action": "push_to_shopify", "status": "failed", "error": "商品不存在"}
 
         channel = channels[0]
-        shop_url = f"https://{channel.shop_name}.myshopify.com/admin/api/2024-10"
+        shop_url = f"https://{_channel_domain(channel)}/admin/api/2024-10"
         headers = {
-            "X-Shopify-Access-Token": channel.access_token,
+            "X-Shopify-Access-Token": decrypt_value(channel.access_token),
             "Content-Type": "application/json",
         }
 
         async with httpx.AsyncClient() as client:
             resp = await client.post(f"{shop_url}/products.json", json={
                 "product": {
-                    "title": product.title or "Untitled",
-                    "body_html": product.description or "",
+                    "title": listing.title or "Untitled",
+                    "body_html": listing.description or "",
                     "status": "draft",
                     "variants": [{"price": str(product.price)}] if product.price else [],
                 }
@@ -1162,11 +1301,18 @@ class AgentOrchestrator:
                 return {"action": "push_to_shopify", "status": "failed", "error": f"Shopify 发布失败：{resp.text[:150]}"}
 
             shopify_product = resp.json().get("product", {})
-            shopify_url = f"https://{channel.shop_name}.myshopify.com/admin/products/{shopify_product.get('id')}"
+            listing.status = "published"
+            from datetime import datetime, timezone
+            listing.published_at = datetime.now(timezone.utc)
+            shopify_url = f"https://{_channel_domain(channel)}/admin/products/{shopify_product.get('id')}"
             return {
                 "action": "push_to_shopify",
                 "status": "success",
-                "data": {"shopify_product_id": shopify_product.get("id"), "shopify_url": shopify_url},
+                "data": {
+                    "listing_id": str(listing.id),
+                    "shopify_product_id": shopify_product.get("id"),
+                    "shopify_url": shopify_url,
+                },
                 "summary": f"已发布到 {channel.shop_name}（草稿状态）",
             }
 

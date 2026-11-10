@@ -1,10 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
-import { motion } from 'framer-motion'
 import {
-  Package,
   TrendingUp,
   ShoppingCart,
   Bot,
@@ -15,9 +12,7 @@ import {
   ChevronRight,
   XCircle,
   Clock,
-  DollarSign,
   AlertTriangle,
-  CalendarDays,
   MessageSquareText,
   Sparkles,
   ShieldCheck,
@@ -27,7 +22,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { useAuthStore } from '@/stores/authStore'
 import { toErrorMessage } from '@/utils/errorMessage'
 import apiClient from '@/api/client'
 import OnboardingGuide from '@/components/dashboard/OnboardingGuide'
@@ -54,8 +48,6 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuthStore()
-  const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [input, setInput] = useState('')
@@ -89,14 +81,6 @@ export default function DashboardPage() {
     setAnalyzing(false)
   }
 
-  // 快捷跳转
-  const quickActions = [
-    { icon: TrendingUp, label: '品类分析', path: '', color: 'text-amber-500', bg: 'bg-amber-500/10', onClick: () => document.getElementById('category-input')?.focus() },
-    { icon: Bot, label: 'AI 助手', path: '/app/agent', color: 'text-amber-500', bg: 'bg-amber-500/10' },
-    { icon: ShoppingCart, label: '录入商品', path: '/app/products', color: 'text-amber-500', bg: 'bg-amber-500/10' },
-    { icon: MessageSquareText, label: '生成 Listing', path: '/app/content', color: 'text-amber-500', bg: 'bg-amber-500/10' },
-  ]
-
   // ── Agent 执行 ──────────────────────────────────────────
   const agentMutation = useMutation({
     mutationFn: async (instruction: string) => {
@@ -129,189 +113,273 @@ export default function DashboardPage() {
     )
   }
 
-  const stats = [
-    {
-      title: '商品总数',
-      value: dashboard?.products?.total ?? 0,
-      sub: `本月新增 ${dashboard?.products?.this_month ?? 0}`,
-      icon: Package,
-      color: 'text-amber-500',
-      bg: 'bg-amber-500/10',
-    },
-    {
-      title: '待处理',
-      value: dashboard?.products?.pending ?? 0,
-      sub: dashboard?.products?.pending ? '需要补充信息' : '已全部完善',
-      icon: AlertTriangle,
-      color: dashboard?.products?.pending ? 'text-amber-500' : 'text-emerald-500',
-      bg: dashboard?.products?.pending ? 'bg-amber-500/10' : 'bg-emerald-500/10',
-    },
-    {
-      title: '剩余积分',
-      value: dashboard?.credits?.remaining ?? 0,
-      sub: `已用 ${dashboard?.credits?.used ?? 0}`,
-      icon: DollarSign,
-      color: 'text-emerald-500',
-      bg: 'bg-emerald-500/10',
-    },
-    {
-      title: '品类分析',
-      value: 'AI 驱动',
-      sub: '输入品类名开始分析',
-      icon: TrendingUp,
-      color: 'text-amber-500',
-      bg: 'bg-amber-500/10',
-    },
+  const latestProduct = dashboard?.recent?.[0]
+  const facts = [
+    { label: '商品总数', value: dashboard?.products?.total ?? 0 },
+    { label: '待处理', value: dashboard?.products?.pending ?? 0 },
+    { label: '剩余积分', value: dashboard?.credits?.remaining ?? 0 },
+    { label: '本月新增', value: dashboard?.products?.this_month ?? 0 },
+  ]
+  const workflow = [
+    { label: '来源商品', detail: latestProduct ? '已录入' : '待录入' },
+    { label: 'AI Listing', detail: latestProduct?.status === '待补充' ? '待补充' : '待生成' },
+    { label: '图片素材', detail: '待生成' },
+    { label: 'SKU / 库存', detail: '待配置' },
+    { label: '渠道发布', detail: '待发布' },
+  ]
+  const commands = [
+    { icon: ShoppingCart, label: '录入商品', detail: '抓取链接或手动创建', path: '/app/products' },
+    { icon: MessageSquareText, label: '生成 Listing', detail: '按平台生成并合规审查', path: '/app/content' },
+    { icon: Sparkles, label: 'AI 图片', detail: '主图、白底图与场景图', path: '/app/images' },
+    { icon: Bot, label: 'AI 助手', detail: '直接下达经营任务', path: '/app/agent' },
   ]
 
   return (
-    <div className="space-y-5">
-      {/* ── 头部 ──────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+    <div
+      className="mx-auto max-w-[1280px] space-y-8"
+      data-dashboard-protagonist="product-pipeline"
+    >
+      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">
-            👋 你好, {user?.username || '卖家'}！
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            今天有什么要做的？
+          <p className="micro-label">经营总览</p>
+          <h1 className="page-title mt-1">经营决策</h1>
+          <p className="mt-1 max-w-[62ch] text-sm text-muted-foreground">
+            从来源商品到多平台发布，围绕当前对象完成内容、素材、库存与渠道判断。
           </p>
         </div>
-        <Button onClick={() => navigate('/app/agent')} className="gap-2">
-          <Bot className="h-4 w-4" />
-          AI 助手
-        </Button>
-      </div>
-
-      {/* ── 新手三步激活引导（CAP-07）────────────────────── */}
-      <OnboardingGuide />
-
-      {/* ── 快捷入口 ──────────────────────────────────────── */}
-      <div className="grid grid-cols-4 gap-3">
-        {quickActions.map((action) => (
-          <Card
-            key={action.label}
-            className="cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5"
-            onClick={() => navigate(action.path)}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate('/app/agent')}>
+            <Bot className="mr-2 h-4 w-4" />
+            AI 助手
+          </Button>
+          <Button
+            onClick={() => navigate(latestProduct ? `/app/products/${latestProduct.id}` : '/app/products')}
           >
-            <CardContent className="flex flex-col items-center gap-2 py-4">
-              <div className={`rounded-lg p-2.5 ${action.bg}`}>
-                <action.icon className={`h-5 w-5 ${action.color}`} />
-              </div>
-              <span className="text-xs font-medium">{action.label}</span>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            {latestProduct ? '继续处理' : '录入第一个商品'}
+          </Button>
+        </div>
+      </header>
 
-      {/* ── AI 品类分析 ─────────────────────────────────── */}
-      <Card className="border-amber-500/20 bg-amber-500/5">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between mb-3">
+      <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.75fr)]">
+        <div className="space-y-4">
+          <Card className="overflow-hidden">
+          <CardHeader className="flex-row items-start justify-between space-y-0 border-b border-border">
             <div>
-              <p className="text-sm font-medium flex items-center gap-1.5">
-                <TrendingUp className="h-4 w-4 text-amber-500" />
-                AI 品类分析
+              <CardTitle className="section-title">当前商品链路</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {latestProduct ? '最近录入的商品与下一步动作' : '还没有商品，从一条来源链接开始'}
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">输入品类名，AI 自动分析市场容量、竞争格局、利润空间</p>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <Input
-              id="category-input"
-              value={categoryInput}
-              onChange={(e) => setCategoryInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
-              placeholder="输入品类名，如：蓝牙耳机、瑜伽裤、智能手表..."
-              className="flex-1 h-9 rounded-lg bg-black/10 dark:bg-black/30"
-            />
-            <Button size="sm" className="gap-1 shrink-0" onClick={handleAnalyze} disabled={analyzing}>
-              {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <><TrendingUp className="h-4 w-4" />AI 分析</>}
-            </Button>
-          </div>
-
-          {/* 分析结果 */}
-          {analyzing && (
-            <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />AI 正在分析市场数据...
-            </div>
-          )}
-          {report && (
-            <div className="mt-3 rounded-lg border border-glass-border bg-glass p-3 text-xs max-h-80 overflow-y-auto leading-relaxed">
-              {report.slice(0, 2500).split('\n').map((line, i) => {
-                if (!line.trim()) return <p key={i} className="my-1" />
-                if (line.startsWith('# ')) return <p key={i} className="text-sm font-bold text-foreground mt-3 mb-1">{line.replace('# ','')}</p>
-                if (line.startsWith('## ')) return <p key={i} className="text-sm font-semibold text-foreground mt-2 mb-1">{line.replace('## ','')}</p>
-                if (line.startsWith('|')) return <p key={i} className="font-mono text-[11px] text-muted-foreground">{line}</p>
-                if (line.match(/^\d+\./)) return <p key={i} className="ml-2 text-[11px] text-muted-foreground">{line}</p>
-                if (line.startsWith('-')) return <p key={i} className="ml-2 text-[11px] text-muted-foreground">{line}</p>
-                if (line.includes('**')) return <p key={i} className="text-[11px] text-foreground"><strong>{line.replace(/\*\*/g,'')}</strong></p>
-                return <p key={i} className="text-[11px] text-muted-foreground">{line}</p>
-              })}
-              {report.length > 2500 && <p className="text-muted-foreground mt-2 text-[11px]">...报告较长，已截取前 2500 字</p>}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── 统计卡片 ──────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {stats.map((s) => (
-          <Card key={s.title}>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">{s.title}</p>
-                  <p className="text-2xl font-bold mt-0.5">{s.value}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{s.sub}</p>
+            <Badge variant={latestProduct ? 'secondary' : 'outline'}>
+              {latestProduct ? '进行中' : '未开始'}
+            </Badge>
+          </CardHeader>
+          <CardContent className="p-0">
+            {latestProduct ? (
+              <>
+                <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-[15px] font-medium">{latestProduct.title || '无标题商品'}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      更新于 {timeAgo(latestProduct.created_at)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    {latestProduct.price != null && (
+                      <span className="metric-number text-lg font-medium">
+                        ¥{latestProduct.price.toFixed(2)}
+                      </span>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => navigate(`/app/products/${latestProduct.id}`)}>
+                      打开商品
+                    </Button>
+                  </div>
                 </div>
-                <div className={`rounded-lg p-2 ${s.bg}`}>
-                  <s.icon className={`h-4 w-4 ${s.color}`} />
+
+                <div className="grid gap-px bg-border sm:grid-cols-5">
+                  {workflow.map((step, index) => (
+                    <div key={step.label} className="min-w-0 bg-card px-4 py-4">
+                      <span className="metric-number text-[11px] text-muted-foreground">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <p className="mt-2 text-[13px] font-medium">{step.label}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{step.detail}</p>
+                    </div>
+                  ))}
                 </div>
+
+                <div className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    接下来从商品详情检查内容、图片和 SKU，再选择发布渠道。
+                  </p>
+                  <Button size="sm" onClick={() => navigate(`/app/products/${latestProduct.id}`)}>
+                    继续处理
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="flex min-h-64 flex-col items-center justify-center px-6 py-12 text-center">
+                <ShoppingCart className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                <p className="mt-3 text-sm font-medium">还没有商品链路</p>
+                <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
+                  粘贴 1688 商品链接，系统会先抓取商品，再进入 Listing、图片和库存流程。
+                </p>
+                <Button className="mt-4" onClick={() => navigate('/app/products')}>
+                  录入第一个商品
+                </Button>
+              </div>
+            )}
+          </CardContent>
+          </Card>
+
+          <OnboardingGuide />
+        </div>
+
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="border-b border-border pb-4">
+              <CardTitle className="text-sm font-medium text-muted-foreground">经营事实</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="grid grid-cols-2">
+                {facts.map((fact, index) => (
+                  <div
+                    key={fact.label}
+                    className={`px-5 py-4 ${index > 1 ? 'border-t border-border' : ''}`}
+                  >
+                    <p className="metric-number text-[24px] font-medium leading-none">{fact.value}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">{fact.label}</p>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
 
-      {/* ── 整店巡检（5.0 定时 Agent） ─────────────────────── */}
-      <StoreCheckSection timeAgo={timeAgo} />
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium">直接开始</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 p-2 pt-0">
+              {commands.map((command) => (
+                <button
+                  key={command.label}
+                  type="button"
+                  onClick={() => navigate(command.path)}
+                  className="flex w-full items-center gap-3 rounded px-3 py-2 text-left hover:bg-accent"
+                >
+                  <command.icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium">{command.label}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {command.detail}
+                    </span>
+                  </span>
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </section>
 
-      {/* ── AI 输入框（快捷指令） ──────────────────────────── */}
-      <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="p-4">
-          <div className="flex gap-2">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-              placeholder={'粘贴商品链接，或说「帮我算利润」...'}
-              className="flex-1 h-10 rounded-lg bg-black/10 dark:bg-black/30"
-            />
-            <Button onClick={handleSubmit} disabled={!input.trim() || agentMutation.isPending} className="h-10 px-4">
-              {agentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-            </Button>
-          </div>
-          <div className="flex gap-2 mt-2">
-            {['帮我算利润', '检查合规', '抓取商品'].map((hint) => (
-              <button
-                key={hint}
-                className="text-xs text-muted-foreground bg-background px-2 py-1 rounded-md border hover:bg-accent"
-                onClick={() => { setInput(hint); handleSubmit() }}
-              >
-                {hint}
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <section className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              AI 品类分析
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              输入品类名，分析市场容量、竞争格局和利润空间。
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="category-input"
+                value={categoryInput}
+                onChange={(e) => setCategoryInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
+                placeholder="例如：蓝牙耳机、瑜伽裤、智能手表…"
+                className="h-10 flex-1"
+              />
+              <Button size="sm" className="shrink-0 sm:h-10" onClick={handleAnalyze} disabled={analyzing}>
+                {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <TrendingUp className="mr-2 h-4 w-4" />}
+                AI 分析
+              </Button>
+            </div>
 
-      {/* Agent 结果 */}
+            {analyzing && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                AI 正在分析市场数据…
+              </div>
+            )}
+            {report && (
+              <div className="max-h-80 overflow-y-auto rounded border border-border bg-[var(--factory-ground)] p-3 text-xs leading-relaxed">
+                {report.slice(0, 2500).split('\n').map((line, i) => {
+                  if (!line.trim()) return <p key={i} className="my-1" />
+                  if (line.startsWith('# ')) return <p key={i} className="mt-3 text-sm font-semibold text-foreground">{line.replace('# ', '')}</p>
+                  if (line.startsWith('## ')) return <p key={i} className="mt-2 text-sm font-medium text-foreground">{line.replace('## ', '')}</p>
+                  if (line.startsWith('|')) return <p key={i} className="font-mono text-[11px] text-muted-foreground">{line}</p>
+                  if (line.match(/^\d+\./)) return <p key={i} className="ml-2 text-[11px] text-muted-foreground">{line}</p>
+                  if (line.startsWith('-')) return <p key={i} className="ml-2 text-[11px] text-muted-foreground">{line}</p>
+                  if (line.includes('**')) return <p key={i} className="text-[11px] text-foreground"><strong>{line.replace(/\*\*/g, '')}</strong></p>
+                  return <p key={i} className="text-[11px] text-muted-foreground">{line}</p>
+                })}
+                {report.length > 2500 && <p className="mt-2 text-[11px] text-muted-foreground">报告较长，已截取前 2500 字</p>}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Bot className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              AI 指令
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              粘贴商品链接，或直接描述要完成的经营任务。
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2">
+              <Input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+                placeholder="例如：帮我算利润、检查合规、抓取商品…"
+                className="h-10 flex-1"
+              />
+              <Button onClick={handleSubmit} disabled={!input.trim() || agentMutation.isPending} className="h-10 px-4">
+                {agentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+              </Button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {['帮我算利润', '检查合规', '抓取商品'].map((hint) => (
+                <button
+                  key={hint}
+                  type="button"
+                  className="rounded border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                  onClick={() => { setInput(hint); handleSubmit() }}
+                >
+                  {hint}
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
       {agentMutation.data && showAgentResult && (
         <AgentResult data={agentMutation.data} onClose={() => setShowAgentResult(false)} />
       )}
 
-      {/* ── 最近生成的图（CAP-07 图结果历史画廊）──────────── */}
-      <ImageHistoryGallery />
+      <section className="grid gap-4 xl:grid-cols-2">
+        <StoreCheckSection timeAgo={timeAgo} />
+        <ImageHistoryGallery />
+      </section>
 
       {/* ── 最近操作 ──────────────────────────────────────── */}
       <Card>

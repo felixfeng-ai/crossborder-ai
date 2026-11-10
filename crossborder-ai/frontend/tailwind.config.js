@@ -15,8 +15,9 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['"Fira Code"', 'ui-monospace', 'monospace'],
+        sans: ['var(--font-ui)'],
+        latin: ['var(--font-latin)'],
+        mono: ['var(--font-mono)'],
       },
       colors: {
         border: 'hsl(var(--border))',
@@ -52,26 +53,12 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
-        // 玻璃拟态（v2）
+        // 兼容历史 class 名称，统一映射到不透明石墨表面。
         glass: {
-          DEFAULT: 'var(--glass-bg)',
-          strong: 'var(--glass-bg-strong)',
-          border: 'var(--glass-border)',
-          highlight: 'var(--glass-highlight)',
-        },
-        // Brand colors
-        brand: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          800: '#3730a3',
-          900: '#312e81',
-          950: '#1e1b4b',
+          DEFAULT: 'hsl(var(--card))',
+          strong: 'hsl(var(--popover))',
+          border: 'hsl(var(--border))',
+          highlight: 'hsl(var(--accent))',
         },
       },
       borderRadius: {

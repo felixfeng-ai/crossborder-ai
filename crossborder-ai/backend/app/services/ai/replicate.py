@@ -10,6 +10,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.core.config import settings
+from app.services import provider_config
 
 REPLICATE_BASE_URL = "https://api.replicate.com/v1"
 
@@ -18,8 +19,16 @@ class ReplicateService:
     """Service for AI image generation via Replicate's FLUX model."""
 
     def __init__(self):
-        self.api_key = settings.REPLICATE_API_KEY
-        self.model = settings.REPLICATE_MODEL
+        self.api_key = provider_config.get(
+            "replicate",
+            "api_key",
+            settings.REPLICATE_API_KEY or "",
+        )
+        self.model = provider_config.get(
+            "replicate",
+            "model",
+            settings.REPLICATE_MODEL,
+        )
 
     def _build_headers(self) -> Dict[str, str]:
         return {

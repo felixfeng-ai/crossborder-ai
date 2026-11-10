@@ -1,8 +1,10 @@
-"""VeyaShip - Payment Service.
+"""VeyaShip 支付服务。
 
-Creem.io payment integration for subscription management.
+封装 Creem.io 结账、订阅管理和 webhook 验签。
 """
 
+import hashlib
+import hmac
 from typing import Any, Dict, Optional
 
 import httpx
@@ -11,10 +13,10 @@ from app.core.config import settings
 
 
 class PaymentService:
-    """Service for Creem.io payment integration.
+    """Creem.io 支付服务。
 
-    Handles checkout sessions, webhook verification,
-    subscription lifecycle, and invoice management.
+    核心安全边界：任何 webhook 都必须先完成 HMAC-SHA256 验签，
+    未配置密钥或签名异常时一律拒绝，不能降级为放行。
     """
 
     CREEM_API_URL = "https://api.creem.io/v1"
@@ -24,8 +26,9 @@ class PaymentService:
         self.webhook_secret = settings.CREEM_WEBHOOK_SECRET
 
     def _headers(self) -> Dict[str, str]:
+        # Creem 官方 API 使用 x-api-key，而不是通用的 Bearer Token。
         return {
-            "Authorization": f"Bearer {self.api_key}",
+            "x-api-key": self.api_key or "",
             "Content-Type": "application/json",
         }
 
@@ -73,24 +76,35 @@ class PaymentService:
             return response.json()
 
     async def verify_webhook(self, payload: bytes, signature: str) -> bool:
-        """Verify Creem.io webhook signature.
+        """校验 Creem.io webhook 签名。
 
         Args:
-            payload: Raw request body.
-            signature: Signature from the webhook header.
+            payload: 原始请求体字节，不能使用重新序列化后的 JSON。
+            signature: `creem-signature` 请求头中的十六进制签名。
 
         Returns:
-            True if the signature is valid.
+            签名合法返回 True；任何配置或格式异常均返回 False。
         """
-        # TODO: Implement HMAC verification with CREEM_WEBHOOK_SECRET
-        # import hmac, hashlib
-        # expected = hmac.new(
-        #     self.webhook_secret.encode(),
-        #     payload,
-        #     hashlib.sha256,
-        # ).hexdigest()
-        # return hmac.compare_digest(expected, signature)
-        return True
+        # 未配置密钥时必须 fail closed，避免伪造事件触发开通套餐或加积分。
+        if not self.webhook_secret or not signature:
+            return False
+
+        normalized = signature.strip().lower()
+        if len(normalized) != 64:
+            return False
+        try:
+            provided = bytes.fromhex(normalized)
+        except ValueError:
+            # 非十六进制签名直接拒绝，不能把格式错误当成验签通过。
+            return False
+
+        expected = hmac.new(
+            self.webhook_secret.encode("utf-8"),
+            payload,
+            hashlib.sha256,
+        ).digest()
+        # 固定时间比较，降低时序侧信道风险。
+        return hmac.compare_digest(expected, provided)
 
     async def cancel_subscription(self, creem_subscription_id: str) -> bool:
         """Cancel a subscription in Creem.io.

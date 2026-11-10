@@ -15,6 +15,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, PaginationParams
 from app.models.user import User
 from app.models.payment import Subscription, SubscriptionStatus, PaymentInvoice
+from app.services.payment import PaymentService
 from app.schemas.payment import (
     CreateCheckoutRequest,
     CreateCheckoutResponse,
@@ -165,11 +166,23 @@ async def handle_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Handle Creem.io webhook events (payment success, subscription updates)."""
-    payload = await request.json()
-    event_type = payload.get("type", "")
+    """处理 Creem.io webhook 事件。"""
+    # 必须使用原始字节验签；读取 JSON 后再序列化会改变空白和字段顺序，导致签名失效。
+    raw_body = await request.body()
+    signature = request.headers.get("creem-signature", "")
+    verifier = PaymentService()
+    if not await verifier.verify_webhook(raw_body, signature):
+        raise HTTPException(status_code=401, detail="Webhook 签名无效")
 
-    # NOTE: Validate webhook signature using CREEM_WEBHOOK_SECRET
+    try:
+        import json
+
+        payload = json.loads(raw_body)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Webhook 请求体格式错误")
+
+    # Creem 当前事件字段为 eventType，同时保留 type 兼容旧版测试数据。
+    event_type = payload.get("eventType") or payload.get("type", "")
 
     if event_type == "payment.succeeded":
         # Update subscription and add credits

@@ -154,6 +154,23 @@ async def test_auth_success_302_and_no_double_domain(client, monkeypatch):
     assert "state=" in location
 
 
+@pytest.mark.asyncio
+async def test_connect_returns_auth_url_without_exposing_jwt(client, monkeypatch):
+    """登录态 POST 换取授权 URL，前端不需要把 JWT 拼进跳转地址。"""
+    _configure(monkeypatch)
+    token, headers = await _register(client)
+    resp = await client.post(
+        "/api/v1/shopify/connect",
+        json={"shop": "mystore.myshopify.com"},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    auth_url = resp.json()["auth_url"]
+    assert auth_url.startswith("https://mystore.myshopify.com/admin/oauth/authorize?")
+    assert "mystore.myshopify.com.myshopify.com" not in auth_url
+    assert f"token={token}" not in auth_url
+
+
 # ── GET /callback 校验失败分支 ─────────────────────────────────
 
 @pytest.mark.asyncio

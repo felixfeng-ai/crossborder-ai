@@ -26,6 +26,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.config import settings
+from app.services import provider_config
 
 # DeepSeek API 基础地址
 # DeepSeek 是国内大模型，API 兼容 OpenAI 格式
@@ -55,14 +56,14 @@ class DeepSeekService:
         self.temperature = settings.DEEPSEEK_TEMPERATURE  # 如 0.7
         self.base_url = DEEPSEEK_BASE_URL
 
-    def _build_headers(self) -> Dict[str, str]:
+    def _build_headers(self, api_key: str | None = None) -> Dict[str, str]:
         """构建 HTTP 请求头
 
         Bearer Token 是 REST API 通用的认证方式：
         Authorization: Bearer <api-key>
         """
         return {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key or self.api_key}",
             "Content-Type": "application/json",
         }
 
@@ -114,6 +115,9 @@ class DeepSeekService:
         if persona_block:
             system_prompt = f"{persona_block}\n\n{system_prompt}"
 
+        api_key = provider_config.get("deepseek", "api_key", self.api_key or "")
+        model = provider_config.get("deepseek", "model", self.model)
+
         # httpx.AsyncClient 是异步 HTTP 客户端
         # 相比 requests 库，它不阻塞事件循环
         # with 语句确保请求完成后自动关闭连接
@@ -122,9 +126,9 @@ class DeepSeekService:
             # 这个接口兼容 OpenAI 的 API 格式
             response = await client.post(
                 f"{self.base_url}/chat/completions",
-                headers=self._build_headers(),
+                headers=self._build_headers(api_key),
                 json={
-                    "model": self.model,
+                    "model": model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
@@ -177,8 +181,10 @@ class DeepSeekService:
         Returns:
             dict: 包含 content（文本回复）和 tool_calls（要调用的工具）
         """
+        api_key = provider_config.get("deepseek", "api_key", self.api_key or "")
+        model = provider_config.get("deepseek", "model", self.model)
         body = {
-            "model": self.model,
+            "model": model,
             "messages": messages,
             "max_tokens": max_tokens,
         }
@@ -188,7 +194,7 @@ class DeepSeekService:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f"{self.base_url}/chat/completions",
-                headers=self._build_headers(),
+                headers=self._build_headers(api_key),
                 json=body,
             )
             response.raise_for_status()

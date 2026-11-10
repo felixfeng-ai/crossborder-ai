@@ -23,7 +23,7 @@ const FEATURES = [
   { icon: DollarSign, title: '利润自动计算', desc: 'AI 自动获取 1688 供货价，结合平台费率、运费、广告成本，算出真实净利润和利润率。' },
   { icon: Zap, title: 'AI 生成 Listing', desc: '确定商品后自动生成 Amazon / Shopify 的标题、描述、卖点、SEO，多语言翻译对照可查验。' },
   { icon: ShieldCheck, title: '整店巡检', desc: '每天凌晨自动检查店铺所有商品，标记缺标题、缺价格、缺链接的问题，自动生成待办清单。' },
-  { icon: ShoppingBag, title: 'Shopify 一键发布', desc: 'AI 生成内容后直接发布到绑定的 Shopify 店铺，支持 1688 → Shopify / Amazon 全自动上架。' },
+  { icon: ShoppingBag, title: 'Shopify 一键发布', desc: 'AI 生成内容并合规通过后，可直接发布到绑定的 Shopify 店铺；Amazon、Temu、SHEIN 当前支持文案生成。' },
 ]
 
 const PLATFORMS = ['Amazon', 'Shopify', 'eBay', 'Etsy', 'Temu', 'TikTok Shop', 'Walmart', 'AliExpress']
@@ -40,27 +40,23 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#0a0a0f]">
-      {/* 高级感背景：aurora 光晕（固定琥珀色）+ 细腻颗粒 */}
-      <div className="aurora-layer aurora-amber" aria-hidden />
-      <div className="grain" aria-hidden />
-
+    <div className="relative min-h-[100dvh] overflow-hidden bg-[var(--factory-ground)] text-foreground">
       {/* ── 导航 ────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 border-b border-glass-border bg-glass backdrop-blur-lg">
+      <header className="sticky top-0 z-50 border-b border-border bg-[var(--factory-side)]">
         <div className="max-w-5xl mx-auto flex items-center justify-between h-14 px-4 md:px-6">
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
-              <Globe className="h-3.5 w-3.5 text-white" />
+            <div className="flex h-7 w-7 items-center justify-center rounded border border-border bg-secondary">
+              <Globe className="h-3.5 w-3.5 text-foreground" />
             </div>
-            <span className="font-bold text-sm">VeyaShip AI</span>
+            <span className="text-sm font-semibold">VeyaShip</span>
           </div>
           <div className="flex items-center gap-2">
             {isLoggedIn ? (
-              <Button size="sm" onClick={() => navigate('/app/dashboard')} className="bg-amber-500 hover:bg-amber-600 text-white shadow-sm">进入应用</Button>
+              <Button size="sm" onClick={() => navigate('/app/dashboard')}>进入应用</Button>
             ) : (
               <>
-                <Button variant="ghost" size="sm" onClick={() => navigate('/login')} className="text-slate-500">登录</Button>
-                <Button size="sm" onClick={() => navigate('/register')} className="bg-amber-500 hover:bg-amber-600 text-white shadow-sm">免费注册</Button>
+                <Button variant="ghost" size="sm" onClick={() => navigate('/login')}>登录</Button>
+                <Button size="sm" onClick={() => navigate('/register')}>免费注册</Button>
               </>
             )}
           </div>
@@ -74,47 +70,47 @@ export default function LandingPage() {
             <motion.div variants={container} initial="hidden" animate="show" className="text-center space-y-7">
 
               <motion.div variants={item}>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3.5 py-1 text-xs font-medium text-amber-400">
+                <span className="inline-flex items-center gap-1.5 rounded border border-border bg-card px-3.5 py-1 text-xs font-medium text-muted-foreground">
                   <Sparkles className="h-3 w-3" /> 跨境电商 AI 决策引擎 · AI Agent 自动化
                 </span>
               </motion.div>
 
               <motion.div variants={item} className="space-y-4">
                 <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-[1.15]">
-                  <span className="text-slate-100">这个品能不能做？</span>
+                  <span className="text-foreground">这个品能不能做？</span>
                   <br />
-                  <span className="bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400 bg-clip-text text-transparent">
+                  <span className="text-foreground">
                     AI 帮你做跨境决策
                   </span>
                 </h1>
-                <p className="text-sm sm:text-base text-slate-500 max-w-lg mx-auto leading-relaxed">
+                <p className="mx-auto max-w-lg text-sm leading-relaxed text-muted-foreground sm:text-base">
                   说一句话，AI Agent 帮你从选品到上架一条龙完成：
                   <br />
-                  选品分析 → 生成 Listing → 合规检查 → 一键发布，每天自动巡检你的店铺。
+                  选品分析 → 生成 Listing → 合规检查 → Shopify 一键发布，每天自动巡检你的店铺。
                 </p>
               </motion.div>
 
               {/* AI 分析输入框（真实入口，分析在登录后运行） */}
               <motion.div variants={item} className="w-full max-w-xl mx-auto space-y-3">
-                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-1.5 shadow-sm">
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-1.5">
                   <input
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
                     placeholder="输入品类名，如：蓝牙耳机、瑜伽裤、智能手表..."
-                    className="flex-1 h-10 px-3 text-sm outline-none rounded-lg"
+                    className="h-10 flex-1 rounded bg-transparent px-3 text-sm outline-none"
                   />
                   <Button onClick={handleAnalyze} className="h-10 px-4 gap-1.5 shrink-0">
                     <Sparkles className="h-4 w-4" /> AI 分析
                   </Button>
                 </div>
-                <p className="text-xs text-slate-500">免费注册即可使用 · 输入品类运行真实 AI 市场分析</p>
+                <p className="text-xs text-muted-foreground">免费注册即可使用 · 输入品类运行真实 AI 市场分析</p>
               </motion.div>
 
-              <motion.div variants={item} className="flex items-center justify-center gap-5 text-xs text-slate-500">
-                <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-emerald-500" />无需信用卡</span>
-                <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-emerald-500" />无需配置 API</span>
-                <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-emerald-500" />注册即用</span>
+              <motion.div variants={item} className="flex flex-wrap items-center justify-center gap-5 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />无需信用卡</span>
+                <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />无需配置 API</span>
+                <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />注册即用</span>
               </motion.div>
 
               <motion.div variants={item} className="flex flex-wrap items-center justify-center gap-2 pt-2">
@@ -139,7 +135,7 @@ export default function LandingPage() {
               { icon: Sparkles, step: '03', title: 'AI 生成 Listing', desc: '自动写标题描述卖点' },
               { icon: ShoppingBag, step: '04', title: '一键上架', desc: '发布到 Shopify 店铺' },
             ].map((s, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08 }}
+              <motion.div key={i} initial={false}
                 className="text-center p-4 rounded-xl bg-white/5 border border-white/10 shadow-sm">
                 <div className="text-xs font-mono text-amber-400 mb-2">{s.step}</div>
                 <s.icon className="h-5 w-5 text-amber-400 mx-auto mb-2" />
@@ -156,7 +152,7 @@ export default function LandingPage() {
           <p className="text-sm text-slate-500 text-center mb-8">选品分析 → 利润测算 → Listing 生成 → 上架发布，一个平台完成</p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
             {FEATURES.map((f, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.04 }}
+              <motion.div key={i} initial={false}
                 className="rounded-xl bg-white/5 border border-white/10 p-5 hover:shadow-md transition-shadow">
                 <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center mb-3">
                   <f.icon className="h-4 w-4 text-amber-400" />
@@ -178,7 +174,7 @@ export default function LandingPage() {
               { prompt: '"把这款 1688 商品上架到 Shopify"', steps: '抓取商品 → 翻译 → 生成 Listing → 合规检查 → 一键发布' },
               { prompt: '"检查一下我的店铺"', steps: '整店巡检 → 找出缺信息的问题商品 → 生成待办清单' },
             ].map((c, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08 }}
+              <motion.div key={i} initial={false}
                 className="rounded-xl bg-white/5 border border-white/10 p-5">
                 <div className="flex items-start gap-2">
                   <Bot className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
@@ -197,7 +193,7 @@ export default function LandingPage() {
           <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">看看 AI 生成的效果</h2>
           <p className="text-sm text-slate-500 text-center mb-8">AI 分析品类数据 → 给出选品建议 → 生成 Listing</p>
           <div className="grid md:grid-cols-2 gap-4">
-            <motion.div initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
+            <motion.div initial={false}
               className="rounded-xl border border-white/10 bg-white/5 p-4 shadow-sm">
               <div className="text-xs font-medium text-slate-500 mb-3 uppercase tracking-wide">1688 商品信息</div>
               <div className="space-y-2 text-sm">
@@ -211,7 +207,7 @@ export default function LandingPage() {
                 </div>
               </div>
             </motion.div>
-            <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
+            <motion.div initial={false}
               className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-xs font-medium text-amber-400 uppercase tracking-wide">AI 生成的 Amazon Listing</div>
@@ -237,7 +233,7 @@ export default function LandingPage() {
           <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">简单透明的定价</h2>
           <p className="text-sm text-slate-500 text-center mb-8">免费开始，按需升级</p>
           <div className="grid md:grid-cols-3 gap-4">
-            <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+            <motion.div initial={false}
               className="rounded-xl border border-white/10 bg-white/5 p-6">
               <h3 className="font-semibold text-slate-100">免费版</h3>
               <p className="text-2xl font-bold text-slate-100 mt-2">¥0<span className="text-sm font-normal text-slate-500">/月</span></p>
@@ -249,7 +245,7 @@ export default function LandingPage() {
               </ul>
               <Button size="sm" onClick={() => navigate(isLoggedIn ? '/app/dashboard' : '/register')} className="w-full mt-6">{isLoggedIn ? '进入应用' : '免费开始'}</Button>
             </motion.div>
-            <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.05 }}
+            <motion.div initial={false}
               className="rounded-xl border-2 border-amber-500/30 bg-amber-500/10 p-6 relative">
               <div className="absolute -top-2.5 right-4 bg-amber-500 text-white text-xs px-3 py-0.5 rounded-full">推荐</div>
               <h3 className="font-semibold text-slate-100">Standard</h3>
@@ -262,7 +258,7 @@ export default function LandingPage() {
               </ul>
               <Button size="sm" onClick={() => navigate(isLoggedIn ? '/app/dashboard' : '/register')} className="w-full mt-6">{isLoggedIn ? '进入应用' : '选择 Standard'}</Button>
             </motion.div>
-            <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }}
+            <motion.div initial={false}
               className="rounded-xl border border-white/10 bg-white/5 p-6">
               <h3 className="font-semibold text-slate-100">Professional</h3>
               <p className="text-2xl font-bold text-slate-100 mt-2">¥249<span className="text-sm font-normal text-slate-500">/月</span></p>
@@ -296,10 +292,10 @@ export default function LandingPage() {
 
         {/* ── CTA ──────────────────────────────────────────── */}
         <section className="max-w-lg mx-auto px-4 py-16 text-center">
-          <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-            className="rounded-2xl bg-gradient-to-br from-amber-500/15 via-white/5 to-orange-500/15 border border-white/10 p-8 space-y-4">
-            <h2 className="text-lg font-semibold text-slate-100">开始免费使用</h2>
-            <p className="text-sm text-slate-500">无需信用卡，无需配置 API Key</p>
+          <motion.div initial={false}
+            className="space-y-4 rounded-lg border border-border bg-card p-8">
+            <h2 className="text-lg font-semibold text-foreground">开始免费使用</h2>
+            <p className="text-sm text-muted-foreground">无需信用卡，无需配置 API Key</p>
             <Button size="lg" onClick={() => navigate(isLoggedIn ? '/app/dashboard' : '/register')} className="h-11 px-6 text-sm gap-1.5 shadow-sm">
               {isLoggedIn ? '进入应用' : '创建免费账号'} <ArrowRight className="h-3.5 w-3.5" />
             </Button>
@@ -307,7 +303,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className="relative z-10 border-t border-white/10 py-6 text-center text-xs text-slate-500 space-y-1">
+      <footer className="relative z-10 space-y-1 border-t border-border py-6 text-center text-xs text-muted-foreground">
         <p>© 2026 VeyaShip AI. All rights reserved.</p>
       </footer>
     </div>

@@ -77,6 +77,21 @@ async def execute_agent_task(task_id) -> None:
                         steps=json.dumps(result.get("steps", []), ensure_ascii=False),
                     ))
 
+            result_status = result.get("status", "success")
+            if result_status in ("partial", "failed"):
+                task.result = json.dumps({
+                    "summary": result.get("summary", ""),
+                    "steps": result.get("steps", []),
+                    "status": result_status,
+                    "conversation_id": str(conv_id) if conv_id else "",
+                }, ensure_ascii=False)
+                task.status = result_status
+                task.error = result.get("summary", "") if result_status == "failed" else None
+                task.finished_at = now
+                await db.commit()
+                logger.info("Agent 任务 %s 结束（%s），未扣积分", task.id, result_status)
+                return
+
             # 成功才扣积分（幂等：每个任务只扣一次；行级锁防并发扣超）
             try:
                 await user.deduct_credits(db, task.cost)

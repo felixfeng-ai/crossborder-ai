@@ -130,6 +130,15 @@ class _FakeOrchestrator:
         return {"summary": "工作流完成", "status": "success", "steps": []}
 
 
+class _PartialOrchestrator(_FakeOrchestrator):
+    async def run(self, instruction):
+        return {
+            "summary": "部分完成",
+            "status": "partial",
+            "steps": [{"action": "scrape_1688", "status": "failed", "error": "抓取失败"}],
+        }
+
+
 @pytest.mark.asyncio
 async def test_execute_agent_task_success(monkeypatch):
     """执行器成功：助手消息落库、标题生成、扣 1 分、任务 succeeded。"""
@@ -199,6 +208,40 @@ async def test_execute_agent_task_insufficient_credits(monkeypatch):
         t = (await db.execute(select(AgentTask).where(AgentTask.id == task_id))).scalar_one()
         assert t.status == "failed"
         assert "积分不足" in (t.error or "")
+
+
+@pytest.mark.asyncio
+async def test_execute_agent_task_partial_does_not_charge(monkeypatch):
+    """部分完成不能伪装成 succeeded，也不应扣整单积分。"""
+    engine, factory = _make_static_factory()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    monkeypatch.setattr(exe, "async_session_factory", factory)
+    monkeypatch.setattr(exe, "AgentOrchestrator", _PartialOrchestrator)
+
+    async with factory() as db:
+        user = User(email="task-partial@test.com", username="partial", password_hash="x", credits=30)
+        db.add(user)
+        await db.flush()
+        task = AgentTask(
+            user_id=user.id,
+            task_type="agent_run",
+            status="running",
+            input=json.dumps({"instruction": "抓取商品", "conversation_id": ""}, ensure_ascii=False),
+            cost=1,
+        )
+        db.add(task)
+        await db.commit()
+        task_id = task.id
+        user_id = user.id
+
+    await exe.execute_agent_task(task_id)
+
+    async with factory() as db:
+        task_now = (await db.execute(select(AgentTask).where(AgentTask.id == task_id))).scalar_one()
+        user_now = (await db.execute(select(User).where(User.id == user_id))).scalar_one()
+        assert task_now.status == "partial"
+        assert user_now.credits == 30
 
 
 # ── 调度器抢占 + 僵尸任务恢复 ──────────────────────────────────

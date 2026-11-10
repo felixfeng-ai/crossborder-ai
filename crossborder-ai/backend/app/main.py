@@ -22,7 +22,7 @@ from app.core.observability import (
     setup_logging,
 )
 from app.models.user import InsufficientCreditsError
-from app.routers import auth, users, products, content, images, billing, shopify, batch, radar, ledger, analytics, agent
+from app.routers import auth, users, products, content, images, billing, shopify, batch, radar, ledger, analytics, agent, listings, platforms, product_variants
 from app.routers import settings as settings_router
 
 # ── 日志配置（可观测性：所有日志自动携带 request_id）──────────
@@ -89,6 +89,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         print("[VeyaShip] WARNING: JWT_SECRET_KEY 未设置！请在 .env 中配置")
 
     await init_db()
+    from app.services import provider_config
+    from app.core.database import async_session_factory
+    async with async_session_factory() as db:
+        await provider_config.refresh(db)
     print(f"[VeyaShip] Database ready ({'SQLite' if settings.USE_SQLITE else 'PostgreSQL'})")
 
     # 启动定时任务
@@ -195,6 +199,9 @@ app.include_router(radar.router, prefix=API_PREFIX)
 app.include_router(ledger.router, prefix=API_PREFIX)
 app.include_router(analytics.router, prefix=API_PREFIX)
 app.include_router(agent.router, prefix=API_PREFIX)
+app.include_router(listings.router, prefix=API_PREFIX)
+app.include_router(platforms.router, prefix=API_PREFIX)
+app.include_router(product_variants.router, prefix=API_PREFIX)
 
 
 # --- Health Check ---

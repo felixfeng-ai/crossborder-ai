@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { LogOut, User, Settings, CreditCard, ChevronDown, Globe, Palette, Store } from 'lucide-react'
+import { LogOut, Settings, CreditCard, ChevronDown, Globe, Store, Menu } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -16,25 +15,23 @@ import { useAuthStore } from '@/stores/authStore'
 import { useStoreStore } from '@/stores/storeStore'
 import { Badge } from '@/components/ui/badge'
 import apiClient from '@/api/client'
-import { themes, getTheme, applyTheme, Theme } from '@/utils/themes'
 
 const LANGUAGES = [
-  { code: 'en', label: 'English', flag: '🇺🇸' },
-  { code: 'zh', label: '中文', flag: '🇨🇳' },
-  { code: 'ja', label: '日本語', flag: '🇯🇵' },
-  { code: 'ko', label: '한국어', flag: '🇰🇷' },
-  { code: 'es', label: 'Español', flag: '🇪🇸' },
-  { code: 'fr', label: 'Français', flag: '🇫🇷' },
-  { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
-  { code: 'pt', label: 'Português', flag: '🇧🇷' },
-  { code: 'ru', label: 'Русский', flag: '🇷🇺' },
+  { code: 'en', label: 'English' },
+  { code: 'zh', label: '中文' },
+  { code: 'ja', label: '日本語' },
+  { code: 'ko', label: '한국어' },
+  { code: 'es', label: 'Español' },
+  { code: 'fr', label: 'Français' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'pt', label: 'Português' },
+  { code: 'ru', label: 'Русский' },
 ]
 
-export function Header() {
+export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
-  const [currentTheme, setCurrentTheme] = useState<Theme>(getTheme)
   const { stores, currentStoreId, setStores, setCurrentStore } = useStoreStore()
 
   // 加载店铺列表
@@ -54,11 +51,6 @@ export function Header() {
     retry: false,
   })
 
-  const switchTheme = (theme: Theme) => {
-    setCurrentTheme(theme)
-    applyTheme(theme)
-  }
-
   const currentLang = LANGUAGES.find((l) => l.code === i18n.language) || LANGUAGES[0]
 
   const switchLanguage = (code: string) => {
@@ -75,10 +67,24 @@ export function Header() {
   const avatarLetter = displayName.charAt(0).toUpperCase()
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-glass-border bg-glass backdrop-blur-xl px-4 lg:px-6">
+    <header className="flex h-[58px] shrink-0 items-center justify-between border-b border-border bg-[var(--factory-side)] px-4 lg:px-6">
       {/* Left */}
-      <div className="flex items-center gap-2">
-        <h1 className="text-lg font-semibold" />
+      <div className="flex min-w-0 items-center gap-3">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden"
+          onClick={onOpenMenu}
+          aria-label="打开导航"
+        >
+          <Menu className="h-4 w-4" />
+        </Button>
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-medium leading-5">跨境决策台</p>
+          <p className="hidden truncate text-[11px] leading-4 text-muted-foreground sm:block">
+            商品、内容、库存与渠道的统一工作区
+          </p>
+        </div>
       </div>
 
       {/* Right */}
@@ -88,7 +94,7 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="flex items-center gap-1.5 px-2 text-muted-foreground">
               <Globe className="h-4 w-4" />
-              <span className="hidden text-xs md:inline-block">{currentLang.flag} {currentLang.label}</span>
+              <span className="hidden text-xs md:inline-block">{currentLang.label}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
@@ -102,33 +108,7 @@ export function Header() {
                 className={i18n.language === lang.code ? 'bg-accent font-medium' : ''}
                 onClick={() => switchLanguage(lang.code)}
               >
-                <span className="mr-2">{lang.flag}</span>
                 {lang.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* Theme Switcher */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="flex items-center gap-1.5 px-2 text-muted-foreground">
-              <Palette className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-36">
-            <DropdownMenuLabel className="text-xs text-muted-foreground">主题</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {themes.map((theme) => (
-              <DropdownMenuItem
-                key={theme.name}
-                className={currentTheme.name === theme.name ? 'bg-accent font-medium' : ''}
-                onClick={() => switchTheme(theme)}
-              >
-                <span className="w-3 h-3 rounded-full mr-2 inline-block border" style={{
-                  background: `hsl(${theme.colors['--primary']})`,
-                }} />
-                {theme.label}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -164,7 +144,7 @@ export function Header() {
 
         {/* Credits badge */}
         {user && (
-          <Badge variant="secondary" className="gap-1 px-2 py-1 text-xs whitespace-nowrap">
+          <Badge variant="secondary" className="metric-number gap-1 px-2 py-1 text-xs">
             <CreditCard className="h-3 w-3" />
             <span>{user.credits_remaining}</span>
             <span className="hidden sm:inline">{t('header.credits')}</span>
@@ -175,7 +155,7 @@ export function Header() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+              <div className="metric-number flex h-7 w-7 items-center justify-center rounded border border-border bg-secondary text-[11px] font-medium text-foreground">
                 {avatarLetter}
               </div>
               <span className="hidden text-sm font-medium md:inline-block max-w-[120px] truncate">

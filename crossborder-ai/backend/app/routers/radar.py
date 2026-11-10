@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.services.scraper import scrape_1688
+from app.services import provider_config
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/radar", tags=["竞品分析"])
@@ -29,20 +30,12 @@ async def scrape_competitor(
     供卖家做竞品对比分析。
     """
     try:
-        from app.core.crypto import decrypt_value
-        from app.models.system_config import SystemConfig
-        from sqlalchemy import select
-
-        config_rows = await db.execute(
-            select(SystemConfig).where(SystemConfig.key.in_(["onebound_api_key", "onebound_api_secret"]))
-        )
-        # 密文解密后传给抓取器（设置页写入时已加密）
-        sys_config = {row.key: decrypt_value(row.value or "") for row in config_rows.scalars().all()}
-
+        await provider_config.refresh(db)
         data = await scrape_1688(
             url,
-            api_key=sys_config.get("onebound_api_key", ""),
-            api_secret=sys_config.get("onebound_api_secret", ""),
+            justone_token=provider_config.get("justone", "token"),
+            api_key=provider_config.get("onebound", "api_key"),
+            api_secret=provider_config.get("onebound", "api_secret"),
         )
         return {"competitor": data}
     except Exception as e:

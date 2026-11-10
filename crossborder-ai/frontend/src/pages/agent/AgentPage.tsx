@@ -68,7 +68,7 @@ async function pollTaskStatus(taskId: string): Promise<any> {
   for (;;) {
     const r = await apiClient.get(`/agent/tasks/${taskId}`)
     const t = r.data
-    if (t.status === 'succeeded') return t
+    if (t.status === 'succeeded' || t.status === 'partial') return t
     if (t.status === 'failed') throw new Error(t.error || '任务执行失败，请重试')
     if (Date.now() >= deadline) throw new Error('任务执行超时，请稍后到对话历史查看结果')
     await new Promise((resolve) => setTimeout(resolve, TASK_POLL_INTERVAL_MS))

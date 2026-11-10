@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crossborder-ai/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "crossborder-ai/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+jobs:
+  backend-sqlite:
+    name: Backend SQLite Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: crossborder-ai/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: crossborder-ai/backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run backend tests
+        run: python -m pytest -q
+
+  postgres-gate:
+    name: PostgreSQL Production Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: veyaship_ci
+          POSTGRES_USER: veyaship
+          POSTGRES_PASSWORD: veyaship_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U veyaship -d veyaship_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: crossborder-ai/backend
+    env:
+      DATABASE_URL: postgresql+asyncpg://veyaship:veyaship_ci_password@localhost:5432/veyaship_ci
+      POSTGRES_TEST_URL: postgresql+asyncpg://veyaship:veyaship_ci_password@localhost:5432/veyaship_ci
+      USE_SQLITE: "false"
+      JWT_SECRET_KEY: ci-only-jwt-secret
+      SECRET_KEY: ci-only-app-secret
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: crossborder-ai/backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Apply migrations
+        run: python -m alembic upgrade head
+      - name: Verify migration head
+        run: python -m alembic heads
+      - name: Run PostgreSQL gates
+        run: python -m pytest tests/test_postgres_gate.py -q
+
+  frontend:
+    name: Frontend Typecheck And Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: crossborder-ai/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: crossborder-ai/frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npx tsc -p tsconfig.tscheck.json --noEmit
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Check miniprogram syntax
+        working-directory: crossborder-ai
+        run: |
+          node --check miniprogram/utils/api.js
+          node --check miniprogram/pages/agent/agent.js

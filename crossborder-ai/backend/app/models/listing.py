@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -37,11 +38,16 @@ class Listing(Base):
     __tablename__ = "listings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    owner_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    owner_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
-    product_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("products.id", ondelete="SET NULL"), nullable=True
+    product_id: Mapped[Optional[UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     # --- Platform ---
@@ -95,8 +101,9 @@ class Listing(Base):
     )
 
     # --- Relationships ---
-    owner = relationship("User", back_populates="listings")
-    product = relationship("Product", back_populates="listings")
+    # 旧 Listing 模型只保留正向关系；反向集合统一由新的 ListingDraft 承担。
+    owner = relationship("User")
+    product = relationship("Product")
     variants = relationship(
         "ListingVariant", back_populates="listing", cascade="all, delete-orphan"
     )

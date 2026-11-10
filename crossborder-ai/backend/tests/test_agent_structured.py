@@ -5,8 +5,14 @@
 2. LLM 返回乱文本 → structured 为 None，report 为原始文本兜底（fail-open，不抛异常）
 """
 
-import pytest
+from uuid import UUID
 
+import pytest
+from sqlalchemy import select
+
+from app.models.listing_draft import ListingDraft
+from app.models.product import Product
+from app.models.user import User
 from app.services.ai.agent_orchestrator import (
     AgentOrchestrator,
     _extract_json,
@@ -68,6 +74,112 @@ def test_render_report_markdown_always_valid():
     assert "候选商品" in md
     assert "| 开放式不入耳挂脖耳机 |" in md
     assert "**开放式不入耳挂脖耳机**" in md
+
+
+def test_function_calling_tools_cover_full_listing_chain():
+    """自然语言 Agent 必须能调用建商品和发布，而不只是分析工具。"""
+    names = {
+        tool["function"]["name"]
+        for tool in AgentOrchestrator.TOOLS
+    }
+    assert "scrape_1688" in names
+    assert "create_product" in names
+    assert "generate_listing" in names
+    assert "compliance_check" in names
+    assert "push_to_shopify" in names
+
+
+@pytest.mark.asyncio
+async def test_run_react_reports_failed_tool_result(monkeypatch):
+    """工具全部失败时，即使模型最后返回文本也不能标记 success。"""
+    orch = make_orchestrator()
+    responses = [
+        {
+            "content": "",
+            "tool_calls": [{
+                "id": "call-1",
+                "type": "function",
+                "function": {"name": "calculate_profit", "arguments": "{}"},
+            }],
+        },
+        {"content": "任务结束", "tool_calls": []},
+    ]
+
+    async def fake_chat(messages, tools=None, max_tokens=2000):
+        return responses.pop(0)
+
+    async def fake_execute(action, params):
+        return {"action": action, "status": "failed", "error": "工具失败"}
+
+    monkeypatch.setattr(orch.llm, "chat_with_tools", fake_chat)
+    monkeypatch.setattr(orch, "_execute_step", fake_execute)
+
+    result = await orch.run_react("算利润")
+
+    assert result["status"] == "failed"
+    assert result["steps"][0]["error"] == "工具失败"
+
+
+@pytest.mark.asyncio
+async def test_agent_generate_listing_persists_canonical_draft(
+    db_session,
+    monkeypatch,
+):
+    async def fake_generate(self, system_prompt, user_prompt, **kwargs):
+        return "Premium wireless earbuds with long battery life."
+
+    monkeypatch.setattr(DeepSeekService, "generate", fake_generate)
+    user = User(email="agent-listing@test.com", username="agent-listing", password_hash="x")
+    db_session.add(user)
+    await db_session.flush()
+    product = Product(
+        user_id=user.id,
+        url="https://detail.1688.com/offer/agent-listing.html",
+        title="Agent Listing 商品",
+        price=19.9,
+    )
+    db_session.add(product)
+    await db_session.flush()
+
+    orch = AgentOrchestrator(user=user, db=db_session)
+    result = await orch._do_generate_listing({
+        "product_id": str(product.id),
+        "platform": "amazon",
+        "language": "en",
+    })
+
+    assert result["status"] == "success"
+    assert result["data"]["listing_id"]
+    assert result["data"]["compliance_status"] == "pass"
+    listing = (
+        await db_session.execute(
+            select(ListingDraft).where(ListingDraft.id == UUID(result["data"]["listing_id"]))
+        )
+    ).scalar_one()
+    assert listing.user_id == user.id
+    assert listing.product_id == product.id
+    assert listing.title == result["data"]["title"]
+
+
+@pytest.mark.asyncio
+async def test_agent_cannot_generate_from_other_users_product(db_session):
+    owner = User(email="agent-owner@test.com", username="owner", password_hash="x")
+    intruder = User(email="agent-intruder@test.com", username="intruder", password_hash="x")
+    db_session.add_all([owner, intruder])
+    await db_session.flush()
+    product = Product(
+        user_id=owner.id,
+        url="https://detail.1688.com/offer/agent-owned.html",
+        title="别人的商品",
+    )
+    db_session.add(product)
+    await db_session.flush()
+
+    orch = AgentOrchestrator(user=intruder, db=db_session)
+    result = await orch._do_generate_listing({"product_id": str(product.id)})
+
+    assert result["status"] == "failed"
+    assert "商品不存在" in result["error"]
 
 
 # ── 工具方法测试（monkeypatch DeepSeekService.generate） ──────

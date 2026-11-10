@@ -50,7 +50,7 @@ export default function ImageHistoryGallery() {
     return (
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted/60 text-muted-foreground">
+          <span className="flex h-10 w-10 items-center justify-center rounded bg-muted text-muted-foreground">
             <Image className="h-5 w-5" />
           </span>
           <div>
@@ -93,7 +93,7 @@ export default function ImageHistoryGallery() {
                   key={item.id}
                   type="button"
                   onClick={() => setPreview(url)}
-                  className="group relative aspect-square overflow-hidden rounded-xl border bg-muted/30 text-left transition-all hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="group relative aspect-square overflow-hidden rounded border border-border bg-muted text-left focus:outline-none focus:ring-2 focus:ring-ring"
                 >
                   <img
                     src={url}
@@ -141,7 +141,7 @@ export default function ImageHistoryGallery() {
             <img
               src={preview}
               alt="放大预览"
-              className="max-h-[85vh] w-full rounded-xl border border-glass-border bg-black object-contain"
+              className="max-h-[85vh] w-full rounded-lg border border-border bg-[var(--factory-ground)] object-contain"
             />
             <Button
               variant="ghost"

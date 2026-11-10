@@ -60,6 +60,20 @@ class SchedulerService:
             replace_existing=True,
         )
 
+        self.scheduler.add_job(
+            self._dispatch_image_tasks,
+            IntervalTrigger(seconds=5),
+            id="dispatch_image_tasks",
+            replace_existing=True,
+        )
+
+        self.scheduler.add_job(
+            self._refresh_provider_cache,
+            IntervalTrigger(seconds=10),
+            id="refresh_provider_cache",
+            replace_existing=True,
+        )
+
         self.scheduler.start()
         print("[Scheduler] started with all jobs registered")
 
@@ -238,3 +252,72 @@ class SchedulerService:
             await execute_agent_task(task.id)
         except Exception as e:
             print(f"[Scheduler] Agent 任务执行异常：{e}")
+
+    # ── 图片持久化任务队列 ──────────────────────────────────────
+    async def _dispatch_image_tasks(self):
+        """抢占并分发图片任务。
+
+        跨进程锁只覆盖数据库抢占阶段，真正的图片生成在锁外并发执行，
+        避免慢请求长期占用 advisory lock。
+        """
+        claimed = await self._run_with_lock(
+            "dispatch_image_tasks",
+            self._claim_image_tasks,
+        )
+        if claimed:
+            await asyncio.gather(
+                *[self._execute_claimed_image_task(task.id) for task in claimed]
+            )
+
+    async def _claim_image_tasks(self):
+        """抢占 pending 图片任务，并恢复进程崩溃后遗留的 processing 任务。"""
+        from app.models.image_generation_task import ImageGenerationTask
+
+        async with async_session_factory() as db:
+            now = datetime.now(timezone.utc)
+            result = await db.execute(
+                select(ImageGenerationTask)
+                .where(ImageGenerationTask.status == "pending")
+                .order_by(ImageGenerationTask.created_at)
+                .limit(4)
+                .with_for_update()
+            )
+            claimed = result.scalars().all()
+            for task in claimed:
+                task.status = "processing"
+                task.attempts += 1
+                task.started_at = now
+
+            # started_at 超过 10 分钟视为 worker 已失联；重试 3 次后终止。
+            stale_result = await db.execute(
+                select(ImageGenerationTask).where(
+                    ImageGenerationTask.status == "processing",
+                    ImageGenerationTask.started_at < now - timedelta(minutes=10),
+                )
+            )
+            for task in stale_result.scalars().all():
+                if task.attempts >= 3:
+                    task.status = "failed"
+                    task.error = "执行超时，任务已终止，请重试"
+                    task.finished_at = now
+                else:
+                    task.status = "pending"
+                    task.started_at = None
+
+            await db.commit()
+            return claimed
+
+    async def _execute_claimed_image_task(self, task_id):
+        from app.services.image_task_executor import execute_image_generation_task
+
+        try:
+            await execute_image_generation_task(task_id)
+        except Exception as exc:
+            print(f"[Scheduler] 图片任务执行异常：{exc}")
+
+    async def _refresh_provider_cache(self):
+        """周期刷新服务商配置缓存，保证多 worker 在 10 秒内最终一致。"""
+        from app.services import provider_config
+
+        async with async_session_factory() as db:
+            await provider_config.refresh(db)

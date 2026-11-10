@@ -16,15 +16,16 @@
 
 |                            | 说明                                                                                                     |
 | -------------------------- | -------------------------------------------------------------------------------------------------------- |
-| **对话即操作**             | ReAct + Function Calling，9 个工具可被自动编排；说人话就是操作，不用学菜单在哪                              |
+| **对话即操作**             | ReAct + Function Calling，12 个工具可被自动编排；说人话就是操作，不用学菜单在哪                             |
 | **合规是闭环，不是提示**   | 违禁词 / 极限词 / 品牌禁词「正则 + AI」双层拦截，**生成后再校验一次**，命中即拦下并告诉你改了什么           |
 | **卖家零配置**             | 数据能力（1688 抓取等）由平台侧开通，注册即用；卖家不需要装环境、不需要申请或填写任何服务商密钥              |
 
 ### 能力地图
 
-- **1688 抓取** —— 粘贴链接抓商品，Onebound 接口优先、失败自动降级直抓，返回标注数据来源
+- **1688 抓取** —— 粘贴链接抓商品，Just One API 优先，失败降级 Onebound 与直抓，返回标注数据来源
 - **品类分析** —— 锚定 Amazon US，看市场容量与竞争格局，回答「这个品能不能做」
 - **选品决策 + 净利计算** —— 成本 / 运费 / 平台佣金一起算，选品不靠感觉
+- **SKU / 变体管理** —— 商品下维护颜色、尺寸、售价、成本、库存、条码和变体图片
 - **Listing 生成** —— 标题、五点、描述、SEO 元数据，适配 Amazon / Shopify / eBay，可按 17 种目标市场语言产出
 - **合规审查** —— 生成后自动复检，命中违禁词直接拦下
 - **品牌调性 Brand Kit** —— 填一次调性，之后每条文案、每张图都按同一套品牌风格产出
@@ -33,7 +34,7 @@
 - **Shopify 全链路** —— OAuth 授权、多渠道切换、一键发布、订单查看、自动退款
 - **整店巡检** —— 每天凌晨自动巡检全店商品 + 看板手动巡检 + 历史记录
 - **竞品雷达** —— 多竞品对比
-- **AI Agent** —— ReAct 推理循环、9 个工具、6 个预设工作流、生成后自我反思（质量不过关自动重做）
+- **AI Agent** —— ReAct 推理循环、12 个工具、6 个预设工作流、生成后自我反思（质量不过关自动重做）
 - **积分与套餐** —— 消耗式计费，每次 AI 生成 / 抓取扣 1 分；升级申请 + 后台审批
 - **双端** —— Web 全功能，微信小程序端覆盖高频查看场景
 
@@ -53,7 +54,7 @@
 | 小程序 | 微信小程序原生 —— 只做轻量高频场景（品类分析 / 利润计算 / AI 对话 / 订单查看）                             |
 | 数据库 | PostgreSQL 16（生产） / SQLite（本地开发，`USE_SQLITE=true`）                                             |
 | AI     | DeepSeek（文本 / Function Calling）· 阿里云通义万相（图片）· Replicate FLUX（降级）· LangGraph（编排）     |
-| 数据源 | Onebound API（1688）· 直抓降级链路 · BeautifulSoup 解析                                                  |
+| 数据源 | Just One API（1688 优先）· Onebound 降级 · 直抓链路 · BeautifulSoup 解析                                 |
 | 交付   | Nginx · systemd · GitHub Actions（push `main` 自动部署）                                                  |
 
 ---
@@ -91,7 +92,25 @@ npm run dev                         # http://localhost:5173
 
 ```bash
 cd backend
-pytest -q                           # 17 个测试文件 / 119 个用例
+pytest -q                           # 28 个测试文件；本地 174 passed + 4 PostgreSQL gates skipped
+```
+
+前端 Vitest：
+
+```bash
+cd frontend
+npm test
+```
+
+真实 PostgreSQL 门禁：
+
+```bash
+cd backend
+$env:DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/veyaship_ci"
+$env:JWT_SECRET_KEY="local-ci-secret"
+python -m alembic upgrade head
+$env:POSTGRES_TEST_URL=$env:DATABASE_URL
+python -m pytest tests/test_postgres_gate.py -q
 ```
 
 ---
@@ -111,7 +130,7 @@ backend/                      FastAPI 服务
     crawler/                  1688 / Shopify 采集
     scraper.py                1688 多级抓取核心（接口优先 + 直抓降级）
     scheduler.py              APScheduler 定时任务（整店巡检等）
-  tests/                      17 个测试文件 / 119 个用例
+  tests/                      28 个测试文件（含 PostgreSQL gate）
   migrations/                 Alembic 迁移
 frontend/                     React SPA
   src/pages/                  17 个页面：Dashboard / Products / Content / Images / Agent /
@@ -144,9 +163,9 @@ cicd-deploy.sh                服务器端自动部署脚本
 
 几条贯穿全局的设计约束，改代码时请留意：
 
-1. **平台侧配置，用户侧无感** —— 第三方 Key（DeepSeek / 通义万相 / Onebound）由平台在设置页配置，改动即时生效，**不改文件、不重启服务**；卖家界面永不出现 `.env`、路径与 API Key。
+1. **平台侧配置，用户侧无感** —— 第三方 Key（DeepSeek / 通义万相 / Just One / Onebound）由平台在设置页配置，改动即时生效，**不改文件、不重启服务**；卖家界面永不出现 `.env`、路径与 API Key。
 2. **错误信息给卖家看，不给机器看** —— 抓取失败要有稳定错误码 + 中文可读建议（换链接 / 重试 / 手动录入），不允许把英文异常裸抛到前端。
-3. **外部依赖必须有降级** —— 1688 抓取「接口 → 直抓」、出图「通义万相 → Replicate」，降级要在响应里标注 `data_source`，让问题可归因。
+3. **外部依赖必须有降级** —— 1688 抓取「Just One → Onebound → 直抓」、出图「通义万相 → Replicate」，降级要在响应里标注 `data_source`，让问题可归因。
 4. **合规是生成后的第二道闸** —— 违禁词拦截不只在输入侧，生成结果必须再过一次，命中即拦。
 5. **定时任务与请求会话隔离** —— 调度器与后台任务各自持有独立 session，绝不共享请求级会话。
 6. **积分扣减走行级锁** —— 并发扣减用 `select_for_update()`，防止余额被扣穿。
@@ -183,7 +202,8 @@ cicd-deploy.sh                服务器端自动部署脚本
 
 - 后端 78 个 Python 文件 / 约 11,700 行；前端 51 个 TS/TSX 文件 / 约 7,200 行
 - 15 张表 · 13 个路由模块 · 17 个前端页面 · 微信小程序 7 个页面
-- 17 个测试文件 / 119 个用例（pytest）
+- 28 个测试文件：本地 174 passed + 4 PostgreSQL gate skipped
+- 前端 Vitest：5 个测试文件 / 17 个用例
 - Agent 已完成 4.2 自我反思与 5.0 整店巡检闭环；下一步为价格监控 / 销量预警
 - 生产已上线：<https://veyaship.com>
 
@@ -191,9 +211,9 @@ cicd-deploy.sh                服务器端自动部署脚本
 
 | 项                 | 说明                                                                     |
 | ------------------ | ------------------------------------------------------------------------ |
-| 前端类型检查       | 构建跳过 `tsc`，历史类型错误待清理                                        |
+| 前端类型检查       | `vite build` 本身仍不执行 `tsc`，由独立类型检查和 CI 门禁覆盖              |
 | 界面多语言         | 9 种语言资源已就位，部分页面文案尚未全部接入 `t()`                        |
-| 单元测试运行器     | 后端 119 个 pytest 用例；**前端暂无 vitest**，TDD 落地前需先补            |
+| 单元测试运行器     | 后端 174 个 pytest 用例；前端 Vitest 5 个测试文件 / 17 个用例              |
 | 可视化工作流编排   | 5.1 规划中（用户自拖拽搭建工作流）                                        |
 
 ---

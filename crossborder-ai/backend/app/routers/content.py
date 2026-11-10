@@ -46,6 +46,8 @@ from app.services.ai.persona_kit import (
     strip_banned_words,
 )
 from app.services.ai.compliance import merge_banned_words, check_text, suggest_replacements
+from app.services.listing_service import persist_generated_listing
+from app.services import provider_config
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("veyaship")
@@ -87,6 +89,9 @@ class GenerateResponse(BaseModel):
     image_url: str = ""
     image_task_id: str = ""  # 异步图片任务ID，前端可轮询
     model_used: str = ""
+    listing_id: str = ""
+    listing_status: str = ""
+    compliance_status: str = ""
     # 合规后置校验（CAP-05）：命中平台/品牌违禁词时 blocked=True，内容不视为可发布
     blocked: bool = False
     violations: list[str] = []
@@ -273,7 +278,9 @@ async def generate_listing(
     if payload.generate_image:
         # settings 已在本模块顶部导入，禁止在此再 import（会把 settings 变成函数局部变量，
         # 未走该分支时函数末尾读 settings 会 UnboundLocalError）
-        if not settings.ALIYUN_DASHSCOPE_API_KEY and not settings.REPLICATE_API_KEY:
+        aliyun_key = provider_config.get("aliyun", "api_key", settings.ALIYUN_DASHSCOPE_API_KEY or "")
+        replicate_key = provider_config.get("replicate", "api_key", settings.REPLICATE_API_KEY or "")
+        if not aliyun_key and not replicate_key:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="图片生成功能暂未配置",
@@ -298,6 +305,27 @@ async def generate_listing(
             logger.warning("Listing 附图调度失败: %s", exc)
 
     # ════════════════════════════════════════════════════════════
+    # 第 5.5 步：持久化 ListingDraft + 版本化合规报告
+    # ════════════════════════════════════════════════════════════
+    draft = await persist_generated_listing(
+        db,
+        user=current_user,
+        product=product,
+        platform=payload.platform,
+        language=payload.language,
+        tone=payload.tone,
+        title=title,
+        description=description,
+        bullet_points=bullets,
+        seo_title=seo.get("seo_title", ""),
+        seo_description=seo.get("seo_description", ""),
+        violations=violations,
+        blocked=blocked,
+        ai_model_used=provider_config.get("deepseek", "model", settings.DEEPSEEK_MODEL),
+        image_task_id=image_task_id,
+    )
+
+    # ════════════════════════════════════════════════════════════
     # 第 6 步：扣减积分
     # ════════════════════════════════════════════════════════════
     # deduct_credits 用了行级锁（select_for_update），防并发扣超
@@ -317,7 +345,10 @@ async def generate_listing(
         seo_description=seo.get("seo_description", ""),
         image_url=image_url,
         image_task_id=image_task_id,
-        model_used=settings.DEEPSEEK_MODEL,
+        model_used=provider_config.get("deepseek", "model", settings.DEEPSEEK_MODEL),
+        listing_id=str(draft.id),
+        listing_status=draft.status,
+        compliance_status=draft.compliance_status,
         blocked=blocked,
         violations=violations,
         suggestions=suggestions,

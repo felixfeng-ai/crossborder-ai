@@ -14,15 +14,15 @@ import hmac as hmac_mod
 import json
 import re
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +35,16 @@ from app.dependencies import get_current_user
 from app.models.product import Product
 from app.models.shopify_channel import ShopifyChannel
 from app.models.user import User
+from app.services.listing_service import (
+    get_current_compliance_report,
+    get_owned_listing,
+)
+from app.services import provider_config
+from app.services.publication_service import (
+    create_publication,
+    find_publication_by_idempotency,
+    publication_response,
+)
 router = APIRouter(prefix="/shopify", tags=["Shopify"])
 
 # ── 违禁词正则（F8 合规审查）─────────────────────────────────
@@ -117,8 +127,19 @@ class ComplianceResult(BaseModel):
 
 
 class PushProductRequest(BaseModel):
-    product_id: str = Field(..., description="商品 ID")
+    product_id: str = Field("", description="兼容旧调用的商品 ID")
+    listing_id: str = Field("", description="ListingDraft ID，优先使用")
     channel_id: str = Field(..., description="Shopify 渠道 ID")
+
+    @model_validator(mode="after")
+    def require_product_or_listing(self):
+        if not self.listing_id and not self.product_id:
+            raise ValueError("product_id 或 listing_id 至少提供一个")
+        return self
+
+
+class ConnectShopifyRequest(BaseModel):
+    shop: str = Field(..., description="Shopify 店铺名或 .myshopify.com 域名")
 
 
 # ── 工具函数 ──────────────────────────────────────────────────
@@ -192,15 +213,38 @@ def _channel_domain(channel: ShopifyChannel) -> str:
     return channel.shop_domain or shop_domain(channel.shop_name)
 
 
+def _build_oauth_url(user: User, shop: str) -> str:
+    api_key, _api_secret, redirect_uri = _require_shopify_config()
+    bare = normalize_shop(shop)
+    state = create_access_token(
+        subject=str(user.id),
+        extra_claims={
+            "type": "shopify_oauth_state",
+            "shop": bare,
+            "ts": int(time.time()),
+        },
+        expires_delta=timedelta(minutes=SHOPIFY_STATE_TTL_MINUTES),
+    )
+    params = urlencode(
+        {
+            "client_id": api_key,
+            "scope": SHOPIFY_OAUTH_SCOPES,
+            "redirect_uri": redirect_uri,
+            "state": state,
+        }
+    )
+    return f"https://{shop_domain(bare)}/admin/oauth/authorize?{params}"
+
+
 def _require_shopify_config() -> tuple[str, str, str]:
     """校验 Shopify 应用三要素（Key/Secret/回调地址）已配置，缺一抛 400。
 
     root cause：平台级 API Key 由运维在 .env 配置，卖家不可见；
     未配置时旧实现只报"未配置 API Key"，语义不清，统一为"Shopify 应用尚未配置"。
     """
-    api_key = settings.SHOPIFY_API_KEY
-    api_secret = settings.SHOPIFY_API_SECRET
-    redirect_uri = settings.SHOPIFY_REDIRECT_URI
+    api_key = provider_config.get("shopify", "api_key")
+    api_secret = provider_config.get("shopify", "api_secret")
+    redirect_uri = provider_config.get("shopify", "redirect_uri")
     if not api_key or not api_secret or not redirect_uri:
         raise HTTPException(status_code=400, detail="Shopify 应用尚未配置")
     return api_key, api_secret, redirect_uri
@@ -299,23 +343,23 @@ async def shopify_oauth_url(
     绑定是已登录用户点按钮触发的 → 先鉴权拿到 user id，签 10 分钟 state 防 CSRF/重放。
     """
     current_user = await _require_binding_user(request, token, db)
-    api_key, _api_secret, redirect_uri = _require_shopify_config()
-    bare = normalize_shop(shop)
-
-    # state：stateless 的短时 JWT，回调里 decode 校验即可，无需额外存储。
-    state = create_access_token(
-        subject=str(current_user.id),
-        extra_claims={"type": "shopify_oauth_state", "shop": bare, "ts": int(time.time())},
-        expires_delta=timedelta(minutes=SHOPIFY_STATE_TTL_MINUTES),
-    )
-    params = urlencode({
-        "client_id": api_key,
-        "scope": SHOPIFY_OAUTH_SCOPES,
-        "redirect_uri": redirect_uri,
-        "state": state,
-    })
-    auth_url = f"https://{shop_domain(bare)}/admin/oauth/authorize?{params}"
+    if not shop:
+        raise HTTPException(status_code=400, detail="店铺域名格式不正确")
+    auth_url = _build_oauth_url(current_user, shop)
     return RedirectResponse(url=auth_url, status_code=302)
+
+
+@router.post("/connect")
+async def create_shopify_connect_url(
+    payload: ConnectShopifyRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Authenticated entry for SPA binding flow.
+
+    The browser receives a Shopify URL and navigates itself, so the access token
+    never needs to be placed in a query string.
+    """
+    return {"auth_url": _build_oauth_url(current_user, payload.shop), "expires_in": 600}
 
 
 @router.get("/callback")
@@ -504,6 +548,7 @@ async def push_product(
     payload: PushProductRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    idempotency_key: str = Header(default="", alias="Idempotency-Key"),
 ):
     """推送商品到 Shopify（含合规审查）
 
@@ -520,11 +565,67 @@ async def push_product(
     if not check_feature_access(current_user, "shopify_publish"):
         raise HTTPException(status_code=403, detail="Shopify 发布功能仅限 Standard 及以上套餐使用")
 
-    # 查商品
-    try:
-        pid = UUID(payload.product_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的商品 ID")
+    # 幂等检查必须先于 Listing 状态检查：首次发布成功后 Listing 已变为 published。
+    existing_publication = await find_publication_by_idempotency(
+        db,
+        current_user.id,
+        "shopify",
+        idempotency_key,
+    )
+    if existing_publication is not None:
+        if existing_publication.status == "completed":
+            return publication_response(existing_publication)
+        raise HTTPException(
+            status_code=409,
+            detail="相同发布请求正在处理或上次已失败，请使用新的幂等键重试",
+        )
+
+    listing = None
+    if payload.listing_id:
+        listing = await get_owned_listing(db, payload.listing_id, current_user.id)
+        if listing is None:
+            raise HTTPException(status_code=404, detail="Listing 不存在")
+        if listing.compliance_status == "unknown" or listing.status == "draft":
+            raise HTTPException(
+                status_code=409,
+                detail="Listing 已修改，合规报告已失效，请重新检查",
+            )
+        if listing.status != "ready" or listing.compliance_status != "pass":
+            raise HTTPException(status_code=409, detail="Listing 未通过合规审查，无法发布")
+
+        report = await get_current_compliance_report(db, listing)
+        if report is None or report.status != "pass":
+            raise HTTPException(status_code=409, detail="Listing 合规报告已失效，请重新检查")
+
+        # 发布前再次做轻量正则校验，防止数据库状态与正文不一致。
+        listing_text = " ".join(
+            filter(
+                None,
+                [
+                    listing.title,
+                    listing.description,
+                    listing.seo_title,
+                    listing.seo_description,
+                ],
+            )
+        )
+        current_violations = compliance_check(listing_text)
+        if current_violations:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Listing 未通过合规审查，无法发布",
+                    "violations": current_violations,
+                },
+            )
+
+        pid = listing.product_id
+    else:
+        try:
+            pid = UUID(payload.product_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="无效的商品 ID")
+
     # 归属过滤：只允许推送自己的商品，他人商品等同不存在
     result = await db.execute(
         select(Product).where(
@@ -539,8 +640,21 @@ async def push_product(
     # 查 Shopify 渠道
     channel = await get_channel(payload.channel_id, current_user.id, db)
 
+    publication = await create_publication(
+        db,
+        user_id=current_user.id,
+        listing_id=listing.id if listing is not None else None,
+        platform="shopify",
+        channel_id=str(channel.id),
+        idempotency_key=idempotency_key,
+    )
+
     # 合规审查（双重：正则 + AI 复查）
-    check_text = f"{product.title or ''} {product.description or ''}"
+    content_title = listing.title if listing is not None else product.title
+    content_description = (
+        listing.description if listing is not None else product.description
+    )
+    check_text = f"{content_title or ''} {content_description or ''}"
 
     # 第一层：正则快速拦截
     violations = compliance_check(check_text)
@@ -553,16 +667,17 @@ async def push_product(
             },
         )
 
-    # 第二层：AI 深度复查（失败时降级为通过，不阻断）
-    ai_result = await ai_compliance_check(check_text)
-    if not ai_result.get("safe", True):
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "message": "AI 合规审查未通过",
-                "reason": ai_result.get("reason", "未知违规"),
-            },
-        )
+    # Listing 路径已持有版本化 AI+正则报告；旧 Product 路径继续做即时 AI 复查。
+    if listing is None:
+        ai_result = await ai_compliance_check(check_text)
+        if not ai_result.get("safe", True):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "AI 合规审查未通过",
+                    "reason": ai_result.get("reason", "未知违规"),
+                },
+            )
 
     # 调用 Shopify API 创建商品（F8 Publisher）
     # root cause：shop_name 现在只存裸子域，拼域统一走 _channel_domain，杜绝双重域名；
@@ -575,8 +690,8 @@ async def push_product(
 
     product_data = {
         "product": {
-            "title": product.title or "Untitled",
-            "body_html": product.description or "",
+            "title": content_title or "Untitled",
+            "body_html": content_description or "",
             "status": "draft",
             "variants": [{"price": str(product.price)}] if product.price else [],
         }
@@ -585,14 +700,22 @@ async def push_product(
     async with httpx.AsyncClient() as client:
         resp = await client.post(f"{shop_url}/products.json", json=product_data, headers=headers)
         if resp.status_code not in (200, 201):
+            publication.status = "failed"
+            publication.error = resp.text[:500]
+            await db.commit()
             raise HTTPException(status_code=502, detail=f"Shopify 发布失败：{resp.text[:200]}")
 
         shopify_product = resp.json().get("product", {})
-        return {
-            "message": "商品已发布到 Shopify（草稿状态）",
-            "shopify_product_id": shopify_product.get("id"),
-            "shopify_url": f"https://{_channel_domain(channel)}/admin/products/{shopify_product.get('id')}",
-        }
+        if listing is not None:
+            listing.status = "published"
+            listing.published_at = datetime.now(timezone.utc)
+        publication.status = "completed"
+        publication.external_product_id = str(shopify_product.get("id") or "")
+        publication.external_url = (
+            f"https://{_channel_domain(channel)}/admin/products/{shopify_product.get('id')}"
+        )
+        await db.commit()
+        return publication_response(publication)
 
 
 # ════════════════════════════════════════════════════════════════

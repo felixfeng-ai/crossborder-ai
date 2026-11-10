@@ -9,6 +9,7 @@ from typing import List, Optional
 
 import httpx
 from app.core.config import settings
+from app.services import provider_config
 
 DASHSCOPE_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
 TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks/"
@@ -18,8 +19,16 @@ class AliyunImageService:
     """阿里云通义万相图片生成服务"""
 
     def __init__(self):
-        self.api_key = settings.ALIYUN_DASHSCOPE_API_KEY
-        self.model = settings.ALIYUN_IMAGE_MODEL
+        self.api_key = provider_config.get(
+            "aliyun",
+            "api_key",
+            settings.ALIYUN_DASHSCOPE_API_KEY or "",
+        )
+        self.model = provider_config.get(
+            "aliyun",
+            "model",
+            settings.ALIYUN_IMAGE_MODEL,
+        )
 
     def _headers(self, async_mode: bool = False):
         h = {

@@ -11,6 +11,7 @@ import {
   Clock,
   Play,
   List,
+  Sparkles,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -40,6 +41,8 @@ interface BatchJob {
   row_index: number
   title: string | null
   url: string | null
+  product_id: string | null
+  listing_id: string | null
   status: string        // pending | processed | failed
   error: string | null
   created_at: string
@@ -102,6 +105,19 @@ export default function BatchPage() {
     },
   })
 
+  const processAiMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post('/batch/process-ai')
+      return res.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['batch-jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+  })
+
+  const hasPending = data?.items?.some((job) => job.status === 'pending') ?? false
+
   // ── 文件上传处理 ──────────────────────────────────────────
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -131,15 +147,42 @@ export default function BatchPage() {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       {/* ── 页面标题 ────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <FileText className="h-6 w-6 text-primary" />
-          批量任务（F4 Batch）
-        </h1>
-        <p className="text-muted-foreground">
-          上传 CSV 文件，批量导入商品。每行一条商品数据，系统逐条处理。
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <FileText className="h-6 w-6 text-primary" />
+            批量任务（F4 Batch）
+          </h1>
+          <p className="text-muted-foreground">
+            上传 CSV 文件，批量导入商品并生成合规 Listing。
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          disabled={!hasPending || processAiMutation.isPending}
+          onClick={() => processAiMutation.mutate()}
+        >
+          {processAiMutation.isPending
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : <Sparkles className="h-4 w-4" />}
+          AI 批量生成
+        </Button>
       </div>
+
+      {processAiMutation.isSuccess && (
+        <p className="text-sm text-emerald-600 flex items-center gap-1">
+          <CheckCircle2 className="h-4 w-4" />
+          {processAiMutation.data?.message || '批量生成完成'}
+        </p>
+      )}
+      {processAiMutation.isError && (
+        <p className="text-sm text-destructive flex items-center gap-1">
+          <AlertCircle className="h-4 w-4" />
+          {toErrorMessage(processAiMutation.error, '批量生成失败')}
+        </p>
+      )}
 
       {/* ── 上传区域 ────────────────────────────────────────── */}
       <Card>

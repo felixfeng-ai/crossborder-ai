@@ -1,5 +1,5 @@
 import apiClient from './client'
-import type { Product, ProductCreate, ProductListResponse } from '@/types'
+import type { Product, ProductListResponse } from '@/types'
 
 export const productsApi = {
   list: async (params?: {
@@ -13,22 +13,12 @@ export const productsApi = {
     return response.data
   },
 
-  getById: async (id: number): Promise<Product> => {
+  getById: async (id: string): Promise<Product> => {
     const response = await apiClient.get(`/products/${id}`)
     return response.data
   },
 
-  create: async (data: ProductCreate): Promise<Product> => {
-    const response = await apiClient.post('/products', data)
-    return response.data
-  },
-
-  update: async (id: number, data: Partial<ProductCreate>): Promise<Product> => {
-    const response = await apiClient.put(`/products/${id}`, data)
-    return response.data
-  },
-
-  delete: async (id: number): Promise<void> => {
+  delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/products/${id}`)
   },
 }

@@ -1,14 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Sparkles, Copy, CheckCircle2, Loader2, AlertCircle, Package, Globe, Image as ImageIcon, ShoppingBag, ExternalLink } from 'lucide-react'
+import { Sparkles, Copy, CheckCircle2, Loader2, AlertCircle, AlertTriangle, Package, Globe, Image as ImageIcon, ShoppingBag, ExternalLink } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import apiClient from '@/api/client'
 import { toErrorMessage } from '@/utils/errorMessage'
+import { createIdempotencyKey } from '@/utils/idempotency'
+import {
+  waitForImageTask,
+  type ImageTaskStatus,
+} from '@/lib/images/taskPolling'
 
 interface Product {
   id: string
@@ -19,12 +24,25 @@ interface Product {
 }
 
 interface GenerateResult {
+  listing_id: string
+  listing_status: 'ready' | 'blocked' | string
+  compliance_status: 'pass' | 'block' | 'unknown' | string
   title: string
   description: string
   bullet_points: string[]
   seo_title: string
   seo_description: string
   image_url: string
+  image_task_id: string
+  blocked: boolean
+  violations: string[]
+  suggestions: Array<{ word: string; replacement: string }>
+}
+
+interface PlatformCapability {
+  publish_supported: boolean
+  mode: string
+  reason: string
 }
 
 const PLATFORMS = [
@@ -85,6 +103,17 @@ export default function ContentPage() {
   const [customTone, setCustomTone] = useState('')
   const [copied, setCopied] = useState('')
   const [selectedChannel, setSelectedChannel] = useState('')
+  const [imageTask, setImageTask] = useState<ImageTaskStatus | null>(null)
+  const [imageTaskLoading, setImageTaskLoading] = useState(false)
+  const [imageTaskError, setImageTaskError] = useState('')
+
+  const { data: capabilities } = useQuery<Record<string, PlatformCapability>>({
+    queryKey: ['platform-capabilities'],
+    queryFn: async () => {
+      const response = await apiClient.get('/platforms/capabilities')
+      return response.data.platforms
+    },
+  })
 
   // 商品列表
   const { data: products } = useQuery({
@@ -108,20 +137,32 @@ export default function ContentPage() {
   const publishMutation = useMutation({
     mutationFn: async () => {
       const res = await apiClient.post('/shopify/push', {
-        product_id: selectedProduct,
+        listing_id: generateMutation.data?.listing_id,
         channel_id: selectedChannel,
+      }, {
+        headers: { 'Idempotency-Key': createIdempotencyKey() },
       })
       return res.data
     },
   })
 
   const handlePublish = () => {
-    if (!selectedProduct || !selectedChannel) return
+    if (
+      !generateMutation.data?.listing_id ||
+      generateMutation.data.compliance_status !== 'pass' ||
+      !selectedChannel
+    ) return
     publishMutation.mutate()
   }
 
   // AI 生成
   const generateMutation = useMutation({
+    onMutate: () => {
+      // 新一轮生成开始时清理上一轮的任务和图片状态，避免旧结果闪现。
+      setImageTask(null)
+      setImageTaskError('')
+      setImageTaskLoading(false)
+    },
     mutationFn: async () => {
       const actualTone = tone === 'custom' ? (customTone || 'professional') : tone
       const res = await apiClient.post('/content/generate', {
@@ -136,6 +177,41 @@ export default function ContentPage() {
       return res.data as GenerateResult
     },
   })
+
+  useEffect(() => {
+    const taskId = generateMutation.data?.image_task_id
+    if (!taskId) {
+      setImageTask(null)
+      setImageTaskLoading(false)
+      setImageTaskError('')
+      return
+    }
+
+    let cancelled = false
+    setImageTask(null)
+    setImageTaskError('')
+    setImageTaskLoading(true)
+
+    waitForImageTask(taskId, async (id) => {
+      const response = await apiClient.get(`/images/status/${id}`)
+      return response.data as ImageTaskStatus
+    })
+      .then((task) => {
+        if (!cancelled) setImageTask(task)
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setImageTaskError(toErrorMessage(error, '图片生成失败，请稍后重试'))
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setImageTaskLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [generateMutation.data?.image_task_id])
 
   const copyText = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
@@ -155,6 +231,13 @@ export default function ContentPage() {
           </h1>
           <p className="text-muted-foreground">选择商品，AI 自动生成标题、描述、卖点</p>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-sm">
+        <span className="font-medium text-amber-700 dark:text-amber-300">发布能力：</span>
+        <span className="text-muted-foreground">
+          当前仅 Shopify 支持真实发布；Amazon、Temu、SHEIN 支持生成文案，发布接口仍在接入中。
+        </span>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -323,7 +406,59 @@ export default function ContentPage() {
 
           {generateMutation.data && (
             <>
-              {/* 生成的图片 */}
+              {generateMutation.data.blocked && (
+                <Card className="border-destructive/40 bg-destructive/5">
+                  <CardContent className="pt-6 flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-destructive">合规审查未通过，当前 Listing 已禁止发布</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        命中：{generateMutation.data.violations.join('、') || '平台合规规则'}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {imageTaskLoading && (
+                <Card>
+                  <CardContent className="py-6 flex items-center gap-3 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    正在生成商品图片，Listing 文案已经可以使用
+                  </CardContent>
+                </Card>
+              )}
+
+              {imageTaskError && (
+                <Card className="border-amber-500/30 bg-amber-500/5">
+                  <CardContent className="py-4 text-sm text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    {imageTaskError}
+                  </CardContent>
+                </Card>
+              )}
+
+              {imageTask?.image_urls?.length ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <ImageIcon className="h-4 w-4" />AI 生成图片
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid gap-3 sm:grid-cols-2">
+                    {imageTask.image_urls.map((url, index) => (
+                      <img
+                        key={`${url}-${index}`}
+                        src={url}
+                        alt={`AI 生成商品图 ${index + 1}`}
+                        className="w-full rounded-lg border object-cover"
+                      />
+                    ))}
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              {/* 兼容旧的同步 image_url 返回 */}
               {generateMutation.data.image_url && (
                 <Card>
                   <CardHeader><CardTitle className="text-sm flex items-center gap-2">
@@ -449,7 +584,15 @@ export default function ContentPage() {
             </>
           )}
 
-          {generateMutation.data && channels && channels.length > 0 && (
+          {generateMutation.data && platform !== 'shopify' && capabilities && (
+            <Card className="border-amber-500/20 bg-amber-500/5">
+              <CardContent className="pt-6 text-sm text-muted-foreground">
+                {capabilities[platform]?.reason || '该平台暂不支持一键发布，当前仅生成 Listing 文案。'}
+              </CardContent>
+            </Card>
+          )}
+
+          {generateMutation.data && platform === 'shopify' && capabilities?.shopify?.publish_supported && channels && channels.length > 0 && (
             <Card className="border-emerald-500/20 bg-emerald-500/5">
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -470,11 +613,18 @@ export default function ContentPage() {
                 </select>
                 <Button
                   className="w-full"
-                  disabled={!selectedChannel || publishMutation.isPending}
+                  disabled={
+                    !selectedChannel ||
+                    publishMutation.isPending ||
+                    generateMutation.data.compliance_status !== 'pass' ||
+                    !generateMutation.data.listing_id
+                  }
                   onClick={handlePublish}
                 >
                   {publishMutation.isPending ? (
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" />发布中...</>
+                  ) : generateMutation.data.compliance_status !== 'pass' ? (
+                    <><AlertTriangle className="mr-2 h-4 w-4" />合规未通过，禁止发布</>
                   ) : (
                     <><ShoppingBag className="mr-2 h-4 w-4" />发布到 Shopify</>
                   )}

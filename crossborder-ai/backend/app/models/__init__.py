@@ -18,5 +18,28 @@ from app.models.rate_limit import RateLimitWindow
 from app.models.agent_task import AgentTask
 from app.models.plan_upgrade import PlanUpgradeRequest
 from app.models.image_generation_task import ImageGenerationTask
+from app.models.listing_draft import ListingDraft, ListingComplianceReport
+from app.models.publication import Publication
+from app.models.platform_connection import PlatformConnection
+from app.models.product_variant import ProductVariant
 
-__all__ = ["User", "Product", "SystemConfig", "Persona", "ShopifyChannel", "BatchJob", "Conversation", "ConversationMessage", "StoreCheckLog", "RateLimitWindow", "AgentTask", "PlanUpgradeRequest", "ImageGenerationTask"]
+__all__ = [
+    "User",
+    "Product",
+    "SystemConfig",
+    "Persona",
+    "ShopifyChannel",
+    "BatchJob",
+    "Conversation",
+    "ConversationMessage",
+    "StoreCheckLog",
+    "RateLimitWindow",
+    "AgentTask",
+    "PlanUpgradeRequest",
+    "ImageGenerationTask",
+    "ListingDraft",
+    "ListingComplianceReport",
+    "Publication",
+    "PlatformConnection",
+    "ProductVariant",
+]

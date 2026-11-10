@@ -2,177 +2,236 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * 字体与 drama-outline 保持同一事实：
+ * 中文优先系统栈，Inter 只负责西文与普通数字，JetBrains Mono 负责标识与数值。
+ */
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/inter-latin-variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-latin.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+}
+
 @layer base {
   :root {
-    --background: 40 10% 98%;
-    --foreground: 30 14% 10%;
-    --card: 0 0% 100%;
-    --card-foreground: 30 14% 10%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 30 14% 10%;
-    --primary: 32 95% 44%;            /* 琥珀 #D97706 */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 40 20% 94%;
-    --secondary-foreground: 30 14% 20%;
-    --muted: 40 20% 94%;
-    --muted-foreground: 30 10% 50%;
-    --accent: 38 60% 92%;
-    --accent-foreground: 32 60% 35%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 40 20% 90%;
-    --input: 40 20% 90%;
-    --ring: 32 95% 44%;
-    --radius: 1rem;                   /* 16px，圆润高级 */
-    /* ── v2 高级感 token（玻璃 / 渐变 / 发光 / 阴影） ── */
-    --glass-bg: rgba(255, 255, 255, 0.66);
-    --glass-bg-strong: rgba(255, 255, 255, 0.85);
-    --glass-border: rgba(255, 255, 255, 0.6);
-    --glass-highlight: rgba(255, 255, 255, 0.9);
-    --gradient-from: #fbbf24;
-    --gradient-to: #d97706;
-    --gradient-foreground: #1a1204;
-    --glow-primary: rgba(245, 158, 11, 0.45);
-    --card-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.35);
-    --aurora-a: rgba(217, 119, 6, 0.28);
-    --aurora-b: rgba(245, 158, 11, 0.20);
+    --font-cjk: "PingFang SC", "Noto Sans SC", "Microsoft YaHei",
+      "HarmonyOS Sans SC", "MiSans", "Hiragino Sans GB", sans-serif;
+    --font-latin: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-ui: var(--font-cjk), var(--font-latin), sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
+      monospace;
+
+    --factory-ground: #0d0e0e;
+    --factory-side: #101110;
+    --factory-panel: #151615;
+    --factory-raised: #1b1c1a;
+    --factory-line: rgba(243, 242, 237, 0.09);
+    --factory-line-strong: rgba(243, 242, 237, 0.16);
+    --factory-ink: #f3f2ed;
+    --factory-muted: #b4b0a8;
+    --factory-faint: #8f8c85;
+    --factory-accent: #d8b56d;
+    --factory-mint: #9dbbad;
+    --factory-coral: #d98b70;
+
+    --background: 120 4% 5%;
+    --foreground: 50 20% 94%;
+    --card: 120 2% 8%;
+    --card-foreground: 50 20% 94%;
+    --popover: 100 4% 11%;
+    --popover-foreground: 50 20% 94%;
+    --primary: 50 20% 94%;
+    --primary-foreground: 120 4% 5%;
+    --secondary: 120 2% 10%;
+    --secondary-foreground: 50 12% 88%;
+    --muted: 120 2% 9%;
+    --muted-foreground: 40 8% 68%;
+    --accent: 100 7% 12%;
+    --accent-foreground: 50 18% 90%;
+    --destructive: 14 57% 65%;
+    --destructive-foreground: 120 4% 5%;
+    --border: 90 5% 16%;
+    --input: 90 5% 18%;
+    --ring: 40 58% 64%;
+    --radius: 0.5rem;
+
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+    --type-page-title: 30px;
+    --type-page-title-line: 42px;
+    --type-section-title: 18px;
+    --type-section-title-line: 27px;
+    --type-body: 14px;
+    --type-body-line: 23px;
+    --type-meta: 12px;
+    --type-meta-line: 18px;
   }
 
-  .dark {
-    --background: 30 15% 4%;          /* 暖黑 #0C0A09 */
-    --foreground: 40 10% 95%;
-    --card: 30 10% 7%;
-    --card-foreground: 40 10% 95%;
-    --popover: 30 10% 7%;
-    --popover-foreground: 40 10% 95%;
-    --primary: 38 92% 50%;            /* 琥珀金 #F59E0B */
-    --primary-foreground: 30 15% 4%;
-    --secondary: 30 10% 14%;
-    --secondary-foreground: 40 10% 88%;
-    --muted: 30 10% 12%;
-    --muted-foreground: 30 10% 55%;
-    --accent: 38 40% 16%;
-    --accent-foreground: 40 10% 90%;
-    --destructive: 0 70% 48%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 30 10% 15%;
-    --input: 30 10% 15%;
-    --ring: 38 92% 50%;
-    /* ── v2 高级感 token（玻璃 / 渐变 / 发光 / 阴影） ── */
-    --glass-bg: rgba(255, 255, 255, 0.09);
-    --glass-bg-strong: rgba(255, 255, 255, 0.13);
-    --glass-border: rgba(255, 255, 255, 0.16);
-    --glass-highlight: rgba(255, 255, 255, 0.22);
-    --gradient-from: #fbbf24;
-    --gradient-to: #d97706;
-    --gradient-foreground: #1a1204;
-    --glow-primary: rgba(245, 158, 11, 0.75);
-    --card-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.85);
-    --aurora-a: rgba(217, 119, 6, 0.35);
-    --aurora-b: rgba(245, 158, 11, 0.22);
-  }
-}
-
-/* ── 背景 aurora 光晕（高级感第一层：背景不是纯色） ── */
-.aurora-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-.aurora-layer::before,
-.aurora-layer::after {
-  content: '';
-  position: absolute;
-  width: 70vmax;
-  height: 70vmax;
-  border-radius: 50%;
-  filter: blur(120px);
-  opacity: .5;
-  animation: aurora-drift 18s ease-in-out infinite alternate;
-}
-.aurora-layer::before {
-  background: radial-gradient(circle at 30% 30%, var(--aurora-a), transparent 60%);
-  top: -30vmax;
-  left: -20vmax;
-}
-.aurora-layer::after {
-  background: radial-gradient(circle at 60% 40%, var(--aurora-b), transparent 55%);
-  bottom: -35vmax;
-  right: -25vmax;
-  animation-delay: -9s;
-}
-@keyframes aurora-drift {
-  0%   { transform: translate(0, 0) scale(1); }
-  100% { transform: translate(6vmax, -4vmax) scale(1.15); }
-}
-
-/* 落地页专用：固定琥珀色 aurora，不受主题切换影响 */
-.aurora-amber {
-  --aurora-a: rgba(217, 119, 6, 0.32);
-  --aurora-b: rgba(245, 158, 11, 0.20);
-}
-
-/* ── 细腻颗粒噪点（高级感第二层：让纯色背景有"印刷质感"，不抢眼） ── */
-.grain {
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  opacity: .05;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 256px 256px;
-}
-
-/* ── 柔光池（3D 深度来源，不是"球"：大、虚、低透明度、慢飘） ── */
-.glow {
-  position: fixed;
-  border-radius: 50%;
-  z-index: 0;
-  pointer-events: none;
-  filter: blur(60px);
-  will-change: transform;
-}
-.glow-1 { width: 320px; height: 320px; top: 12%; left: 8%; background: radial-gradient(circle, rgba(245,158,11,0.20), transparent 65%); animation: glow-float 16s ease-in-out infinite; }
-.glow-2 { width: 280px; height: 280px; bottom: 15%; right: 12%; background: radial-gradient(circle, rgba(217,119,6,0.16), transparent 65%); animation: glow-float 20s ease-in-out infinite -7s; }
-@keyframes glow-float {
-  0%   { transform: translateY(0); }
-  50%  { transform: translateY(-22px); }
-  100% { transform: translateY(0); }
-}
-
-/* 主题切换过渡动画 */
-*,
-
-@layer base {
   * {
     @apply border-border;
   }
+
+  html {
+    color-scheme: dark;
+    background: var(--factory-ground);
+  }
+
   body {
-    @apply bg-background text-foreground;
+    min-height: 100dvh;
+    margin: 0;
+    background: var(--factory-ground);
+    color: var(--factory-ink);
+    font-family: var(--font-ui);
+    font-size: var(--type-body);
+    line-height: var(--type-body-line);
+    letter-spacing: 0;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-ui);
+    letter-spacing: 0;
+    text-wrap: balance;
+  }
+
+  p,
+  li {
+    text-wrap: pretty;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+  }
+
+  ::selection {
+    color: var(--factory-ink);
+    background: rgba(216, 181, 109, 0.28);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--factory-accent);
+    outline-offset: 2px;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--factory-faint);
+  }
+
+  select,
+  option {
+    color: var(--factory-ink);
+    background-color: var(--factory-panel);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--factory-ground);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid var(--factory-ground);
+    border-radius: 999px;
+    background: #383a34;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4a4c44;
   }
 }
 
-/* 主题切换过渡动画 */
-*,
-*::before,
-*::after {
-  transition: background-color 0.2s ease,
-              border-color 0.2s ease,
-              color 0.15s ease,
-              box-shadow 0.2s ease;
+@layer components {
+  .app-canvas {
+    background: var(--factory-ground);
+  }
+
+  .app-panel {
+    border: 1px solid var(--factory-line);
+    background: var(--factory-panel);
+  }
+
+  .app-rule {
+    border-color: var(--factory-line);
+  }
+
+  .metric-number {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .micro-label {
+    color: var(--factory-muted);
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .page-title {
+    font-size: clamp(26px, 2.2vw, 32px);
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .section-title {
+    font-size: var(--type-section-title);
+    font-weight: 600;
+    line-height: var(--type-section-title-line);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    flex: 0 0 6px;
+    border-radius: 50%;
+    background: var(--factory-accent);
+  }
 }
 
-/* 排除 hover/active 等交互态，避免过渡导致卡顿 */
-button:active,
-a:active,
-input:focus,
-textarea:focus {
-  transition: none;
+@media (hover: hover) and (pointer: fine) {
+  a,
+  button {
+    transition:
+      color 140ms var(--ease-out),
+      background-color 140ms var(--ease-out),
+      border-color 140ms var(--ease-out),
+      transform 140ms var(--ease-out);
+  }
+
+  button:active {
+    transform: scale(0.98);
+  }
 }
 
-/* 侧边栏等布局元素单独控制 */
-aside, header, main, nav, .sidebar, .header {
-  transition: background-color 0.25s ease, border-color 0.25s ease;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

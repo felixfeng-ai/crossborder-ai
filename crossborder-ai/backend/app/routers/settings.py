@@ -3,7 +3,7 @@
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,9 +13,36 @@ from app.dependencies import get_current_user, require_admin
 from app.models.persona import Persona
 from app.models.system_config import SystemConfig
 from app.models.user import User
+from app.services import provider_config
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
+
+
+@router.get("/providers")
+async def list_provider_configs(
+    admin: User = Depends(require_admin),
+):
+    return {"providers": provider_config.all_provider_status()}
+
+
+@router.put("/providers/{provider}")
+async def update_provider_config(
+    provider: str,
+    payload: dict[str, str] = Body(...),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        await provider_config.update_provider(db, provider, payload)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="未知的服务商")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "provider": provider,
+        **provider_config.provider_status(provider),
+    }
 
 
 # ── 白名单管理（测试账号免限制） ────────────────────────────
@@ -103,6 +130,7 @@ async def update_scraping_config(
         else:
             db.add(SystemConfig(key=key, value=value))
     await db.flush()
+    await provider_config.refresh(db)
     return ScrapingConfigResponse(
         api_key=mask_secret(payload.api_key),
         api_secret=mask_secret(payload.api_secret),

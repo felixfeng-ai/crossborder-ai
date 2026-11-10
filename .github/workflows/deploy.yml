@@ -24,11 +24,18 @@
               set -e
               ENV_FILE=/opt/veyaship/.env
               touch "$ENV_FILE"
-              if [ -n "${JUSTONE_API_TOKEN:-}" ]; then
-                if grep -q '^JUSTONE_API_TOKEN=' "$ENV_FILE"; then
-                  sed -i "s|^JUSTONE_API_TOKEN=.*|JUSTONE_API_TOKEN=${JUSTONE_API_TOKEN}|" "$ENV_FILE"
-                else
-                  printf '\nJUSTONE_API_TOKEN=%s\n' "$JUSTONE_API_TOKEN" >> "$ENV_FILE"
-                fi
+              if [ -z "${JUSTONE_API_TOKEN:-}" ]; then
+                echo "缺少 JUSTONE_API_TOKEN Secret，终止部署"
+                exit 1
               fi
+              if grep -q '^JUSTONE_API_TOKEN=' "$ENV_FILE"; then
+                sed -i "s|^JUSTONE_API_TOKEN=.*|JUSTONE_API_TOKEN=${JUSTONE_API_TOKEN}|" "$ENV_FILE"
+              else
+                printf '\nJUSTONE_API_TOKEN=%s\n' "$JUSTONE_API_TOKEN" >> "$ENV_FILE"
+              fi
+              if ! grep -Eq '^JUSTONE_API_TOKEN=.+$' "$ENV_FILE"; then
+                echo "Just One API Token 写入服务器环境失败，终止部署"
+                exit 1
+              fi
+              echo "Just One API 凭据已注入服务器环境"
               bash /opt/veyaship/cicd-deploy.sh

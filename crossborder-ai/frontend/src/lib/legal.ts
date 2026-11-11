@@ -18,6 +18,9 @@ export type LegalDocument = {
 
 export const LEGAL_CONTACT_EMAIL = 'admin@veyaship.com'
 export const LEGAL_CONTACT_HREF = `mailto:${LEGAL_CONTACT_EMAIL}`
+export const LEGAL_OPERATOR_NAME = '冯斯远'
+export const LEGAL_OPERATOR_DISCLOSURE =
+  `VeyaShip 由${LEGAL_OPERATOR_NAME}以个人经营者身份运营。`
 
 /**
  * 法务内容集中维护，确保公网页面、登录告知和页脚引用同一版本。
@@ -31,14 +34,14 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
     shortTitle: '服务条款',
     summary:
       '本条款约定你使用 VeyaShip 跨境决策、内容生成、店铺同步与发布能力时的权利、责任和边界。',
-    version: '1.0',
+    version: '1.1',
     effectiveDate: '2026-11-11',
     sections: [
       {
         id: 'scope',
         title: '1. 服务范围',
         paragraphs: [
-          'VeyaShip 是面向跨境电商卖家的 AI 决策与运营工作台，提供商品信息整理、市场与利润分析、Listing 内容生成、图片和视频素材生成、合规检查、店铺同步及渠道发布等能力。具体可用功能以你账号内实际展示为准。',
+          `${LEGAL_OPERATOR_DISCLOSURE}VeyaShip 是面向跨境电商卖家的 AI 决策与运营工作台，提供商品信息整理、市场与利润分析、Listing 内容生成、图片和视频素材生成、合规检查、店铺同步及渠道发布等能力。具体可用功能以你账号内实际展示为准。`,
           'VeyaShip 不替代你的经营判断，也不构成法律、税务、广告、知识产权或平台合规意见。涉及商品准入、认证、品牌授权和平台政策的事项，应由你结合目标平台规则和专业意见作出最终决定。',
         ],
       },
@@ -131,14 +134,14 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
     shortTitle: '隐私政策',
     summary:
       '本政策说明 VeyaShip 收集哪些数据、为什么处理、如何使用第三方服务，以及你如何访问、更正和删除数据。',
-    version: '1.0',
+    version: '1.1',
     effectiveDate: '2026-11-11',
     sections: [
       {
         id: 'scope',
         title: '1. 适用范围',
         paragraphs: [
-          '本政策适用于 VeyaShip 网站、账号工作台、AI 助手、图片与视频工具、素材中心、运营同步和渠道发布功能。若某个第三方平台有自己的隐私政策，该平台对数据的处理还受其政策约束。',
+          `${LEGAL_OPERATOR_DISCLOSURE}本政策适用于 VeyaShip 网站、账号工作台、AI 助手、图片与视频工具、素材中心、运营同步和渠道发布功能。若某个第三方平台有自己的隐私政策，该平台对数据的处理还受其政策约束。`,
         ],
       },
       {
@@ -228,7 +231,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
         title: '12. 政策更新与联系',
         paragraphs: [
           '我们可能更新本政策，并在页面标注新版本和生效日期。重大变化将通过合理方式提示。',
-          `隐私、访问、删除或安全相关请求请联系 ${LEGAL_CONTACT_EMAIL}。`,
+          `数据控制者为${LEGAL_OPERATOR_NAME}。隐私、访问、删除或安全相关请求请联系 ${LEGAL_CONTACT_EMAIL}。`,
         ],
       },
     ],
@@ -240,14 +243,14 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
     shortTitle: '数据处理',
     summary:
       '说明 VeyaShip 如何按商家指令处理店铺数据，以及解绑、删除、保留和安全事件通知的实际流程。',
-    version: '1.0',
+    version: '1.1',
     effectiveDate: '2026-11-11',
     sections: [
       {
         id: 'roles',
         title: '1. 角色与指令',
         paragraphs: [
-          '对于你上传或绑定的商家数据，你或你的企业是数据控制者，VeyaShip 是按你指令提供技术服务的处理者。对于账号、计费和安全运营数据，VeyaShip 在适用法律范围内承担相应控制者责任。',
+          `${LEGAL_OPERATOR_DISCLOSURE}对于你上传或绑定的商家数据，你或你的企业是数据控制者，VeyaShip 是按你指令提供技术服务的处理者。对于账号、计费和安全运营数据，${LEGAL_OPERATOR_NAME}在适用法律范围内承担相应控制者责任。`,
           '我们只按你使用功能时发出的指令处理店铺数据，不出于自有广告目的使用 Shopify 客户数据或店铺订单数据。',
         ],
       },
@@ -304,7 +307,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
         id: 'contact',
         title: '8. 联系与请求渠道',
         paragraphs: [
-          `数据处理、删除、导出和安全事件请求统一发送至 ${LEGAL_CONTACT_EMAIL}。主题建议注明“数据删除”“店铺解绑”或“安全事件”，以便快速分流。`,
+          `数据处理、删除、导出和安全事件请求统一发送至 ${LEGAL_CONTACT_EMAIL}。运营者为${LEGAL_OPERATOR_NAME}（个人经营者），主题建议注明“数据删除”“店铺解绑”或“安全事件”，以便快速分流。`,
         ],
       },
     ],
@@ -504,13 +507,14 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
     shortTitle: '联系我们',
     summary:
       '账号、隐私、数据处理、安全事件、侵权举报和服务支持请求的统一联系入口。',
-    version: '1.0',
+    version: '1.1',
     effectiveDate: '2026-11-11',
     sections: [
       {
         id: 'channels',
         title: '1. 联系邮箱',
         paragraphs: [
+          `运营主体：${LEGAL_OPERATOR_NAME}（个人经营者）。`,
           `通用支持与法务请求：${LEGAL_CONTACT_EMAIL}`,
           '为提高处理效率，请在邮件主题中注明请求类型，并附上账号邮箱、店铺域名、相关链接和问题发生时间。请勿通过普通邮件发送密码、完整访问 Token、银行卡信息或不必要的客户个人数据。',
         ],

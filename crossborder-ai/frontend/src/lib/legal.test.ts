@@ -60,6 +60,19 @@ describe('公网法务与合规页面', () => {
     expect(combined).toContain('180 天')
   })
 
+  it('公开展示个人经营者身份且只提供联系邮箱', () => {
+    const combined = JSON.stringify(LEGAL_DOCUMENTS)
+    const contact = getLegalDocument('/contact')
+    const contactText = JSON.stringify(contact)
+
+    expect(combined).toContain('冯斯远')
+    expect(combined).toContain('个人经营者')
+    expect(contactText).toContain(LEGAL_CONTACT_EMAIL)
+    expect(contactText).not.toContain('宝安区')
+    expect(contactText).not.toContain('瓦窑花园')
+    expect(contactText).not.toContain('宝能公寓')
+  })
+
   it('法务正文在桌面和移动端包含标题、目录与可读结构', () => {
     const markup = renderToStaticMarkup(
       createElement(

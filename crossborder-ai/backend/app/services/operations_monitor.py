@@ -15,6 +15,8 @@ from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.models.variant_snapshot import VariantSnapshot
+from app.services import provider_config
+from app.services.scraper import scrape_1688
 
 
 DEFAULT_SETTINGS = {
@@ -424,3 +426,57 @@ async def scan_all_users(db: AsyncSession) -> int:
             await run_monitor_scan(db, user)
             count += 1
     return count
+
+
+async def refresh_supplier_costs(db: AsyncSession, user: User) -> dict[str, Any]:
+    """使用平台抓取链刷新 1688 供货价，并补齐未手工设置成本的 SKU。"""
+    await provider_config.refresh(db)
+    products = (
+        await db.execute(
+            select(Product)
+            .where(Product.user_id == user.id, Product.url.is_not(None))
+            .order_by(desc(Product.updated_at))
+            .limit(50)
+        )
+    ).scalars().all()
+
+    refreshed = 0
+    failed = 0
+    failures: list[dict[str, str]] = []
+    for product in products:
+        try:
+            data = await scrape_1688(
+                product.url,
+                justone_token=provider_config.get("justone", "token"),
+                api_key=provider_config.get("onebound", "api_key"),
+                api_secret=provider_config.get("onebound", "api_secret"),
+            )
+            new_price = data.get("price")
+            if new_price is None:
+                failed += 1
+                failures.append({"product_id": str(product.id), "error": "未返回供货价"})
+                continue
+            product.price = float(new_price)
+            variants = (
+                await db.execute(
+                    select(ProductVariant).where(
+                        ProductVariant.product_id == product.id,
+                        ProductVariant.user_id == user.id,
+                        ProductVariant.cost_price.is_(None),
+                    )
+                )
+            ).scalars().all()
+            for variant in variants:
+                variant.cost_price = float(new_price)
+            refreshed += 1
+        except Exception as exc:
+            failed += 1
+            failures.append({"product_id": str(product.id), "error": str(exc)})
+
+    await db.flush()
+    return {
+        "refreshed": refreshed,
+        "failed": failed,
+        "failures": failures,
+        "total": len(products),
+    }

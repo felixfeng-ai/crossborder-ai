@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Bell,
   CheckCircle2,
+  CloudDownload,
   Clock3,
   Gauge,
   Loader2,
@@ -78,6 +79,7 @@ export default function OperationsPage() {
   const [settingsForm, setSettingsForm] = useState<MonitorSettingsForm>(EMPTY_SETTINGS)
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [actionError, setActionError] = useState('')
+  const [syncMessage, setSyncMessage] = useState('')
   const [savedRateId, setSavedRateId] = useState('')
 
   const overviewQuery = useQuery<Overview>({
@@ -124,6 +126,24 @@ export default function OperationsPage() {
       queryClient.invalidateQueries({ queryKey: ['operations-overview'] })
     },
     onError: (error) => setActionError(toErrorMessage(error, '运营扫描失败')),
+  })
+
+  const refreshCostsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.post('/operations/refresh-costs')
+      return response.data as { refreshed: number; failed: number; total: number }
+    },
+    onMutate: () => {
+      setActionError('')
+      setSyncMessage('')
+    },
+    onSuccess: (data) => {
+      setSyncMessage(
+        `已同步 ${data.refreshed} 个商品供货价${data.failed ? `，${data.failed} 个失败` : ''}`,
+      )
+      scanMutation.mutate()
+    },
+    onError: (error) => setActionError(toErrorMessage(error, '供货价同步失败')),
   })
 
   const saveSettingsMutation = useMutation({
@@ -191,6 +211,18 @@ export default function OperationsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => refreshCostsMutation.mutate()}
+            disabled={refreshCostsMutation.isPending}
+          >
+            {refreshCostsMutation.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <CloudDownload className="mr-2 h-4 w-4" />
+            )}
+            同步供货价
+          </Button>
           <Button variant="outline" onClick={() => setShowSettings((value) => !value)}>
             <Settings2 className="mr-2 h-4 w-4" />
             监控设置
@@ -209,6 +241,12 @@ export default function OperationsPage() {
       {actionError && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {actionError}
+        </div>
+      )}
+
+      {syncMessage && (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-500">
+          {syncMessage}
         </div>
       )}
 

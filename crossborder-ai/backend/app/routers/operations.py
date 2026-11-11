@@ -16,8 +16,10 @@ from app.models.operation_alert import OperationAlert
 from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.models.variant_snapshot import VariantSnapshot
+from app.core.rate_limit import RateLimit
 from app.services.operations_monitor import (
     get_or_create_settings,
+    refresh_supplier_costs,
     run_monitor_scan,
     serialize_alert,
     serialize_settings,
@@ -74,6 +76,15 @@ async def scan_operations(
     db: AsyncSession = Depends(get_db),
 ):
     return await run_monitor_scan(db, current_user)
+
+
+@router.post("/refresh-costs")
+async def refresh_supplier_cost_snapshots(
+    current_user: User = Depends(get_current_user),
+    _ratelimit=Depends(RateLimit("ai_generate")),
+    db: AsyncSession = Depends(get_db),
+):
+    return await refresh_supplier_costs(db, current_user)
 
 
 @router.get("/overview")

@@ -272,3 +272,37 @@ async def test_scan_reports_listing_blocked(
         item["alert_type"] == "listing_blocked"
         for item in alerts.json()["items"]
     )
+
+
+@pytest.mark.asyncio
+async def test_refresh_supplier_cost_updates_product_and_missing_variant_cost(
+    client: AsyncClient,
+    auth_headers: dict,
+    db_session,
+    monkeypatch,
+):
+    product, variant = await _seed_operation_sku(db_session)
+    variant.cost_price = None
+    variant.price = 42
+    await db_session.flush()
+
+    async def fake_scrape(url, **kwargs):
+        assert url == product.url
+        return {"price": 18.8, "title": product.title}
+
+    monkeypatch.setattr(
+        "app.services.operations_monitor.scrape_1688",
+        fake_scrape,
+    )
+
+    response = await client.post(
+        "/api/v1/operations/refresh-costs",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["refreshed"] == 1
+    await db_session.refresh(product)
+    await db_session.refresh(variant)
+    assert product.price == 18.8
+    assert variant.cost_price == 18.8

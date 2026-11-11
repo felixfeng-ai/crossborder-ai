@@ -62,6 +62,23 @@ describe('石墨决策台设计契约', () => {
     expect(dashboard).not.toContain('grid grid-cols-4 gap-3')
   })
 
+  it('总览快捷动作不撑高主链路网格', () => {
+    const dashboard = readSource('src/pages/dashboard/DashboardPage.tsx')
+    const topGrid = dashboard.indexOf('data-dashboard-top-grid')
+    const topGridEnd = dashboard.indexOf('</section>', topGrid)
+    const onboarding = dashboard.indexOf('<OnboardingGuide />')
+    const quickActions = dashboard.indexOf('data-dashboard-quick-actions')
+    const analysis = dashboard.indexOf('AI 品类分析')
+
+    expect(topGrid).toBeGreaterThan(-1)
+    expect(topGridEnd).toBeGreaterThan(topGrid)
+    expect(onboarding).toBeGreaterThan(topGridEnd)
+    expect(quickActions).toBeGreaterThan(onboarding)
+    expect(quickActions).toBeGreaterThan(topGrid)
+    expect(analysis).toBeGreaterThan(quickActions)
+    expect(dashboard).toContain('xl:grid-cols-5')
+  })
+
   it('基础组件不再使用渐变、玻璃和悬浮卡片', () => {
     const button = readSource('src/components/ui/button.tsx')
     const card = readSource('src/components/ui/card.tsx')

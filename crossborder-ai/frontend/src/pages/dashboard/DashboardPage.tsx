@@ -184,7 +184,10 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.75fr)]">
+      <section
+        data-dashboard-top-grid
+        className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.75fr)]"
+      >
         <div className="space-y-4">
           <Card className="overflow-hidden">
           <CardHeader className="flex-row items-start justify-between space-y-0 border-b border-border">
@@ -316,7 +319,6 @@ export default function DashboardPage() {
           </CardContent>
           </Card>
 
-          <OnboardingGuide />
         </div>
 
         <div className="space-y-4">
@@ -363,32 +365,38 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">直接开始</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1 p-2 pt-0">
-              {commands.map((command) => (
-                <button
-                  key={command.label}
-                  type="button"
-                  onClick={() => navigate(command.path)}
-                  className="flex w-full items-center gap-3 rounded px-3 py-2 text-left hover:bg-accent"
-                >
-                  <command.icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-medium">{command.label}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
-                      {command.detail}
-                    </span>
-                  </span>
-                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                </button>
-              ))}
-            </CardContent>
-          </Card>
         </div>
       </section>
+
+      <OnboardingGuide />
+
+      <Card data-dashboard-quick-actions>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">直接开始</CardTitle>
+          <p className="mt-1 text-xs text-muted-foreground">
+            从当前任务直接进入对应工作台
+          </p>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-1 p-2 pt-0 sm:grid-cols-2 xl:grid-cols-5">
+          {commands.map((command) => (
+            <button
+              key={command.label}
+              type="button"
+              onClick={() => navigate(command.path)}
+              className="flex min-h-14 w-full items-center gap-3 rounded px-3 py-2 text-left transition-colors hover:bg-accent"
+            >
+              <command.icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium">{command.label}</span>
+                <span className="block truncate text-[11px] text-muted-foreground">
+                  {command.detail}
+                </span>
+              </span>
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+            </button>
+          ))}
+        </CardContent>
+      </Card>
 
       <section className="grid items-start gap-4 xl:grid-cols-2">
         <Card>

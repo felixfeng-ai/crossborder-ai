@@ -148,6 +148,55 @@ def test_build_payload_uses_variant_sale_price_and_complete_content():
     assert prepared.image_count == 2
 
 
+def test_build_payload_flattens_multiline_seo_metafields():
+    """Shopify 单行 SEO 元字段不能包含换行。"""
+
+    user_id = uuid.uuid4()
+    product_id = uuid.uuid4()
+    product = Product(
+        id=product_id,
+        user_id=user_id,
+        url="https://detail.1688.com/offer/seo-lines.html",
+        title="SEO 商品",
+    )
+    listing = ListingDraft(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        product_id=product_id,
+        platform="shopify",
+        language="en",
+        tone="professional",
+        status="ready",
+        title="SEO Product",
+        description="<p>Product description.</p>",
+        bullet_points="[]",
+        seo_title="SEO Product\n| VeyaShip",
+        seo_description="Line one.\nLine two.\r\nLine three.",
+        version=1,
+        content_hash="s" * 64,
+        compliance_status="pass",
+        compliance_violations="[]",
+    )
+    variant = _variant(
+        product_id=product_id,
+        user_id=user_id,
+        sku="SEO-001",
+        price=29.9,
+    )
+
+    payload = build_shopify_product_payload(
+        product,
+        listing,
+        [variant],
+        app_url="https://veyaship.com",
+    ).product
+    metafields = {item["key"]: item["value"] for item in payload["metafields"]}
+
+    assert metafields["title_tag"] == "SEO Product | VeyaShip"
+    assert metafields["description_tag"] == "Line one. Line two. Line three."
+    assert all("\n" not in value and "\r" not in value for value in metafields.values())
+
+
 def test_build_payload_rejects_missing_variants_or_sale_price():
     user_id = uuid.uuid4()
     product_id = uuid.uuid4()

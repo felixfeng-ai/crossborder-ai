@@ -5,6 +5,7 @@
 """
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from html import escape
@@ -83,6 +84,13 @@ def _parse_bullets(raw: str | None) -> list[str]:
         return [str(item).strip() for item in parsed if str(item).strip()]
     except (json.JSONDecodeError, TypeError):
         return []
+
+
+def _single_line_text(raw: str | None, max_length: int) -> str:
+    """把 SEO 文本压成 Shopify 单行元字段，并限制平台推荐长度。"""
+
+    normalized = re.sub(r"\s+", " ", (raw or "").strip())
+    return normalized[:max_length]
 
 
 def _absolute_media_url(url: str | None, app_url: str) -> str:
@@ -237,7 +245,7 @@ def build_shopify_product_payload(
             {
                 "namespace": "global",
                 "key": "title_tag",
-                "value": listing.seo_title,
+                "value": _single_line_text(listing.seo_title, 255),
                 "type": "single_line_text_field",
             }
         )
@@ -246,7 +254,7 @@ def build_shopify_product_payload(
             {
                 "namespace": "global",
                 "key": "description_tag",
-                "value": listing.seo_description,
+                "value": _single_line_text(listing.seo_description, 320),
                 "type": "single_line_text_field",
             }
         )

@@ -778,7 +778,6 @@ async def list_shopify_orders(
                 "financial_status": o.get("financial_status"),
                 "fulfillment_status": o.get("fulfillment_status"),
                 "created_at": o.get("created_at"),
-                "customer_email": o.get("email") or (o.get("customer") or {}).get("email", ""),
             }
             for o in orders
         ]

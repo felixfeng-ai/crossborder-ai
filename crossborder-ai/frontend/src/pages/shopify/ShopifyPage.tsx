@@ -240,7 +240,6 @@ export default function ShopifyPage() {
                         <th className="pb-2 font-medium">订单号</th>
                         <th className="pb-2 font-medium">金额</th>
                         <th className="pb-2 font-medium">状态</th>
-                        <th className="pb-2 font-medium">客户</th>
                         <th className="pb-2 font-medium">时间</th>
                       </tr>
                     </thead>
@@ -250,7 +249,6 @@ export default function ShopifyPage() {
                           <td className="py-3 pr-3">#{o.order_number}</td>
                           <td className="py-3 pr-3 font-medium">{formatPrice(o.total_price)} {o.currency}</td>
                           <td className="py-3 pr-3">{statusBadge(o.financial_status)}</td>
-                          <td className="py-3 pr-3 text-muted-foreground text-xs">{o.customer_email || '-'}</td>
                           <td className="py-3 text-xs text-muted-foreground">
                             {o.created_at ? new Date(o.created_at).toLocaleDateString('zh-CN') : '-'}
                           </td>

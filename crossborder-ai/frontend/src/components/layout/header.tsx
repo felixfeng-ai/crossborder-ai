@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { LogOut, Settings, CreditCard, ChevronDown, Globe, Store, Menu } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { LogOut, Settings, CreditCard, ChevronDown, Globe, Store, Menu, ShieldCheck } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   DropdownMenu,
@@ -15,6 +15,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useStoreStore } from '@/stores/storeStore'
 import { Badge } from '@/components/ui/badge'
 import apiClient from '@/api/client'
+import { getHeaderContext } from '@/lib/navigation'
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -31,8 +32,10 @@ const LANGUAGES = [
 export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
   const { t, i18n } = useTranslation()
   const { stores, currentStoreId, setStores, setCurrentStore } = useStoreStore()
+  const headerContext = getHeaderContext(location.pathname)
 
   // 加载店铺列表
   useQuery({
@@ -80,9 +83,11 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
           <Menu className="h-4 w-4" />
         </Button>
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-medium leading-5">跨境决策台</p>
-          <p className="hidden truncate text-[11px] leading-4 text-muted-foreground sm:block">
-            商品、内容、库存与渠道的统一工作区
+          <p className="truncate text-[10px] leading-4 text-muted-foreground">
+            {headerContext.group}
+          </p>
+          <p className="truncate text-[13px] font-medium leading-5">
+            {headerContext.title}
           </p>
         </div>
       </div>
@@ -174,6 +179,12 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {user?.is_admin && (
+              <DropdownMenuItem onClick={() => navigate('/app/admin/upgrades')}>
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                升级审核
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => navigate('/app/settings')}>
               <Settings className="mr-2 h-4 w-4" />
               {t('header.settings')}

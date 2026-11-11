@@ -229,16 +229,22 @@ export default function CatalogPage() {
         <div>
           <h1 className="page-title flex items-center gap-2">
             <Layers className="h-6 w-6 text-primary" />
-            SKU 与 Listing 中心
+            Listing 中心
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            跨商品管理变体、价格、库存、素材和多平台 Listing 就绪状态。
+            管理变体、价格、库存、素材和多平台 Listing 就绪状态。
           </p>
         </div>
-        <Button onClick={() => setShowMatrix((value) => !value)}>
-          <Plus className="mr-2 h-4 w-4" />
-          生成变体矩阵
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => navigate('/app/content')}>
+            <Sparkles className="mr-2 h-4 w-4" />
+            AI 生成 Listing
+          </Button>
+          <Button onClick={() => setShowMatrix((value) => !value)}>
+            <Plus className="mr-2 h-4 w-4" />
+            生成变体矩阵
+          </Button>
+        </div>
       </div>
 
       {actionError && (

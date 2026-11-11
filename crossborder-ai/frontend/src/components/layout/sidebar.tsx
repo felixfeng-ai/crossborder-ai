@@ -1,54 +1,43 @@
-import { NavLink } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
+import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Package,
-  FileText,
   Image,
   ShoppingBag,
-  BarChart3,
   CreditCard,
   Settings,
-  Globe,
   ChevronLeft,
-  Sparkles,
-  Upload,
   Bot,
   X,
   Layers,
   Activity,
-  Video,
   Clapperboard,
+  FolderOpen,
+  type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { Button } from '@/components/ui/button'
-import { useAuthStore } from '@/stores/authStore'
 import { useState } from 'react'
-import { ShieldCheck } from 'lucide-react'
+import { BrandMark } from '@/components/brand/BrandMark'
+import { NAVIGATION_GROUPS } from '@/lib/navigation'
+
+const NAV_ICONS: Record<string, LucideIcon> = {
+  '/app/dashboard': LayoutDashboard,
+  '/app/products': Package,
+  '/app/catalog': Layers,
+  '/app/agent': Bot,
+  '/app/images': Image,
+  '/app/videos': Clapperboard,
+  '/app/assets': FolderOpen,
+  '/app/operations': Activity,
+  '/app/shopify': ShoppingBag,
+  '/app/billing': CreditCard,
+  '/app/settings': Settings,
+}
 
 export function Sidebar({ onClose }: { onClose?: () => void }) {
-  const { t } = useTranslation()
-  const { user } = useAuthStore()
+  const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
-
-  const navItems = [
-    { icon: LayoutDashboard, label: t('nav.dashboard'), path: '/app/dashboard' },
-    { icon: Package, label: t('nav.products'), path: '/app/products' },
-    { icon: Layers, label: 'SKU 与 Listing', path: '/app/catalog' },
-    { icon: Activity, label: '运营监控', path: '/app/operations' },
-    { icon: Sparkles, label: t('nav.content'), path: '/app/content' },
-    { icon: Bot, label: t('nav.agent'), path: '/app/agent' },
-    { icon: Image, label: t('nav.images'), path: '/app/images' },
-    { icon: Clapperboard, label: 'AI 营销视频', path: '/app/marketing-videos' },
-    { icon: Video, label: '单镜头视频', path: '/app/videos' },
-    { icon: Upload, label: t('nav.batch'), path: '/app/batch' },
-    { icon: Globe, label: t('nav.shopify'), path: '/app/shopify' },
-    { icon: CreditCard, label: t('nav.billing'), path: '/app/billing' },
-    ...(user?.is_admin
-      ? [{ icon: ShieldCheck, label: '升级审核', path: '/app/admin/upgrades' }]
-      : []),
-    { icon: Settings, label: t('nav.settings'), path: '/app/settings' },
-  ]
 
   return (
     <aside
@@ -60,8 +49,8 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       {/* Logo */}
       <div className="flex h-[58px] items-center justify-between border-b border-border px-4">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded border border-border bg-secondary shrink-0">
-            <Globe className="h-4 w-4 text-foreground" />
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center border border-border bg-secondary">
+            <BrandMark className="h-5 w-5 text-foreground" />
           </div>
           {!collapsed && (
             <div className="min-w-0">
@@ -69,7 +58,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                 VeyaShip
               </span>
               <span className="block whitespace-nowrap text-[11px] leading-4 text-muted-foreground">
-                跨境决策台
+                AI 跨境运营台
               </span>
             </div>
           )}
@@ -88,26 +77,49 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            onClick={onClose}
-            title={item.label}
-            className={({ isActive }) =>
-              cn(
-                'flex min-h-9 items-center gap-3 rounded px-2.5 text-[13px]',
-                isActive
-                  ? 'bg-secondary font-medium text-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                collapsed && 'justify-center px-2',
-              )
-            }
+      <nav className="flex-1 overflow-y-auto px-2 py-2">
+        {NAVIGATION_GROUPS.map((group, groupIndex) => (
+          <section
+            key={group.id}
+            className={cn(
+              groupIndex > 0 && 'mt-2 border-t border-border/60 pt-2',
+            )}
           >
-            <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-            {!collapsed && <span>{item.label}</span>}
-          </NavLink>
+            {!collapsed && (
+              <p className="px-2.5 pb-1 pt-1 text-[10px] leading-4 text-[var(--factory-faint)]">
+                {group.label}
+              </p>
+            )}
+            <div className="space-y-0.5">
+              {group.items.map((item) => {
+                const Icon = NAV_ICONS[item.path]
+                if (!Icon) return null
+                const listingRouteActive =
+                  item.path === '/app/catalog' &&
+                  location.pathname.startsWith('/app/content')
+                return (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    onClick={onClose}
+                    title={item.label}
+                    className={({ isActive }) =>
+                      cn(
+                        'flex min-h-9 items-center gap-3 rounded px-2.5 text-[13px]',
+                        isActive || listingRouteActive
+                          ? 'bg-secondary font-medium text-foreground'
+                          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                        collapsed && 'justify-center px-2',
+                      )
+                    }
+                  >
+                    <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    {!collapsed && <span>{item.label}</span>}
+                  </NavLink>
+                )
+              })}
+            </div>
+          </section>
         ))}
       </nav>
 

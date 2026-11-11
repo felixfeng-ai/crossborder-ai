@@ -183,7 +183,7 @@ export default function ProductsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Package className="h-6 w-6 text-primary" />
-            商品管理
+            商品库
           </h1>
           <p className="text-muted-foreground text-sm">粘贴商品链接自动抓取，或手动/CSV 批量录入自有商品</p>
         </div>

@@ -7,6 +7,7 @@ import {
   Sparkles, Globe, ShoppingBag, Bot, DollarSign, ShieldCheck, TrendingUp,
   ArrowRight, CheckCircle2, Zap,
 } from 'lucide-react'
+import { BrandMark } from '@/components/brand/BrandMark'
 
 const container = {
   hidden: { opacity: 0 },
@@ -46,7 +47,7 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto flex items-center justify-between h-14 px-4 md:px-6">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded border border-border bg-secondary">
-              <Globe className="h-3.5 w-3.5 text-foreground" />
+              <BrandMark className="h-4 w-4 text-foreground" />
             </div>
             <span className="text-sm font-semibold">VeyaShip</span>
           </div>

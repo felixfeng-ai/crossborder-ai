@@ -9,7 +9,7 @@ VeyaShip 是跨境卖家的石墨决策台：以中性近黑层级、纸白命�
 - Audience: 每天高频处理商品、Listing、图片、库存与多平台发布的跨境卖家和运营人员。
 - Primary job: 判断一个来源商品是否可上架，并把可上架商品推进到目标渠道。
 - Platform: React Web 应用，同时服务桌面与 390px 移动端。
-- Core surfaces: 经营总览、商品详情、Listing 生成、图片任务、AI 营销视频、单镜头视频、批量导入、渠道发布、设置。
+- Core surfaces: 仪表盘、商品库、Listing 中心、AI 助手、图片工作台、视频工作台、素材中心、运营监控、渠道发布、账单与设置。
 - What must survive: 现有路由、鉴权、业务接口、导航入口、琥珀色品牌识别和全部数据能力。
 
 ## Principles
@@ -70,7 +70,8 @@ VeyaShip 是跨境卖家的石墨决策台：以中性近黑层级、纸白命�
 
 - Mobile model: 58px top bar, drawer navigation, single-column content, no horizontal page scroll.
 - Desktop model: 232px labelled sidebar, 58px top bar, continuous graphite work surface.
-- Primary navigation: 经营总览、商品、AI Listing、AI 助手、AI 图片、AI 营销视频、单镜头视频、批量导入、渠道、账单、设置。
+- Primary navigation groups: 经营（仪表盘、商品库、Listing 中心）、AI 创作（AI 助手、图片工作台、视频工作台、素材中心）、运营（运营监控、渠道发布）、账户（账单、设置）。
+- Batch import is an action inside 商品库; AI Listing generation is an action inside Listing 中心; upgrade approval is an admin action in the account menu.
 - What is intentionally not navigation: onboarding hints, recent products, billing upgrades and provider configuration stay inside their owning surface.
 - Safe areas and keyboard behaviour: `min-h-[100dvh]`, safe-area insets, visible focus rings and keyboard reachable controls.
 
@@ -80,7 +81,8 @@ VeyaShip 是跨境卖家的石墨决策台：以中性近黑层级、纸白命�
 - Card: opaque panel with 1px hairline; no blur, glow or hover lift at rest.
 - Input: opaque field on panel, 6px radius, visible label and brand focus ring.
 - Sidebar: neutral active fill and text weight change; no coloured pill and no left accent bar.
-- Header: carries context, credits, language and account; no decorative chrome.
+- Header: shows current workspace group and page title; carries credits, language and account; does not repeat the brand slogan.
+- Brand mark: geometric V-route with three route nodes and one amber destination node; sidebar subtitle is `AI 跨境运营台`.
 - Pipeline: ordered operational steps with completed, running, blocked and waiting states.
 - AI status: model/tool activity is shown only where it helps the current decision.
 - Login and registration: split-page authentication with an AI Agent execution chain on the left and one focused form on the right; mobile collapses to the brand claim plus the complete form.
@@ -112,7 +114,7 @@ VeyaShip 是跨境卖家的石墨决策台：以中性近黑层级、纸白命�
 ## Verification
 
 - Target viewports: 1440×1000, 768×1024 and 390×844.
-- Required screenshots: 总览桌面、总览移动端、商品列表、商品详情、设置页、AI 营销视频桌面与移动端。
+- Required screenshots: 总览桌面、总览移动端、商品列表、商品详情、设置页、视频工作台、素材中心桌面与移动端。
 - Automated checks: `npx tsc -p tsconfig.tscheck.json --noEmit`, `npm test`, `npm run build`.
 - Manual checks: keyboard focus, reduced motion, text overflow, long Chinese copy and contrast.
 - Last verified: 2026-11-11, production build verified at 1440, 768 and 390 widths.

@@ -41,7 +41,7 @@ interface SourceAsset {
 
 const DURATION_OPTIONS = [4, 6, 8, 10, 15]
 
-export default function VideosPage() {
+export default function VideosPage({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient()
   const [sourceAssetId, setSourceAssetId] = useState('')
   const [selectedTaskId, setSelectedTaskId] = useState('')
@@ -197,23 +197,25 @@ export default function VideosPage() {
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="page-title flex items-center gap-2">
-            <Film className="h-6 w-6 text-primary" />
-            AI 商品视频
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            用商品首帧生成 9:16 短视频，锁定商品外观，只改变镜头、光影与背景。
-          </p>
+      {!embedded && (
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="page-title flex items-center gap-2">
+              <Film className="h-6 w-6 text-primary" />
+              AI 商品视频
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+              用商品首帧生成 9:16 短视频，锁定商品外观，只改变镜头、光影与背景。
+            </p>
+          </div>
+          <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2">
+            <span className="status-dot" />
+            <span className="text-xs text-muted-foreground">
+              {capabilities?.enabled ? 'MiniMax H3 已就绪' : '视频服务待配置'}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2">
-          <span className="status-dot" />
-          <span className="text-xs text-muted-foreground">
-            {capabilities?.enabled ? 'MiniMax H3 已就绪' : '视频服务待配置'}
-          </span>
-        </div>
-      </div>
+      )}
 
       {!capabilitiesQuery.isLoading && capabilities && !capabilities.enabled && (
         <div className="flex items-start gap-3 border border-[color:var(--factory-coral)]/35 bg-[color:var(--factory-coral)]/8 px-4 py-3">

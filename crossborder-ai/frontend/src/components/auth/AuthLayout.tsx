@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Globe } from 'lucide-react'
+import { BrandMark } from '@/components/brand/BrandMark'
 import { Link } from 'react-router-dom'
 
 const decisionStages = [
@@ -60,7 +60,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           aria-label="返回 VeyaShip 首页"
         >
           <span className="flex h-[30px] w-[30px] items-center justify-center rounded-[5px] border border-[var(--factory-line-strong)] bg-[var(--factory-panel)]">
-            <Globe className="h-[17px] w-[17px]" aria-hidden="true" />
+            <BrandMark className="h-[19px] w-[19px]" />
           </span>
           <span>
             <span className="block font-latin text-[15px] font-semibold leading-4">

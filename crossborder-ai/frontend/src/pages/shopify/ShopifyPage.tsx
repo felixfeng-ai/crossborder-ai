@@ -66,9 +66,9 @@ export default function ShopifyPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <ShoppingBag className="h-6 w-6 text-primary" />
-            Shopify
+            渠道发布
           </h1>
-          <p className="text-muted-foreground text-sm">管理绑定的店铺和订单</p>
+          <p className="text-muted-foreground text-sm">管理 Shopify 店铺连接、订单与发布状态</p>
         </div>
       </div>
 

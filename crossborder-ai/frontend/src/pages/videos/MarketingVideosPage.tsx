@@ -58,7 +58,7 @@ const LANGUAGE_OPTIONS = [
 ]
 
 
-export default function MarketingVideosPage() {
+export default function MarketingVideosPage({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient()
   const [selectedAssetId, setSelectedAssetId] = useState('')
   const [selectedProjectId, setSelectedProjectId] = useState('')
@@ -241,23 +241,25 @@ export default function MarketingVideosPage() {
       animate={{ opacity: 1, y: 0 }}
       className="space-y-5"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="page-title flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-primary" />
-            AI 营销视频
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            输入一个营销想法，Agent 先给出钩子、脚本与多镜头分镜，确认后再生成成片。
-          </p>
+      {!embedded && (
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="page-title flex items-center gap-2">
+              <Sparkles className="h-6 w-6 text-primary" />
+              AI 营销视频
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+              输入一个营销想法，Agent 先给出钩子、脚本与多镜头分镜，确认后再生成成片。
+            </p>
+          </div>
+          <div className="flex items-center gap-2 border border-border bg-background px-3 py-2">
+            <span className="status-dot" />
+            <span className="text-xs text-muted-foreground">
+              {capabilities?.enabled ? '营销视频 Agent 已就绪' : '视频服务待配置'}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-2 border border-border bg-background px-3 py-2">
-          <span className="status-dot" />
-          <span className="text-xs text-muted-foreground">
-            {capabilities?.enabled ? '营销视频 Agent 已就绪' : '视频服务待配置'}
-          </span>
-        </div>
-      </div>
+      )}
 
       {actionError && (
         <div className="border border-destructive/35 bg-destructive/10 px-3 py-2 text-sm text-destructive">

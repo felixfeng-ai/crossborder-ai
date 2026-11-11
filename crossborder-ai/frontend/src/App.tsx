@@ -16,8 +16,8 @@ import RadarPage from '@/pages/radar/RadarPage'
 import LedgerPage from '@/pages/ledger/LedgerPage'
 import AgentPage from '@/pages/agent/AgentPage'
 import ImagesPage from '@/pages/images/ImagesPage'
-import VideosPage from '@/pages/videos/VideosPage'
-import MarketingVideosPage from '@/pages/videos/MarketingVideosPage'
+import VideoWorkspacePage from '@/pages/videos/VideoWorkspacePage'
+import MaterialsPage from '@/pages/assets/MaterialsPage'
 import CatalogPage from '@/pages/catalog/CatalogPage'
 import OperationsPage from '@/pages/operations/OperationsPage'
 import { useAuthStore } from '@/stores/authStore'
@@ -52,8 +52,12 @@ export default function App() {
         <Route path="products/:id" element={<ProductDetailPage />} />
         <Route path="content" element={<ContentPage />} />
         <Route path="images" element={<ImagesPage />} />
-        <Route path="videos" element={<VideosPage />} />
-        <Route path="marketing-videos" element={<MarketingVideosPage />} />
+        <Route path="videos" element={<VideoWorkspacePage />} />
+        <Route
+          path="marketing-videos"
+          element={<Navigate to="/app/videos?tab=marketing" replace />}
+        />
+        <Route path="assets" element={<MaterialsPage />} />
         <Route path="catalog" element={<CatalogPage />} />
         <Route path="operations" element={<OperationsPage />} />
         <Route path="shopify" element={<ShopifyPage />} />

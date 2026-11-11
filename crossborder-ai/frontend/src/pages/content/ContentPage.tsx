@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Sparkles, Copy, CheckCircle2, Loader2, AlertCircle, AlertTriangle, Package, Globe, Image as ImageIcon, ShoppingBag, ExternalLink } from 'lucide-react'
+import { Sparkles, Copy, CheckCircle2, Loader2, AlertCircle, AlertTriangle, Globe, Image as ImageIcon, ShoppingBag, ExternalLink } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,10 +12,7 @@ import ListingSeoCard from '@/components/content/ListingSeoCard'
 import apiClient from '@/api/client'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { createIdempotencyKey } from '@/utils/idempotency'
-import {
-  waitForImageTask,
-  type ImageTaskStatus,
-} from '@/lib/images/taskPolling'
+import { resolveMediaUrl } from '@/lib/apiUrl'
 
 interface Product {
   id: string
@@ -99,15 +96,9 @@ export default function ContentPage() {
   const [platform, setPlatform] = useState(searchParams.get('platform') || 'amazon')
   const [tone, setTone] = useState('professional')
   const [language, setLanguage] = useState('en')
-  const [generateImage, setGenerateImage] = useState(false)
-  const [imagePrompt, setImagePrompt] = useState('')
-  const [expertMode, setExpertMode] = useState(false)
   const [customTone, setCustomTone] = useState('')
   const [copied, setCopied] = useState('')
   const [selectedChannel, setSelectedChannel] = useState('')
-  const [imageTask, setImageTask] = useState<ImageTaskStatus | null>(null)
-  const [imageTaskLoading, setImageTaskLoading] = useState(false)
-  const [imageTaskError, setImageTaskError] = useState('')
 
   const { data: capabilities } = useQuery<Record<string, PlatformCapability>>({
     queryKey: ['platform-capabilities'],
@@ -159,12 +150,6 @@ export default function ContentPage() {
 
   // AI 生成
   const generateMutation = useMutation({
-    onMutate: () => {
-      // 新一轮生成开始时清理上一轮的任务和图片状态，避免旧结果闪现。
-      setImageTask(null)
-      setImageTaskError('')
-      setImageTaskLoading(false)
-    },
     mutationFn: async () => {
       const actualTone = tone === 'custom' ? (customTone || 'professional') : tone
       const res = await apiClient.post('/content/generate', {
@@ -172,48 +157,10 @@ export default function ContentPage() {
         platform,
         tone: actualTone,
         language,
-        generate_image: generateImage,
-        image_prompt: imagePrompt || undefined,
-        expert_mode: expertMode,
       })
       return res.data as GenerateResult
     },
   })
-
-  useEffect(() => {
-    const taskId = generateMutation.data?.image_task_id
-    if (!taskId) {
-      setImageTask(null)
-      setImageTaskLoading(false)
-      setImageTaskError('')
-      return
-    }
-
-    let cancelled = false
-    setImageTask(null)
-    setImageTaskError('')
-    setImageTaskLoading(true)
-
-    waitForImageTask(taskId, async (id) => {
-      const response = await apiClient.get(`/images/status/${id}`)
-      return response.data as ImageTaskStatus
-    })
-      .then((task) => {
-        if (!cancelled) setImageTask(task)
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setImageTaskError(toErrorMessage(error, '图片生成失败，请稍后重试'))
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setImageTaskLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [generateMutation.data?.image_task_id])
 
   const copyText = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
@@ -225,7 +172,7 @@ export default function ContentPage() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-primary" />
@@ -233,6 +180,17 @@ export default function ContentPage() {
           </h1>
           <p className="text-muted-foreground">选择商品，AI 自动生成标题、描述、卖点</p>
         </div>
+        <Button
+          size="lg"
+          disabled={!selectedProduct || generateMutation.isPending}
+          onClick={() => generateMutation.mutate()}
+        >
+          {generateMutation.isPending ? (
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />AI 生成中...</>
+          ) : (
+            <><Sparkles className="mr-2 h-4 w-4" />AI 生成 Listing</>
+          )}
+        </Button>
       </div>
 
       <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-sm">
@@ -266,9 +224,37 @@ export default function ContentPage() {
                 </select>
               )}
               {selected && (
-                <div className="text-xs text-muted-foreground">
-                  <p>价格: {selected.price ? `¥${selected.price}` : '-'}</p>
-                  <p>店铺: {selected.shop_name || '-'}</p>
+                <div className="space-y-3 border-t border-border pt-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden border border-border bg-[#d9dad5]">
+                      {selected.main_image_url ? (
+                        <img
+                          src={resolveMediaUrl(selected.main_image_url)}
+                          alt={selected.title || '商品主图'}
+                          className="h-full w-full object-contain p-1"
+                        />
+                      ) : (
+                        <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="min-w-0 text-xs text-muted-foreground">
+                      <p>价格: {selected.price != null ? `¥${selected.price}` : '-'}</p>
+                      <p>店铺: {selected.shop_name || '-'}</p>
+                      <p className="mt-1 truncate">
+                        {selected.main_image_url ? '真实商品主图已关联' : '尚未补充真实主图'}
+                      </p>
+                    </div>
+                  </div>
+                  <a
+                    href="/app/images"
+                    className="inline-flex min-h-9 items-center gap-1.5 border border-border px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    去图片工作台处理主图
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                  <p className="text-[11px] leading-5 text-muted-foreground">
+                    Listing 仅使用真实商品素材，平台主图和白底图在图片工作台独立处理。
+                  </p>
                 </div>
               )}
             </CardContent>
@@ -335,50 +321,6 @@ export default function ContentPage() {
             </CardContent>
           </Card>
 
-          {/* 专家模式 */}
-          <Card>
-            <CardHeader><CardTitle className="text-sm">生成模式</CardTitle></CardHeader>
-            <CardContent>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={expertMode} onChange={(e) => setExpertMode(e.target.checked)}
-                  className="rounded border-gray-300" />
-                <span className="text-sm">专家模式（多轮自检+优化，质量更高但较慢）</span>
-              </label>
-            </CardContent>
-          </Card>
-
-          {/* 生成主图 */}
-          <Card>
-            <CardHeader><CardTitle className="text-sm">商品主图</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={generateImage} onChange={(e) => setGenerateImage(e.target.checked)}
-                  className="rounded border-gray-300" />
-                <span className="text-sm">AI 生成商品主图（FLUX 模型）</span>
-              </label>
-              {generateImage && (
-                <Input
-                  value={imagePrompt}
-                  onChange={(e) => setImagePrompt(e.target.value)}
-                  placeholder="图片描述（留空自动根据商品标题生成）"
-                  className="text-sm"
-                />
-              )}
-            </CardContent>
-          </Card>
-
-          <Button
-            className="w-full"
-            size="lg"
-            disabled={!selectedProduct || generateMutation.isPending}
-            onClick={() => generateMutation.mutate()}
-          >
-            {generateMutation.isPending ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />AI 生成中...</>
-            ) : (
-              <><Sparkles className="mr-2 h-4 w-4" />AI 生成 Listing</>
-            )}
-          </Button>
         </div>
 
         {/* 右侧：结果区 */}
@@ -422,56 +364,6 @@ export default function ContentPage() {
                 </Card>
               )}
 
-              {imageTaskLoading && (
-                <Card>
-                  <CardContent className="py-6 flex items-center gap-3 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    正在生成商品图片，Listing 文案已经可以使用
-                  </CardContent>
-                </Card>
-              )}
-
-              {imageTaskError && (
-                <Card className="border-amber-500/30 bg-amber-500/5">
-                  <CardContent className="py-4 text-sm text-amber-700 dark:text-amber-300 flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4" />
-                    {imageTaskError}
-                  </CardContent>
-                </Card>
-              )}
-
-              {imageTask?.image_urls?.length ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <ImageIcon className="h-4 w-4" />AI 生成图片
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-3 sm:grid-cols-2">
-                    {imageTask.image_urls.map((url, index) => (
-                      <img
-                        key={`${url}-${index}`}
-                        src={url}
-                        alt={`AI 生成商品图 ${index + 1}`}
-                        className="w-full rounded-lg border object-cover"
-                      />
-                    ))}
-                  </CardContent>
-                </Card>
-              ) : null}
-
-              {/* 兼容旧的同步 image_url 返回 */}
-              {generateMutation.data.image_url && (
-                <Card>
-                  <CardHeader><CardTitle className="text-sm flex items-center gap-2">
-                    <ImageIcon className="h-4 w-4" />生成的主图
-                  </CardTitle></CardHeader>
-                  <CardContent>
-                    <img src={generateMutation.data.image_url} alt="Generated product image"
-                      className="w-full max-w-sm rounded-lg border" />
-                  </CardContent>
-                </Card>
-              )}
               {/* 标题 */}
               <Card>
                 <CardHeader className="flex flex-row items-start justify-between">
@@ -621,8 +513,10 @@ export default function ContentPage() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                 <Sparkles className="h-12 w-12 mb-4 opacity-30" />
-                <p className="text-sm">选择一个商品，点击「AI 生成 Listing」</p>
-                <p className="text-xs mt-1">AI 会自动生成标题、描述和卖点</p>
+                <p className="text-sm">
+                  {selected ? '设置完成后，点击「AI 生成 Listing」' : '先选择一个商品'}
+                </p>
+                <p className="text-xs mt-1">AI 会结合商品事实生成标题、描述和卖点</p>
               </CardContent>
             </Card>
           )}

@@ -3,7 +3,7 @@
 【全栈学习者必读】
 这个模块展示了后端最复杂的业务流程：
 1. 数据库操作：查商品、查品牌调性、查/改积分
-2. 外部 API 调用：DeepSeek AI、Replicate FLUX
+2. 外部 API 调用：DeepSeek Listing 文案生成
 3. 业务逻辑：积分扣减、品牌调性注入、生成模式选择
 4. 异常处理：各种失败场景的优雅处理
 
@@ -19,13 +19,11 @@
 3. 查数据库 → 从 products 表读商品
 4. 查品牌调性 → 从 personas 表读用户配置
 5. 调用 AI → services/ai/deepseek.py
-6. 可选生成图片 → services/ai/replicate.py
-7. 扣减积分 → user.deduct_credits()
-8. 返回结果 → GenerateResponse
+6. 扣减积分 → user.deduct_credits()
+7. 返回结果 → GenerateResponse
 """
 
 import asyncio
-import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -42,15 +40,11 @@ from app.services.ai.persona_kit import (
     fetch_persona,
     build_persona_kit,
     format_persona_block,
-    image_style_phrase,
-    strip_banned_words,
 )
 from app.services.ai.compliance import merge_banned_words, check_text, suggest_replacements
 from app.services.listing_service import persist_generated_listing
 from app.services import provider_config
 from pydantic import BaseModel, Field
-
-logger = logging.getLogger("veyaship")
 
 router = APIRouter(prefix="/content", tags=["AI 内容生成"])
 
@@ -74,9 +68,6 @@ class GenerateRequest(BaseModel):
     platform: str = Field(default="amazon", description="目标平台: amazon, ebay, shopify, etsy, shein, temu, tiktok, aliexpress, walmart, shopee, lazada")
     tone: str = Field(default="professional", description="语气: professional, casual, luxury")
     language: str = Field(default="en", description="输出语言: en, ja, es, fr, de, pt 等")
-    generate_image: bool = Field(default=False, description="是否同时用 FLUX 生成商品主图")
-    image_prompt: str = Field(default="", description="自定义图片描述，留空则自动根据商品标题生成")
-    expert_mode: bool = Field(default=False, description="启用 Agent 深度优化（多轮自检+优化，较慢但质量更高）")
 
 
 class GenerateResponse(BaseModel):
@@ -86,8 +77,9 @@ class GenerateResponse(BaseModel):
     bullet_points: list[str] = []
     seo_title: str = ""
     seo_description: str = ""
+    # 旧客户端兼容字段：Listing 文案链路不再生成图片，固定返回空值。
     image_url: str = ""
-    image_task_id: str = ""  # 异步图片任务ID，前端可轮询
+    image_task_id: str = ""
     model_used: str = ""
     listing_id: str = ""
     listing_status: str = ""
@@ -190,55 +182,24 @@ async def generate_listing(
     # 同一 kit 同时驱动文案注入（block）与图片风格（image_style_phrase）。
     persona_block = ""
     brand_banned_words: list[str] = []
-    image_style_suffix = ""
-    brand_name_identity = ""
     persona = await fetch_persona(db, current_user.id)
     if persona:
         kit = build_persona_kit(persona)
         persona_block = format_persona_block(kit)
         brand_banned_words = kit.get("banned_words") or []
-        image_style_suffix = image_style_phrase(kit)
-        brand_name_identity = kit.get("brand_name") or ""
 
     # ════════════════════════════════════════════════════════════
     # 第 4 步：调用 AI 生成内容
     # ════════════════════════════════════════════════════════════
-    # 两种模式：
-    # 1. 普通模式：三步调用 DeepSeek（标题 → 描述 → 卖点 → SEO）
-    # 2. 专家模式：用 LangGraph Agent 自动自检和优化
+    # Listing 文案链路固定走可观测的分步生成，不再同步运行专家 Agent。
     try:
-        if payload.expert_mode:
-            # ── 专家模式（多轮自检） ────────────────────────
-            # ListingAgent 是一个 LangGraph 驱动的 Agent
-            # 它会自我审视、优化、再审视，重复多次
-            from app.services.ai.agent import ListingAgent
-            agent = ListingAgent()
-            agent_result = await agent.run(
-                product_title=product.title or "",
-                product_description=product.description or "",
-                features=f"价格: {product.price}" if product.price else "",
-                platform=payload.platform,
-                tone=payload.tone,
-                target_language=payload.language if payload.language != "en" else None,
-                max_iterations=2,
-                persona_block=persona_block,
-            )
-            title = agent_result.get("title", "")
-            description = agent_result.get("description", "")
-            bullets = agent_result.get("bullet_points", [])
-            seo = {
-                "seo_title": agent_result.get("seo_title", ""),
-                "seo_description": agent_result.get("seo_description", ""),
-            }
-        else:
-            # ── 普通模式（分步调用） ────────────────────────
-            llm = DeepSeekService()
-            # 标题、描述、卖点互不依赖，并发执行
-            t1 = _generate_title(llm, product, payload, persona_block)
-            t2 = _generate_description(llm, product, payload, persona_block)
-            t3 = _generate_bullets(llm, product, payload, persona_block)
-            title, description, bullets = await asyncio.gather(t1, t2, t3)
-            seo = await _optimize_seo(llm, title, description, payload, persona_block)
+        llm = DeepSeekService()
+        # 标题、描述、卖点互不依赖，并发执行
+        t1 = _generate_title(llm, product, payload, persona_block)
+        t2 = _generate_description(llm, product, payload, persona_block)
+        t3 = _generate_bullets(llm, product, payload, persona_block)
+        title, description, bullets = await asyncio.gather(t1, t2, t3)
+        seo = await _optimize_seo(llm, title, description, payload, persona_block)
     except Exception as e:
         # 捕获所有 AI 调用异常，返回统一的中文错误提示
         # 不暴露具体的 API 错误信息，因为终端用户看不懂
@@ -269,40 +230,9 @@ async def generate_listing(
     blocked = bool(violations)
     suggestions = suggest_replacements(violations) if blocked else []
 
-    # ════════════════════════════════════════════════════════════
-    # 第 5 步：生成商品主图（可选，后台异步执行）
-    # ════════════════════════════════════════════════════════════
-    # 图片生成较慢（10s+），后台异步执行，不阻塞内容返回。
+    # Listing 只处理文案；图片由图片工作台独立管理。
     image_url = ""
     image_task_id = ""
-    if payload.generate_image:
-        # settings 已在本模块顶部导入，禁止在此再 import（会把 settings 变成函数局部变量，
-        # 未走该分支时函数末尾读 settings 会 UnboundLocalError）
-        aliyun_key = provider_config.get("aliyun", "api_key", settings.ALIYUN_DASHSCOPE_API_KEY or "")
-        replicate_key = provider_config.get("replicate", "api_key", settings.REPLICATE_API_KEY or "")
-        if not aliyun_key and not replicate_key:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="图片生成功能暂未配置",
-            )
-
-        prompt = payload.image_prompt or (
-            f"Professional e-commerce product photo of {product.title}, "
-            f"white background, studio lighting, 8K, photorealistic"
-        )
-        # 图片路径不做合规拦截，但把品牌禁词从描述里简单移除，再附品牌视觉风格
-        prompt = strip_banned_words(prompt, brand_banned_words)
-        if image_style_suffix:
-            prompt = f"{prompt}, {image_style_suffix}"
-        if brand_name_identity:
-            prompt = f"{prompt}, {brand_name_identity} brand identity"
-
-        try:
-            from app.routers.images import schedule_image_task
-            image_task_id = await schedule_image_task(db, current_user.id, prompt, 1)
-        except Exception as exc:
-            # 主文案已生成成功，附图失败不阻塞主结果：记日志并留空 task_id，前端不再轮询
-            logger.warning("Listing 附图调度失败: %s", exc)
 
     # ════════════════════════════════════════════════════════════
     # 第 5.5 步：持久化 ListingDraft + 版本化合规报告
@@ -456,12 +386,12 @@ async def _generate_title(
     品牌档案（persona_block）放到 system prompt 顶部统一注入（CAP-04）。
     """
     lang_instruction = f"Write the title in {payload.language.upper()}." if payload.language != "zh" else "用中文写标题。"
+    facts = _product_fact_block(product)
     prompt = (
         f"Generate an optimized {payload.platform} product title (max 200 chars, {payload.tone} tone)."
         f"{lang_instruction}\n"
         f"Product: {product.title}\n"
-        f"Price: {product.price}\n"
-        f"Shop: {product.shop_name or ''}"
+        f"{facts}"
     )
     # 重试最多3次，应对 DeepSeek API 限流导致的空响应
     for attempt in range(3):
@@ -486,6 +416,7 @@ async def _generate_description(
     """调用 AI 生成商品描述"""
     return await llm.generate_product_description(
         product_title=product.title,
+        product_features=_product_fact_block(product),
         platform=payload.platform,
         tone=payload.tone,
         target_language=payload.language if payload.language != "en" else None,
@@ -500,13 +431,28 @@ async def _generate_bullets(
     persona_block: str = "",
 ) -> list[str]:
     """调用 AI 生成卖点列表（Bullet Points）"""
-    features = f"价格: {product.price}" if product.price else ""
     return await llm.generate_bullet_points(
         product_title=product.title,
-        features=features,
+        features=_product_fact_block(product),
         platform=payload.platform,
         persona_block=persona_block,
     )
+
+
+def _product_fact_block(product: Product) -> str:
+    """构建 Listing Prompt 的商品事实块，避免模型只凭标题猜测卖点。"""
+    lines = []
+    if product.description:
+        lines.append(f"Description: {product.description[:1500]}")
+    if product.price is not None:
+        lines.append(f"Price: {product.price}")
+    if product.shop_name:
+        lines.append(f"Shop: {product.shop_name}")
+    if product.sales_count is not None:
+        lines.append(f"Sales: {product.sales_count}")
+    if product.main_image_url:
+        lines.append("Primary product image: available for downstream asset workflow")
+    return "\n".join(lines) or "No additional product facts provided."
 
 
 async def _optimize_seo(

@@ -41,6 +41,16 @@ echo "[3/5] 前端已发布到 $WEB_ROOT"
 
 # 迁移失败必须阻断发布，不能再 stamp head 掩盖 schema 漂移。
 cd "$PROJECT_DIR/backend"
+CURRENT_OUTPUT="$(./venv/bin/alembic current 2>/dev/null || true)"
+if ! printf '%s\n' "$CURRENT_OUTPUT" | grep -Eq '[0-9]{3}_'; then
+  HAS_BASELINE=$(
+    ./venv/bin/python "$PROJECT_DIR/deploy/veyaship/check_schema_baseline.py"
+  )
+  if [ "$HAS_BASELINE" = "1" ]; then
+    echo "检测到已有生产表但缺少 Alembic 版本，基线标记到 021"
+    ./venv/bin/alembic stamp 021_marketing_video_projects
+  fi
+fi
 ./venv/bin/alembic upgrade head
 ./venv/bin/alembic current
 echo "[4/5] 数据库迁移已到 head"

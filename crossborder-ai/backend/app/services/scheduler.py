@@ -82,6 +82,14 @@ class SchedulerService:
             replace_existing=True,
         )
 
+        # 镜头全部完成后合成营销成片；仍由跨进程锁保证单 worker 执行。
+        self.scheduler.add_job(
+            self._sync_marketing_videos_locked,
+            IntervalTrigger(seconds=10),
+            id="sync_marketing_videos",
+            replace_existing=True,
+        )
+
         self.scheduler.add_job(
             self._refresh_provider_cache,
             IntervalTrigger(seconds=10),
@@ -366,6 +374,22 @@ class SchedulerService:
                 return
             count = await poll_video_tasks(db)
             print(f"[Scheduler] 视频任务对账完成：{count} 条")
+
+    async def _sync_marketing_videos_locked(self):
+        await self._run_with_lock(
+            "sync_marketing_videos",
+            self._sync_marketing_videos,
+        )
+
+    async def _sync_marketing_videos(self):
+        from app.services.marketing_video_executor import (
+            sync_marketing_video_projects,
+        )
+
+        async with async_session_factory() as db:
+            count = await sync_marketing_video_projects(db)
+            if count:
+                print(f"[Scheduler] 营销视频项目对账完成：{count} 条")
 
     async def _refresh_provider_cache(self):
         """周期刷新服务商配置缓存，保证多 worker 在 10 秒内最终一致。"""

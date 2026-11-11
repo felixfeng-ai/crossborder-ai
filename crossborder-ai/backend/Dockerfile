@@ -34,6 +34,10 @@ FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
+# 多镜头营销成片在服务端通过 FFmpeg 合成。
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 # 从 deps 阶段复制已安装的 Python 包
 # 只复制 site-packages，不复制构建时工具
 COPY --from=deps /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/

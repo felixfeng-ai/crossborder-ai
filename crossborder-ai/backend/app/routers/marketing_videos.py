@@ -1,0 +1,402 @@
+"""AI 营销视频 Agent 路由。"""
+
+import json
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.access_control import check_feature_access
+from app.core.config import settings
+from app.core.database import get_db
+from app.dependencies import get_current_user
+from app.models.image_asset import ImageAsset
+from app.models.marketing_video import MarketingVideoProject, MarketingVideoShot
+from app.models.user import InsufficientCreditsError, User
+from app.models.video_generation_task import VideoGenerationTask
+from app.services.ai.persona_kit import build_persona_kit, fetch_persona, format_persona_block
+from app.services.marketing_video_agent import (
+    MARKETING_TEMPLATES,
+    PLATFORM_OPTIONS,
+    estimate_marketing_plan_credits,
+    generate_marketing_plan,
+)
+from app.services.marketing_video_executor import (
+    cancel_marketing_project,
+    start_marketing_project,
+)
+from app.services.minimax_video import (
+    get_minimax_video_capabilities,
+    get_minimax_video_config,
+)
+
+
+router = APIRouter(prefix="/marketing-videos", tags=["AI 营销视频"])
+
+SUPPORTED_DURATIONS = {15, 20, 30}
+
+
+class CreateMarketingProjectRequest(BaseModel):
+    source_asset_id: str
+    idea: str = Field(..., min_length=3, max_length=3000)
+    product_name: str = Field(..., min_length=1, max_length=255)
+    platform: str = "tiktok"
+    market: str = Field("US", min_length=2, max_length=50)
+    language: str = Field("en", min_length=2, max_length=30)
+    duration: int = 15
+    template_id: str = "presenter_demo"
+    model: str = "MiniMax-H3-Lite"
+    resolution: str = "480P"
+
+
+class MarketingShotResponse(BaseModel):
+    position: int
+    title: str
+    purpose: str
+    prompt: str
+    duration: int
+    status: str
+    video_url: Optional[str] = None
+    error: Optional[str] = None
+
+
+class MarketingProjectResponse(BaseModel):
+    id: str
+    title: str
+    product_name: str
+    idea: str
+    platform: str
+    market: str
+    language: str
+    duration: int
+    template_id: str
+    model: str
+    resolution: str
+    status: str
+    brief: dict
+    shots: list[MarketingShotResponse]
+    credits_estimated: int
+    credits_charged: int
+    final_video_url: Optional[str] = None
+    error: Optional[str] = None
+    created_at: str
+    finished_at: Optional[str] = None
+
+
+async def _asset_owned(
+    db: AsyncSession,
+    source_asset_id: str,
+    user_id,
+) -> ImageAsset:
+    try:
+        asset_id = uuid.UUID(source_asset_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="商品首帧不存在")
+    asset = (
+        await db.execute(
+            select(ImageAsset).where(
+                ImageAsset.id == asset_id,
+                ImageAsset.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="商品首帧不存在")
+    return asset
+
+
+async def _owned_project(
+    db: AsyncSession,
+    project_id: str,
+    user_id,
+) -> MarketingVideoProject:
+    try:
+        parsed_id = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="营销视频项目不存在")
+    project = (
+        await db.execute(
+            select(MarketingVideoProject).where(
+                MarketingVideoProject.id == parsed_id,
+                MarketingVideoProject.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail="营销视频项目不存在")
+    return project
+
+
+def _project_file_path(storage_key: str) -> Path:
+    base = Path(settings.VIDEO_STORAGE_DIR).resolve()
+    target = (base / storage_key).resolve()
+    if target != base and base not in target.parents:
+        raise HTTPException(status_code=404, detail="营销成片不存在")
+    return target
+
+
+def _parse_brief(project: MarketingVideoProject) -> dict:
+    try:
+        value = json.loads(project.brief_json)
+        return value if isinstance(value, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+async def _serialize_project(
+    db: AsyncSession,
+    project: MarketingVideoProject,
+) -> MarketingProjectResponse:
+    shots = (
+        await db.execute(
+            select(MarketingVideoShot)
+            .where(MarketingVideoShot.project_id == project.id)
+            .order_by(MarketingVideoShot.position)
+        )
+    ).scalars().all()
+    task_ids = [shot.video_task_id for shot in shots if shot.video_task_id]
+    tasks = (
+        await db.execute(
+            select(VideoGenerationTask).where(VideoGenerationTask.id.in_(task_ids))
+        )
+    ).scalars().all() if task_ids else []
+    task_by_id = {task.id: task for task in tasks}
+
+    shot_items = []
+    for shot in shots:
+        task = task_by_id.get(shot.video_task_id)
+        shot_items.append(
+            MarketingShotResponse(
+                position=shot.position,
+                title=shot.title,
+                purpose=shot.purpose,
+                prompt=shot.prompt,
+                duration=shot.duration,
+                status=shot.status,
+                video_url=(
+                    f"{settings.API_V1_PREFIX}/videos/tasks/{task.id}/file"
+                    if task and task.status == "succeeded"
+                    else None
+                ),
+                error=shot.error,
+            )
+        )
+    return MarketingProjectResponse(
+        id=str(project.id),
+        title=project.title,
+        product_name=project.product_name,
+        idea=project.idea,
+        platform=project.platform,
+        market=project.market,
+        language=project.language,
+        duration=project.duration,
+        template_id=project.template_id,
+        model=project.model,
+        resolution=project.resolution,
+        status=project.status,
+        brief=_parse_brief(project),
+        shots=shot_items,
+        credits_estimated=project.credits_estimated,
+        credits_charged=project.credits_charged,
+        final_video_url=(
+            f"{settings.API_V1_PREFIX}/marketing-videos/projects/{project.id}/file"
+            if project.status == "succeeded"
+            else None
+        ),
+        error=project.error,
+        created_at=str(project.created_at),
+        finished_at=str(project.finished_at) if project.finished_at else None,
+    )
+
+
+@router.get("/capabilities")
+async def marketing_video_capabilities():
+    video = get_minimax_video_capabilities()
+    return {
+        **video,
+        "platforms": list(PLATFORM_OPTIONS),
+        "marketing_templates": list(MARKETING_TEMPLATES),
+        "durations": sorted(SUPPORTED_DURATIONS),
+    }
+
+
+@router.post("/projects", response_model=MarketingProjectResponse, status_code=201)
+async def create_marketing_project(
+    payload: CreateMarketingProjectRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """生成营销方案与分镜，不调用视频供应商。"""
+    if not check_feature_access(current_user, "ai_video"):
+        raise HTTPException(status_code=403, detail="AI 营销视频仅限专业版套餐使用")
+    if not get_minimax_video_config()["api_key"]:
+        raise HTTPException(status_code=400, detail="AI 视频服务暂未配置")
+    if payload.duration not in SUPPORTED_DURATIONS:
+        raise HTTPException(status_code=400, detail="营销视频时长仅支持 15、20、30 秒")
+    if not any(item["id"] == payload.platform for item in PLATFORM_OPTIONS):
+        raise HTTPException(status_code=400, detail="目标平台不支持")
+    if not any(item["id"] == payload.template_id for item in MARKETING_TEMPLATES):
+        raise HTTPException(status_code=400, detail="营销视频模板不存在")
+
+    await _asset_owned(db, payload.source_asset_id, current_user.id)
+    (
+        await db.execute(
+            select(User).where(User.id == current_user.id).with_for_update()
+        )
+    ).scalar_one()
+    key = (idempotency_key or "").strip()[:100] or None
+    if key:
+        existing = (
+            await db.execute(
+                select(MarketingVideoProject).where(
+                    MarketingVideoProject.user_id == current_user.id,
+                    MarketingVideoProject.idempotency_key == key,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return await _serialize_project(db, existing)
+
+    persona = await fetch_persona(db, current_user.id)
+    brand_context = format_persona_block(build_persona_kit(persona)) if persona else None
+    plan = await generate_marketing_plan(
+        idea=payload.idea,
+        product_name=payload.product_name,
+        platform=payload.platform,
+        market=payload.market,
+        language=payload.language,
+        duration=payload.duration,
+        template_id=payload.template_id,
+        brand_context=brand_context,
+    )
+    try:
+        credits = estimate_marketing_plan_credits(
+            plan,
+            model=payload.model,
+            resolution=payload.resolution,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    project = MarketingVideoProject(
+        user_id=current_user.id,
+        source_asset_id=uuid.UUID(payload.source_asset_id),
+        title=plan["title"],
+        product_name=payload.product_name,
+        idea=payload.idea,
+        platform=payload.platform,
+        market=payload.market,
+        language=payload.language,
+        duration=payload.duration,
+        template_id=payload.template_id,
+        model=payload.model,
+        resolution=payload.resolution,
+        status="brief_ready",
+        brief_json=json.dumps(plan, ensure_ascii=False),
+        credits_estimated=credits,
+        idempotency_key=key,
+    )
+    db.add(project)
+    await db.flush()
+    for item in plan["shots"]:
+        db.add(
+            MarketingVideoShot(
+                project_id=project.id,
+                position=item["position"],
+                title=item["title"],
+                purpose=item["purpose"],
+                prompt=item["prompt"],
+                duration=item["duration"],
+                status="planned",
+            )
+        )
+    await db.flush()
+    return await _serialize_project(db, project)
+
+
+@router.get("/projects", response_model=list[MarketingProjectResponse])
+async def list_marketing_projects(
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    projects = (
+        await db.execute(
+            select(MarketingVideoProject)
+            .where(MarketingVideoProject.user_id == current_user.id)
+            .order_by(
+                desc(MarketingVideoProject.created_at),
+                desc(MarketingVideoProject.id),
+            )
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [await _serialize_project(db, project) for project in projects]
+
+
+@router.get("/projects/{project_id}", response_model=MarketingProjectResponse)
+async def get_marketing_project(
+    project_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project = await _owned_project(db, project_id, current_user.id)
+    return await _serialize_project(db, project)
+
+
+@router.post(
+    "/projects/{project_id}/render",
+    response_model=MarketingProjectResponse,
+    status_code=202,
+)
+async def render_marketing_project(
+    project_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project = await _owned_project(db, project_id, current_user.id)
+    try:
+        await start_marketing_project(db, project, current_user)
+    except InsufficientCreditsError:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return await _serialize_project(db, project)
+
+
+@router.post("/projects/{project_id}/cancel", response_model=MarketingProjectResponse)
+async def cancel_project(
+    project_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project = await _owned_project(db, project_id, current_user.id)
+    if not await cancel_marketing_project(db, project):
+        raise HTTPException(status_code=409, detail="当前营销视频项目无法取消")
+    return await _serialize_project(db, project)
+
+
+@router.get("/projects/{project_id}/file")
+async def get_marketing_project_file(
+    project_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project = await _owned_project(db, project_id, current_user.id)
+    if project.status != "succeeded" or not project.final_storage_key:
+        raise HTTPException(status_code=404, detail="营销成片不存在")
+    path = _project_file_path(project.final_storage_key)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="营销成片不存在")
+    return FileResponse(
+        path,
+        media_type=project.mime or "video/mp4",
+        filename=f"veyaship-marketing-{project.id}.mp4",
+    )

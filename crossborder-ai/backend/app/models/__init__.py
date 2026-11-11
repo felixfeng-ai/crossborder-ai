@@ -27,6 +27,7 @@ from app.models.monitor_setting import MonitorSetting
 from app.models.variant_snapshot import VariantSnapshot
 from app.models.operation_alert import OperationAlert
 from app.models.video_generation_task import VideoGenerationTask
+from app.models.marketing_video import MarketingVideoProject, MarketingVideoShot
 
 __all__ = [
     "User",
@@ -52,4 +53,6 @@ __all__ = [
     "VariantSnapshot",
     "OperationAlert",
     "VideoGenerationTask",
+    "MarketingVideoProject",
+    "MarketingVideoShot",
 ]

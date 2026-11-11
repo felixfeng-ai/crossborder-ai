@@ -9,7 +9,7 @@ VeyaShip 是跨境卖家的石墨决策台：以中性近黑层级、纸白命�
 - Audience: 每天高频处理商品、Listing、图片、库存与多平台发布的跨境卖家和运营人员。
 - Primary job: 判断一个来源商品是否可上架，并把可上架商品推进到目标渠道。
 - Platform: React Web 应用，同时服务桌面与 390px 移动端。
-- Core surfaces: 经营总览、商品详情、Listing 生成、图片任务、批量导入、渠道发布、设置。
+- Core surfaces: 经营总览、商品详情、Listing 生成、图片任务、AI 营销视频、单镜头视频、批量导入、渠道发布、设置。
 - What must survive: 现有路由、鉴权、业务接口、导航入口、琥珀色品牌识别和全部数据能力。
 
 ## Principles
@@ -70,7 +70,7 @@ VeyaShip 是跨境卖家的石墨决策台：以中性近黑层级、纸白命�
 
 - Mobile model: 58px top bar, drawer navigation, single-column content, no horizontal page scroll.
 - Desktop model: 232px labelled sidebar, 58px top bar, continuous graphite work surface.
-- Primary navigation: 经营总览、商品、AI Listing、AI 助手、AI 图片、批量导入、渠道、账单、设置。
+- Primary navigation: 经营总览、商品、AI Listing、AI 助手、AI 图片、AI 营销视频、单镜头视频、批量导入、渠道、账单、设置。
 - What is intentionally not navigation: onboarding hints, recent products, billing upgrades and provider configuration stay inside their owning surface.
 - Safe areas and keyboard behaviour: `min-h-[100dvh]`, safe-area insets, visible focus rings and keyboard reachable controls.
 
@@ -112,7 +112,7 @@ VeyaShip 是跨境卖家的石墨决策台：以中性近黑层级、纸白命�
 ## Verification
 
 - Target viewports: 1440×1000, 768×1024 and 390×844.
-- Required screenshots: 总览桌面、总览移动端、商品列表、商品详情、设置页。
+- Required screenshots: 总览桌面、总览移动端、商品列表、商品详情、设置页、AI 营销视频桌面与移动端。
 - Automated checks: `npx tsc -p tsconfig.tscheck.json --noEmit`, `npm test`, `npm run build`.
 - Manual checks: keyboard focus, reduced motion, text overflow, long Chinese copy and contrast.
 - Last verified: 2026-11-11, production build verified at 1440, 768 and 390 widths.

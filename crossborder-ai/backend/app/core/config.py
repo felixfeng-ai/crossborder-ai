@@ -50,6 +50,10 @@ class Settings(BaseSettings):
         - 否则 → 用各 POSTGRES_* 字段拼接
         """
         if self.USE_SQLITE:
+            # 测试/预览可通过 DATABASE_URL 指定独立 SQLite 文件，
+            # 避免复用已有开发库而受旧表结构影响。
+            if self.DATABASE_URL and str(self.DATABASE_URL).startswith("sqlite"):
+                return str(self.DATABASE_URL)
             return "sqlite+aiosqlite:///./crossborder_ai.db"
         return str(self.DATABASE_URL or self._build_pg_url())
 

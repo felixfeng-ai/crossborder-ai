@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildMarketingPipeline,
+  downloadFilename,
   marketingTemplateName,
   projectStatusLabel,
   shotStatusLabel,
@@ -55,5 +56,11 @@ describe('marketing video helpers', () => {
     ])
     expect(pipeline[0].state).toBe('current')
     expect(pipeline[1].state).toBe('pending')
+  })
+
+  it('为字幕和成片生成稳定文件名', () => {
+    expect(downloadFilename('project-1', 'srt')).toBe(
+      'veyaship-marketing-project-1.srt',
+    )
   })
 })

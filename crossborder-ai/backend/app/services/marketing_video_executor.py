@@ -1,6 +1,7 @@
 """营销视频项目渲染与多镜头合成。"""
 
 import hashlib
+import json
 import logging
 import shutil
 import subprocess
@@ -16,6 +17,7 @@ from app.models.marketing_video import MarketingVideoProject, MarketingVideoShot
 from app.models.user import InsufficientCreditsError, User
 from app.models.video_generation_task import VideoGenerationTask
 from app.services.credit_service import add_credits
+from app.services.marketing_subtitles import build_marketing_srt
 from app.services.video_task_executor import cancel_video_task, submit_video_task
 
 
@@ -53,13 +55,25 @@ def _ffmpeg_concat_file(paths: list[Path], manifest: Path) -> None:
     manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def assemble_marketing_video(segment_paths: list[Path], output_path: Path) -> None:
-    """使用 FFmpeg 按顺序拼接镜头；复制失败时回退到统一重编码。"""
+def _subtitle_filter_path(path: Path) -> str:
+    """转义 FFmpeg subtitles 滤镜路径，兼容 Windows 盘符。"""
+    value = str(path.resolve()).replace("\\", "/")
+    return value.replace(":", "\\:").replace("'", "\\'")
+
+
+def assemble_marketing_video(
+    segment_paths: list[Path],
+    output_path: Path,
+    subtitle_path: Path | None = None,
+) -> bool:
+    """拼接镜头并尽量烧录字幕；字幕滤镜不可用时保留无字幕成片。"""
     if not segment_paths:
         raise ValueError("没有可合成的视频镜头")
     missing = [str(path) for path in segment_paths if not path.is_file()]
     if missing:
         raise ValueError("有视频镜头文件不存在")
+    if subtitle_path is not None and not subtitle_path.is_file():
+        raise ValueError("营销视频字幕文件不存在")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.NamedTemporaryFile(
@@ -73,6 +87,11 @@ def assemble_marketing_video(segment_paths: list[Path], output_path: Path) -> No
         manifest = Path(handle.name)
     _ffmpeg_concat_file(segment_paths, manifest)
 
+    target_path = (
+        output_path.with_name(f"{output_path.stem}.subtitle-source{output_path.suffix}")
+        if subtitle_path is not None
+        else output_path
+    )
     copy_command = [
         _ffmpeg_executable(),
         "-y",
@@ -86,8 +105,9 @@ def assemble_marketing_video(segment_paths: list[Path], output_path: Path) -> No
         "copy",
         "-movflags",
         "+faststart",
-        str(output_path),
+        str(target_path),
     ]
+    burned_in = False
     try:
         copied = subprocess.run(
             copy_command,
@@ -96,7 +116,7 @@ def assemble_marketing_video(segment_paths: list[Path], output_path: Path) -> No
             timeout=180,
             check=False,
         )
-        if copied.returncode != 0 or not output_path.is_file():
+        if copied.returncode != 0 or not target_path.is_file():
             # 不同模型版本可能产生不同编码参数，统一重编码保证成片可播放。
             reencode_command = [
                 _ffmpeg_executable(),
@@ -115,7 +135,7 @@ def assemble_marketing_video(segment_paths: list[Path], output_path: Path) -> No
                 "aac",
                 "-movflags",
                 "+faststart",
-                str(output_path),
+                str(target_path),
             ]
             encoded = subprocess.run(
                 reencode_command,
@@ -126,8 +146,44 @@ def assemble_marketing_video(segment_paths: list[Path], output_path: Path) -> No
             )
             if encoded.returncode != 0:
                 raise ValueError("营销视频合成失败")
+
+        if subtitle_path is not None:
+            subtitle_command = [
+                _ffmpeg_executable(),
+                "-y",
+                "-i",
+                str(target_path),
+                "-vf",
+                f"subtitles='{_subtitle_filter_path(subtitle_path)}'",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-movflags",
+                "+faststart",
+                str(output_path),
+            ]
+            subtitled = subprocess.run(
+                subtitle_command,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=False,
+            )
+            if subtitled.returncode == 0 and output_path.is_file():
+                burned_in = True
+            else:
+                # 服务器可能没有 libass 或中文字体；独立 SRT 仍可下载。
+                target_path.replace(output_path)
     finally:
         manifest.unlink(missing_ok=True)
+        if target_path != output_path:
+            target_path.unlink(missing_ok=True)
+    if not output_path.is_file():
+        raise ValueError("营销视频合成失败")
+    return burned_in
 
 
 async def start_marketing_project(
@@ -335,7 +391,28 @@ async def sync_marketing_video_projects(
 
             relative_key = f"{project.user_id}/marketing-{project.id}.mp4"
             output_path = _video_path(relative_key)
-            assemble_marketing_video(segment_paths, output_path)
+            brief = json.loads(project.brief_json or "{}")
+            shots_payload = [
+                {
+                    "position": shot.position,
+                    "title": shot.title,
+                    "duration": shot.duration,
+                }
+                for shot in shots
+            ]
+            subtitle_text = build_marketing_srt(brief, shots_payload)
+            subtitle_path = output_path.with_name(
+                f"{output_path.stem}.subtitle{output_path.suffix}.srt"
+            )
+            subtitle_path.write_text(subtitle_text, encoding="utf-8")
+            try:
+                project.subtitles_burned_in = assemble_marketing_video(
+                    segment_paths,
+                    output_path,
+                    subtitle_path=subtitle_path,
+                )
+            finally:
+                subtitle_path.unlink(missing_ok=True)
             data_size = output_path.stat().st_size
             project.final_storage_key = relative_key
             project.mime = "video/mp4"

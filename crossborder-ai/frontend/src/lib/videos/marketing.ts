@@ -38,6 +38,8 @@ export interface MarketingVideoProject {
   credits_charged: number
   credits_refunded?: number
   final_video_url?: string | null
+  subtitle_url?: string | null
+  subtitles_burned_in?: boolean
   error?: string | null
   created_at: string
   finished_at?: string | null
@@ -70,6 +72,13 @@ export interface MarketingCapabilities {
   platforms: MarketingPlatform[]
   marketing_templates: MarketingTemplate[]
   durations: number[]
+  voice?: {
+    enabled: boolean
+    provider: string
+    reason: string
+    model: string
+    voice_id: string
+  }
 }
 
 export interface MarketingPipelineStep {
@@ -116,6 +125,13 @@ export function marketingTemplateName(templateId: string): string {
 
 export function totalShotDuration(shots: MarketingVideoShot[]): number {
   return shots.reduce((total, shot) => total + Math.max(0, shot.duration), 0)
+}
+
+export function downloadFilename(
+  projectId: string,
+  extension: 'mp4' | 'srt' | 'mp3',
+): string {
+  return `veyaship-marketing-${projectId}.${extension}`
 }
 
 export function buildMarketingPipeline(

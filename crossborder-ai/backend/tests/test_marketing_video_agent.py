@@ -518,10 +518,13 @@ async def test_sync_marketing_project_assembles_completed_shots(
         )
     await db_session.flush()
 
-    def fake_assemble(segment_paths, output_path):
+    def fake_assemble(segment_paths, output_path, subtitle_path=None):
         assert len(segment_paths) == 3
+        assert subtitle_path is not None
+        assert subtitle_path.is_file()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"\x00\x00\x00\x18ftypmp42final")
+        return True
 
     monkeypatch.setattr(
         "app.services.marketing_video_executor.assemble_marketing_video",

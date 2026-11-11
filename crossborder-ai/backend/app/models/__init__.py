@@ -38,6 +38,7 @@ from app.models.credit_wallet import CreditWallet
 from app.models.subscription import UserSubscription
 from app.models.feature_usage import FeatureUsageCounter
 from app.models.credit_purchase import CreditPurchase
+from app.models.voc import VocAnalysis
 
 __all__ = [
     "User",
@@ -78,4 +79,5 @@ __all__ = [
     "UserSubscription",
     "FeatureUsageCounter",
     "CreditPurchase",
+    "VocAnalysis",
 ]

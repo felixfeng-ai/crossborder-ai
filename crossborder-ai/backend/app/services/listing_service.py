@@ -134,7 +134,7 @@ def _parse_string_list(raw: Optional[str]) -> list[str]:
         return []
 
 
-def build_product_fact_block(product: Product) -> str:
+def build_product_fact_block(product: Product, extra_context: str = "") -> str:
     """构建 Listing Prompt 的完整商品事实块。
 
     标题只能描述商品名称，不能替代描述、店铺、销量和价格等事实。
@@ -151,6 +151,8 @@ def build_product_fact_block(product: Product) -> str:
         lines.append(f"Sales: {product.sales_count}")
     if product.main_image_url:
         lines.append("Primary product image: available for downstream asset workflow")
+    if extra_context.strip():
+        lines.append(f"Verified customer voice:\n{extra_context.strip()}")
     return "\n".join(lines) or "No additional product facts provided."
 
 
@@ -162,6 +164,7 @@ async def generate_listing_title(
     language: str,
     tone: str,
     persona_block: str = "",
+    voc_context: str = "",
 ) -> str:
     """生成平台标题，DeepSeek 限流时最多重试三次。"""
     language_instruction = (
@@ -173,7 +176,7 @@ async def generate_listing_title(
         f"Generate an optimized {platform} product title "
         f"(max 200 chars, {tone} tone). {language_instruction}\n"
         f"Product: {product.title}\n"
-        f"{build_product_fact_block(product)}"
+        f"{build_product_fact_block(product, voc_context)}"
     )
     for _ in range(3):
         result = await llm.generate(
@@ -196,11 +199,12 @@ async def generate_listing_description(
     language: str,
     tone: str,
     persona_block: str = "",
+    voc_context: str = "",
 ) -> str:
     """生成包含完整商品事实的描述。"""
     return await llm.generate_product_description(
         product_title=product.title or "",
-        product_features=build_product_fact_block(product),
+        product_features=build_product_fact_block(product, voc_context),
         platform=platform,
         tone=tone,
         target_language=language if language != "en" else None,
@@ -214,11 +218,12 @@ async def generate_listing_bullets(
     *,
     platform: str,
     persona_block: str = "",
+    voc_context: str = "",
 ) -> list[str]:
     """生成包含描述、店铺、销量与价格事实的五点卖点。"""
     return await llm.generate_bullet_points(
         product_title=product.title or "",
-        features=build_product_fact_block(product),
+        features=build_product_fact_block(product, voc_context),
         platform=platform,
         persona_block=persona_block,
     )
@@ -247,6 +252,10 @@ async def generate_and_persist_listing(
     persona_kit = build_persona_kit(persona) if persona else None
     persona_block = format_persona_block(persona_kit) if persona_kit else ""
     brand_banned_words = (persona_kit or {}).get("banned_words") or []
+    from app.services.voc_service import latest_voc_for_product, voc_listing_context
+
+    latest_voc = await latest_voc_for_product(db, user.id, product.id)
+    voc_context = voc_listing_context(latest_voc)
 
     title_task = generate_listing_title(
         text_generator,
@@ -255,6 +264,7 @@ async def generate_and_persist_listing(
         language=language,
         tone=tone,
         persona_block=persona_block,
+        voc_context=voc_context,
     )
     description_task = generate_listing_description(
         text_generator,
@@ -263,12 +273,14 @@ async def generate_and_persist_listing(
         language=language,
         tone=tone,
         persona_block=persona_block,
+        voc_context=voc_context,
     )
     bullets_task = generate_listing_bullets(
         text_generator,
         product,
         platform=platform,
         persona_block=persona_block,
+        voc_context=voc_context,
     )
     title, description, bullet_points = await asyncio.gather(
         title_task,

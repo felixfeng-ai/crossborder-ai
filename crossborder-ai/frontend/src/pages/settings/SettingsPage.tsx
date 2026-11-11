@@ -99,11 +99,15 @@ const PROVIDERS = [
   },
   {
     id: 'minimax',
-    label: 'MiniMax 视频',
+    label: 'MiniMax 视频与配音',
     fields: [
       { key: 'api_key', label: 'API Key', secret: true },
+      { key: 'group_id', label: 'GroupId（配音必填）', secret: true },
       { key: 'base_url', label: 'Base URL', secret: false },
+      { key: 'tts_base_url', label: 'TTS Base URL', secret: false },
       { key: 'model', label: '默认模型', secret: false },
+      { key: 'tts_model', label: '配音模型', secret: false },
+      { key: 'voice_id', label: '默认音色 ID', secret: false },
       { key: 'resolution', label: '默认清晰度', secret: false },
     ],
   },

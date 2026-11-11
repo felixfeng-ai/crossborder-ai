@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +30,13 @@ from app.services.marketing_video_agent import (
 from app.services.marketing_video_executor import (
     cancel_marketing_project,
     start_marketing_project,
+)
+from app.services.marketing_subtitles import build_marketing_srt
+from app.services.minimax_tts import (
+    MiniMaxTTSNotConfigured,
+    MiniMaxTTSError,
+    get_minimax_tts_capabilities,
+    synthesize_minimax_tts,
 )
 from app.services.minimax_video import (
     get_minimax_video_capabilities,
@@ -85,6 +92,8 @@ class MarketingProjectResponse(BaseModel):
     credits_charged: int
     credits_refunded: int
     final_video_url: Optional[str] = None
+    subtitle_url: Optional[str] = None
+    subtitles_burned_in: bool = False
     error: Optional[str] = None
     created_at: str
     finished_at: Optional[str] = None
@@ -211,6 +220,11 @@ async def _serialize_project(
             if project.status == "succeeded"
             else None
         ),
+        subtitle_url=(
+            f"{settings.API_V1_PREFIX}/marketing-videos/projects/"
+            f"{project.id}/subtitles"
+        ),
+        subtitles_burned_in=bool(project.subtitles_burned_in),
         error=project.error,
         created_at=str(project.created_at),
         finished_at=str(project.finished_at) if project.finished_at else None,
@@ -222,6 +236,7 @@ async def marketing_video_capabilities():
     video = get_minimax_video_capabilities()
     return {
         **video,
+        "voice": get_minimax_tts_capabilities(),
         "platforms": list(PLATFORM_OPTIONS),
         "marketing_templates": list(MARKETING_TEMPLATES),
         "durations": sorted(SUPPORTED_DURATIONS),
@@ -411,4 +426,100 @@ async def get_marketing_project_file(
         path,
         media_type=project.mime or "video/mp4",
         filename=f"veyaship-marketing-{project.id}.mp4",
+    )
+
+
+async def _project_shots(
+    db: AsyncSession,
+    project: MarketingVideoProject,
+) -> list[MarketingVideoShot]:
+    return list(
+        (
+            await db.execute(
+                select(MarketingVideoShot)
+                .where(MarketingVideoShot.project_id == project.id)
+                .order_by(MarketingVideoShot.position)
+            )
+        ).scalars().all()
+    )
+
+
+@router.get("/projects/{project_id}/subtitles")
+async def download_marketing_subtitles(
+    project_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """按项目分镜实时生成 SRT，避免字幕与用户修改后的方案脱节。"""
+    project = await _owned_project(db, project_id, current_user.id)
+    shots = await _project_shots(db, project)
+    content = build_marketing_srt(
+        _parse_brief(project),
+        [
+            {
+                "position": shot.position,
+                "title": shot.title,
+                "duration": shot.duration,
+            }
+            for shot in shots
+        ],
+    )
+    if not content:
+        raise HTTPException(status_code=404, detail="当前项目没有可生成的字幕")
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="application/x-subrip; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="veyaship-marketing-{project.id}.srt"'
+            )
+        },
+    )
+
+
+@router.post("/projects/{project_id}/voiceover")
+async def generate_marketing_voiceover(
+    project_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """为项目脚本生成配音；供应商失败时不扣积分。"""
+    project = await _owned_project(db, project_id, current_user.id)
+    brief = _parse_brief(project)
+    narration = " ".join(
+        item
+        for item in (
+            str(brief.get("hook") or "").strip(),
+            str(brief.get("script") or "").strip(),
+            str(brief.get("cta") or "").strip(),
+        )
+        if item
+    )
+    if not narration:
+        raise HTTPException(status_code=400, detail="当前项目没有可配音的脚本")
+    if current_user.credits < 1:
+        raise HTTPException(status_code=402, detail="积分不足，配音生成需要 1 积分")
+    try:
+        audio, media_type = await synthesize_minimax_tts(narration)
+    except MiniMaxTTSNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except MiniMaxTTSError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    await current_user.deduct_credits(
+        db,
+        1,
+        feature="marketing_voiceover",
+        reference_type="marketing_video_project",
+        reference_id=str(project.id),
+        description="营销视频 AI 配音",
+    )
+    return Response(
+        content=audio,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="veyaship-marketing-{project.id}.mp3"'
+            ),
+            "X-Credits-Charged": "1",
+        },
     )

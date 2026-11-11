@@ -166,6 +166,11 @@ class Settings(BaseSettings):
     MINIMAX_VIDEO_BASE_URL: str = "https://api.minimax.cn"
     MINIMAX_VIDEO_MODEL: str = "MiniMax-H3-Lite"
     MINIMAX_VIDEO_RESOLUTION: str = "480P"
+    # T2A 与视频接口使用不同域名和凭据组合；GroupId 缺失时只关闭配音能力。
+    MINIMAX_GROUP_ID: str = ""
+    MINIMAX_TTS_BASE_URL: str = "https://api.minimaxi.com"
+    MINIMAX_TTS_MODEL: str = "speech-02-hd"
+    MINIMAX_TTS_VOICE_ID: str = "English_Graceful_Lady"
     VIDEO_STORAGE_DIR: str = "./storage/videos"
 
     # --- Shopify ---

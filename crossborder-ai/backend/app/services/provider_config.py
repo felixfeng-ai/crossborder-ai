@@ -14,7 +14,7 @@ from app.core.crypto import decrypt_value, encrypt_value, mask_secret
 from app.models.system_config import SystemConfig
 
 
-SECRET_FIELDS = {"api_key", "api_secret", "token", "client_secret"}
+SECRET_FIELDS = {"api_key", "api_secret", "token", "client_secret", "group_id"}
 
 PROVIDER_FIELDS: dict[str, tuple[str, ...]] = {
     "deepseek": ("api_key", "model"),
@@ -24,7 +24,16 @@ PROVIDER_FIELDS: dict[str, tuple[str, ...]] = {
     "replicate": ("api_key", "model"),
     "shopify": ("api_key", "api_secret", "redirect_uri"),
     "amazon": ("app_id", "client_id", "client_secret", "redirect_uri"),
-    "minimax": ("api_key", "base_url", "model", "resolution"),
+    "minimax": (
+        "api_key",
+        "group_id",
+        "base_url",
+        "tts_base_url",
+        "model",
+        "tts_model",
+        "voice_id",
+        "resolution",
+    ),
 }
 
 
@@ -47,8 +56,12 @@ def _env_fallback(provider: str, field: str) -> str:
         ("amazon", "client_secret"): settings.AMAZON_CLIENT_SECRET or "",
         ("amazon", "redirect_uri"): settings.AMAZON_REDIRECT_URI or "",
         ("minimax", "api_key"): settings.MINIMAX_API_KEY or "",
+        ("minimax", "group_id"): settings.MINIMAX_GROUP_ID,
         ("minimax", "base_url"): settings.MINIMAX_VIDEO_BASE_URL,
+        ("minimax", "tts_base_url"): settings.MINIMAX_TTS_BASE_URL,
         ("minimax", "model"): settings.MINIMAX_VIDEO_MODEL,
+        ("minimax", "tts_model"): settings.MINIMAX_TTS_MODEL,
+        ("minimax", "voice_id"): settings.MINIMAX_TTS_VOICE_ID,
         ("minimax", "resolution"): settings.MINIMAX_VIDEO_RESOLUTION,
     }
     return fallbacks.get((provider, field), "")

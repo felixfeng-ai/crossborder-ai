@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import ListingDescriptionCard from '@/components/content/ListingDescriptionCard'
 import ListingSeoCard from '@/components/content/ListingSeoCard'
+import VocInsightsCard from '@/components/content/VocInsightsCard'
 import apiClient from '@/api/client'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { createIdempotencyKey } from '@/utils/idempotency'
@@ -287,6 +288,8 @@ export default function ContentPage() {
               )}
             </CardContent>
           </Card>
+
+          <VocInsightsCard productId={selectedProduct} platform={platform} />
 
           {/* 平台选择 */}
           <Card>

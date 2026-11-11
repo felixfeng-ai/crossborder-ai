@@ -4,11 +4,13 @@ import { motion } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import {
   Check,
+  Captions,
   CircleAlert,
   Download,
   Film,
   Image as ImageIcon,
   Loader2,
+  Mic2,
   Play,
   Sparkles,
   Square,
@@ -22,6 +24,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   buildMarketingPipeline,
+  downloadFilename,
   marketingTemplateName,
   projectStatusLabel,
   shotStatusLabel,
@@ -404,6 +407,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
               onCancel={() => cancelMutation.mutate(project.id)}
               rendering={renderMutation.isPending}
               canceling={cancelMutation.isPending}
+              voice={capabilities?.voice}
             />
           ) : (
             <div className="flex min-h-[520px] flex-col items-center justify-center px-6 text-center">
@@ -591,12 +595,14 @@ function ProjectWorkspace({
   onCancel,
   rendering,
   canceling,
+  voice,
 }: {
   project: MarketingVideoProject
   onRender: () => void
   onCancel: () => void
   rendering: boolean
   canceling: boolean
+  voice?: MarketingCapabilities['voice']
 }) {
   const pipeline = buildMarketingPipeline(project)
   const plan = project.brief
@@ -724,7 +730,7 @@ function ProjectWorkspace({
         <div className="p-4">
           <p className="micro-label">成片预览</p>
           <div className="mt-3">
-            <MarketingVideoPreview project={project} />
+            <MarketingVideoPreview project={project} voice={voice} />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <div className="border border-border p-2.5">
@@ -748,9 +754,17 @@ function ProjectWorkspace({
 }
 
 
-function MarketingVideoPreview({ project }: { project: MarketingVideoProject }) {
+function MarketingVideoPreview({
+  project,
+  voice,
+}: {
+  project: MarketingVideoProject
+  voice?: MarketingCapabilities['voice']
+}) {
   const [videoUrl, setVideoUrl] = useState('')
   const [error, setError] = useState('')
+  const [voiceError, setVoiceError] = useState('')
+  const [voicePending, setVoicePending] = useState(false)
 
   useEffect(() => {
     setError('')
@@ -789,7 +803,7 @@ function MarketingVideoPreview({ project }: { project: MarketingVideoProject }) 
       const url = URL.createObjectURL(response.data)
       const link = document.createElement('a')
       link.href = url
-      link.download = `veyaship-marketing-${project.id}.mp4`
+      link.download = downloadFilename(project.id, 'mp4')
       link.click()
       URL.revokeObjectURL(url)
     } catch (reason) {
@@ -797,31 +811,58 @@ function MarketingVideoPreview({ project }: { project: MarketingVideoProject }) 
     }
   }
 
-  if (videoUrl) {
-    return (
-      <div>
-        <video
-          src={videoUrl}
-          controls
-          playsInline
-          className="aspect-[9/16] max-h-[420px] w-full bg-black object-contain"
-        />
-        <Button variant="outline" size="sm" className="mt-2 w-full" onClick={download}>
-          <Download className="mr-2 h-4 w-4" />
-          下载 MP4
-        </Button>
-      </div>
-    )
+  const downloadSubtitles = async () => {
+    try {
+      const response = await apiClient.get(
+        `/marketing-videos/projects/${project.id}/subtitles`,
+        { responseType: 'blob' },
+      )
+      const url = URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = downloadFilename(project.id, 'srt')
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (reason) {
+      setError(toErrorMessage(reason, '字幕下载失败'))
+    }
   }
-  if (error) {
-    return (
-      <div className="flex min-h-52 flex-col items-center justify-center border border-destructive/30 px-4 text-center text-xs text-destructive">
-        <CircleAlert className="mb-2 h-5 w-5" />
-        {error}
-      </div>
-    )
+
+  const generateVoiceover = async () => {
+    setVoicePending(true)
+    setVoiceError('')
+    try {
+      const response = await apiClient.post(
+        `/marketing-videos/projects/${project.id}/voiceover`,
+        null,
+        { responseType: 'blob' },
+      )
+      const url = URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = downloadFilename(project.id, 'mp3')
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (reason) {
+      setVoiceError(toErrorMessage(reason, '配音生成失败'))
+    } finally {
+      setVoicePending(false)
+    }
   }
-  return (
+
+  const previewContent = videoUrl ? (
+    <video
+      src={videoUrl}
+      controls
+      playsInline
+      className="aspect-[9/16] max-h-[420px] w-full bg-black object-contain"
+    />
+  ) : error ? (
+    <div className="flex min-h-52 flex-col items-center justify-center border border-destructive/30 px-4 text-center text-xs text-destructive">
+      <CircleAlert className="mb-2 h-5 w-5" />
+      {error}
+    </div>
+  ) : (
     <div className="flex aspect-[9/16] max-h-[420px] flex-col items-center justify-center border border-border bg-[var(--factory-ground)] px-5 text-center">
       {project.status === 'rendering' ? (
         <>
@@ -841,6 +882,57 @@ function MarketingVideoPreview({ project }: { project: MarketingVideoProject }) 
           <CircleAlert className="h-7 w-7 text-[color:var(--factory-coral)]" />
           <p className="mt-3 text-xs text-muted-foreground">当前没有可播放成片</p>
         </>
+      )}
+    </div>
+  )
+
+  return (
+    <div>
+      {previewContent}
+      {project.status === 'succeeded' && (
+        <div className="mt-2 space-y-2">
+          <Button variant="outline" size="sm" className="w-full" onClick={download}>
+            <Download className="mr-2 h-4 w-4" />
+            下载 MP4
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={downloadSubtitles}
+          >
+            <Captions className="mr-2 h-4 w-4" />
+            下载 SRT 字幕
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={generateVoiceover}
+            disabled={!voice?.enabled || voicePending}
+            title={voice?.reason || '生成并下载 AI 配音'}
+          >
+            {voicePending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Mic2 className="mr-2 h-4 w-4" />
+            )}
+            {voicePending ? '配音生成中' : '生成 AI 配音 1 积分'}
+          </Button>
+          <p className="text-[10px] leading-4 text-muted-foreground">
+            {project.subtitles_burned_in
+              ? '字幕已烧录进成片，也可单独下载 SRT'
+              : '当前成片为独立字幕版本，SRT 可单独下载'}
+          </p>
+          {voice && !voice.enabled && (
+            <p className="text-[10px] leading-4 text-[color:var(--factory-coral)]">
+              {voice.reason}
+            </p>
+          )}
+          {voiceError && (
+            <p className="text-[10px] leading-4 text-destructive">{voiceError}</p>
+          )}
+        </div>
       )}
     </div>
   )

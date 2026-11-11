@@ -754,6 +754,17 @@ async def list_shopify_orders(
             "limit": limit,
             "order": "created_at desc",
         })
+        if (
+            resp.status_code == 403
+            and "protected customer data" in resp.text.lower()
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Shopify 尚未批准受保护客户数据访问，"
+                    "请先在 Partner Dashboard 申请订单数据权限"
+                ),
+            )
         if resp.status_code != 200:
             raise HTTPException(status_code=502, detail=f"获取订单失败：{resp.text[:200]}")
 

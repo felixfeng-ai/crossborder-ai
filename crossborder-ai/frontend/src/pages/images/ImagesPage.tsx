@@ -28,6 +28,7 @@ import {
   type WorkbenchLibraryItem,
 } from '@/lib/images/workbench'
 import { toErrorMessage } from '@/utils/errorMessage'
+import { resolveMediaUrl } from '@/lib/apiUrl'
 
 interface PlatformPreset {
   id: string
@@ -175,7 +176,7 @@ export default function ImagesPage() {
     if (!selected) return
     const url = selected.image_url.startsWith('http')
       ? selected.image_url
-      : `${window.location.origin}${selected.image_url}`
+      : resolveMediaUrl(selected.image_url)
     await navigator.clipboard.writeText(url)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1800)
@@ -315,7 +316,7 @@ export default function ImagesPage() {
             {selected ? (
               <div className="flex min-h-[360px] items-center justify-center rounded-md border border-border bg-[#d9dad5] p-4 sm:min-h-[520px]">
                 <img
-                  src={selected.image_url}
+                  src={resolveMediaUrl(selected.image_url)}
                   alt={selected.name}
                   className="max-h-[500px] max-w-full object-contain"
                 />
@@ -494,7 +495,7 @@ function AssetCard({
     >
       <div className="relative aspect-square bg-[#d9dad5]">
         <img
-          src={item.image_url}
+          src={resolveMediaUrl(item.image_url)}
           alt={item.name}
           loading="lazy"
           className="h-full w-full object-contain p-2 transition-transform duration-200 group-hover:scale-[1.02]"

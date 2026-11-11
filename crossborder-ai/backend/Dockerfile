@@ -46,6 +46,7 @@ COPY ./migrations /app/migrations
 # 创建非 root 用户运行应用（安全最佳实践）
 RUN addgroup --system --gid 1001 app \
     && adduser --system --uid 1001 --ingroup app app \
+    && mkdir -p /app/storage/images /app/storage/videos \
     && chown -R app:app /app
 
 USER app

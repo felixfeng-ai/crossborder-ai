@@ -139,6 +139,13 @@ class Settings(BaseSettings):
     IMAGE_STORAGE_DIR: str = "./storage/images"
     MAX_IMAGE_UPLOAD_BYTES: int = 12 * 1024 * 1024
 
+    # --- MiniMax Video ---
+    MINIMAX_API_KEY: Optional[str] = None
+    MINIMAX_VIDEO_BASE_URL: str = "https://api.minimax.cn"
+    MINIMAX_VIDEO_MODEL: str = "MiniMax-H3-Lite"
+    MINIMAX_VIDEO_RESOLUTION: str = "480P"
+    VIDEO_STORAGE_DIR: str = "./storage/videos"
+
     # --- Shopify ---
     SHOPIFY_API_KEY: Optional[str] = None
     SHOPIFY_API_SECRET: Optional[str] = None

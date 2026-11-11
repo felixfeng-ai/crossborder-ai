@@ -98,6 +98,16 @@ const PROVIDERS = [
     ],
   },
   {
+    id: 'minimax',
+    label: 'MiniMax 视频',
+    fields: [
+      { key: 'api_key', label: 'API Key', secret: true },
+      { key: 'base_url', label: 'Base URL', secret: false },
+      { key: 'model', label: '默认模型', secret: false },
+      { key: 'resolution', label: '默认清晰度', secret: false },
+    ],
+  },
+  {
     id: 'shopify',
     label: 'Shopify 应用',
     fields: [

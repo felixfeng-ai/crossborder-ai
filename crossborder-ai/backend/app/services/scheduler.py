@@ -74,6 +74,14 @@ class SchedulerService:
             replace_existing=True,
         )
 
+        # 每 10 秒对账一次 MiniMax 视频任务，跨进程锁避免多 worker 重复下载。
+        self.scheduler.add_job(
+            self._poll_video_tasks_locked,
+            IntervalTrigger(seconds=10),
+            id="poll_video_tasks",
+            replace_existing=True,
+        )
+
         self.scheduler.add_job(
             self._refresh_provider_cache,
             IntervalTrigger(seconds=10),
@@ -337,6 +345,27 @@ class SchedulerService:
             await execute_image_generation_task(task_id)
         except Exception as exc:
             print(f"[Scheduler] 图片任务执行异常：{exc}")
+
+    async def _poll_video_tasks_locked(self):
+        """对账运行中的视频任务，提交与下载都在锁内串行执行。"""
+        await self._run_with_lock("poll_video_tasks", self._poll_video_tasks)
+
+    async def _poll_video_tasks(self):
+        from app.models.video_generation_task import VideoGenerationTask
+        from app.services.video_task_executor import poll_video_tasks
+
+        async with async_session_factory() as db:
+            has_running = (
+                await db.execute(
+                    select(VideoGenerationTask.id)
+                    .where(VideoGenerationTask.status == "running")
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if has_running is None:
+                return
+            count = await poll_video_tasks(db)
+            print(f"[Scheduler] 视频任务对账完成：{count} 条")
 
     async def _refresh_provider_cache(self):
         """周期刷新服务商配置缓存，保证多 worker 在 10 秒内最终一致。"""

@@ -24,6 +24,7 @@ PROVIDER_FIELDS: dict[str, tuple[str, ...]] = {
     "replicate": ("api_key", "model"),
     "shopify": ("api_key", "api_secret", "redirect_uri"),
     "amazon": ("app_id", "client_id", "client_secret", "redirect_uri"),
+    "minimax": ("api_key", "base_url", "model", "resolution"),
 }
 
 
@@ -45,6 +46,10 @@ def _env_fallback(provider: str, field: str) -> str:
         ("amazon", "client_id"): settings.AMAZON_CLIENT_ID or "",
         ("amazon", "client_secret"): settings.AMAZON_CLIENT_SECRET or "",
         ("amazon", "redirect_uri"): settings.AMAZON_REDIRECT_URI or "",
+        ("minimax", "api_key"): settings.MINIMAX_API_KEY or "",
+        ("minimax", "base_url"): settings.MINIMAX_VIDEO_BASE_URL,
+        ("minimax", "model"): settings.MINIMAX_VIDEO_MODEL,
+        ("minimax", "resolution"): settings.MINIMAX_VIDEO_RESOLUTION,
     }
     return fallbacks.get((provider, field), "")
 

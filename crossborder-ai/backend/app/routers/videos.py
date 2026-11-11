@@ -1,0 +1,309 @@
+"""MiniMax AI 商品视频路由。"""
+
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.access_control import check_feature_access
+from app.core.config import settings
+from app.core.database import get_db
+from app.dependencies import get_current_user
+from app.models.image_asset import ImageAsset
+from app.models.user import User
+from app.models.video_generation_task import VideoGenerationTask
+from app.services.minimax_video import (
+    PRODUCT_LOCK_PROMPT,
+    VIDEO_TEMPLATES,
+    estimate_video_cost_micros,
+    estimate_video_credits,
+    get_minimax_video_capabilities,
+    get_minimax_video_config,
+)
+from app.services.video_task_executor import cancel_video_task, submit_video_task
+
+
+router = APIRouter(prefix="/videos", tags=["AI 商品视频"])
+
+
+class GenerateVideoRequest(BaseModel):
+    source_asset_id: str
+    prompt: str = Field(default="", max_length=3000)
+    template_id: str = "clean_product"
+    model: str = "MiniMax-H3-Lite"
+    resolution: str = "480P"
+    duration: int = Field(default=4, ge=4, le=15)
+    ratio: str = "9:16"
+
+
+class VideoTaskResponse(BaseModel):
+    id: str
+    status: str
+    video_url: Optional[str] = None
+    model: str
+    resolution: str
+    duration: int
+    ratio: str
+    prompt: str
+    error: Optional[str] = None
+    credits_cost: int
+    created_at: str
+    finished_at: Optional[str] = None
+
+
+def _video_file_url(task_id) -> str:
+    return f"{settings.API_V1_PREFIX}/videos/tasks/{task_id}/file"
+
+
+def _serialize_task(task: VideoGenerationTask) -> VideoTaskResponse:
+    return VideoTaskResponse(
+        id=str(task.id),
+        status=task.status,
+        video_url=_video_file_url(task.id) if task.status == "succeeded" else None,
+        model=task.model,
+        resolution=task.resolution,
+        duration=task.duration,
+        ratio=task.ratio,
+        prompt=task.prompt,
+        error=task.error,
+        credits_cost=task.credits_cost,
+        created_at=str(task.created_at),
+        finished_at=str(task.finished_at) if task.finished_at else None,
+    )
+
+
+def _task_path(storage_key: str) -> Path:
+    base = Path(settings.VIDEO_STORAGE_DIR).resolve()
+    target = (base / storage_key).resolve()
+    if target != base and base not in target.parents:
+        raise HTTPException(status_code=404, detail="视频文件不存在")
+    return target
+
+
+async def _get_owned_task(
+    db: AsyncSession,
+    task_id: str,
+    user_id,
+) -> VideoGenerationTask:
+    try:
+        parsed_id = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="视频任务不存在")
+
+    task = (
+        await db.execute(
+            select(VideoGenerationTask).where(
+                VideoGenerationTask.id == parsed_id,
+                VideoGenerationTask.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="视频任务不存在")
+    return task
+
+
+async def _get_owned_source_asset(
+    db: AsyncSession,
+    source_asset_id: str,
+    user_id,
+) -> ImageAsset:
+    try:
+        parsed_id = uuid.UUID(source_asset_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="商品首帧不存在")
+    asset = (
+        await db.execute(
+            select(ImageAsset).where(
+                ImageAsset.id == parsed_id,
+                ImageAsset.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="商品首帧不存在")
+    return asset
+
+
+@router.get("/capabilities")
+async def video_capabilities():
+    """返回可用模型、分辨率和积分估算，不暴露供应商密钥。"""
+    return get_minimax_video_capabilities()
+
+
+@router.post("/generate", response_model=VideoTaskResponse, status_code=202)
+async def generate_video(
+    payload: GenerateVideoRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """提交图生视频任务；供应商受理后才扣减积分。"""
+    if not check_feature_access(current_user, "ai_video"):
+        raise HTTPException(status_code=403, detail="AI 视频生成仅限专业版套餐使用")
+    if not get_minimax_video_config()["api_key"]:
+        raise HTTPException(status_code=400, detail="AI 视频服务暂未配置")
+    if payload.ratio != "9:16":
+        raise HTTPException(status_code=400, detail="当前仅支持 9:16 商品短视频")
+
+    template = next(
+        (item for item in VIDEO_TEMPLATES if item["id"] == payload.template_id),
+        None,
+    )
+    if template is None:
+        raise HTTPException(status_code=400, detail="视频模板不存在")
+
+    try:
+        credits_cost = estimate_video_credits(
+            payload.model,
+            payload.resolution,
+            payload.duration,
+        )
+        estimated_cost_micros = estimate_video_cost_micros(
+            payload.model,
+            payload.resolution,
+            payload.duration,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    await _get_owned_source_asset(db, payload.source_asset_id, current_user.id)
+    key = (idempotency_key or "").strip()[:100] or None
+    # 行锁把同一用户的提交串行化，避免并发请求同时通过余额检查。
+    locked_user = (
+        await db.execute(
+            select(User)
+            .where(User.id == current_user.id)
+            .with_for_update()
+        )
+    ).scalar_one()
+
+    # 幂等重试必须在余额检查之前命中，否则首次提交扣分后重试会被误判为余额不足。
+    if key:
+        existing = (
+            await db.execute(
+                select(VideoGenerationTask).where(
+                    VideoGenerationTask.user_id == current_user.id,
+                    VideoGenerationTask.idempotency_key == key,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return _serialize_task(existing)
+
+    if locked_user.credits < credits_cost:
+        raise HTTPException(
+            status_code=402,
+            detail=f"积分不足，本次视频生成需要 {credits_cost} 积分",
+        )
+
+    prompt_parts = [template["prompt_suffix"]]
+    if payload.prompt.strip():
+        prompt_parts.append(payload.prompt.strip())
+    prompt_parts.append(PRODUCT_LOCK_PROMPT)
+    final_prompt = "\n\n".join(prompt_parts)
+
+    task = VideoGenerationTask(
+        user_id=current_user.id,
+        source_asset_id=uuid.UUID(payload.source_asset_id),
+        template_id=payload.template_id,
+        provider="minimax",
+        model=payload.model,
+        resolution=payload.resolution,
+        duration=payload.duration,
+        ratio=payload.ratio,
+        prompt=final_prompt,
+        status="queued",
+        credits_cost=credits_cost,
+        estimated_cost_micros=estimated_cost_micros,
+        idempotency_key=key,
+    )
+    db.add(task)
+    await db.flush()
+
+    try:
+        await submit_video_task(db, task)
+    except Exception as exc:
+        task.status = "failed"
+        task.error = str(exc) or "视频任务提交失败"
+        task.finished_at = datetime.now(timezone.utc)
+        await db.commit()
+        raise HTTPException(status_code=502, detail=task.error)
+
+    try:
+        await locked_user.deduct_credits(db, credits_cost)
+    except Exception:
+        # 供应商已经受理，任务仍可继续；本地积分异常交给调度和人工处理。
+        task.error = "视频已提交，但积分扣减失败，请联系管理员"
+    await db.flush()
+    return _serialize_task(task)
+
+
+@router.get("/tasks/{task_id}", response_model=VideoTaskResponse)
+async def get_video_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    task = await _get_owned_task(db, task_id, current_user.id)
+    return _serialize_task(task)
+
+
+@router.get("/history", response_model=list[VideoTaskResponse])
+async def list_video_history(
+    limit: int = Query(30, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    tasks = (
+        await db.execute(
+            select(VideoGenerationTask)
+            .where(VideoGenerationTask.user_id == current_user.id)
+            .order_by(
+                desc(VideoGenerationTask.created_at),
+                desc(VideoGenerationTask.id),
+            )
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [_serialize_task(task) for task in tasks]
+
+
+@router.post("/tasks/{task_id}/cancel", response_model=VideoTaskResponse)
+async def cancel_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    task = await _get_owned_task(db, task_id, current_user.id)
+    if task.status not in {"queued", "running"}:
+        raise HTTPException(status_code=409, detail="当前任务无法取消")
+    if not await cancel_video_task(db, task):
+        raise HTTPException(status_code=409, detail="供应商任务已结束或取消失败")
+    return _serialize_task(task)
+
+
+@router.get("/tasks/{task_id}/file")
+async def get_video_file(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """鉴权后提供 MP4 文件，避免素材目录被匿名直链访问。"""
+    task = await _get_owned_task(db, task_id, current_user.id)
+    if task.status != "succeeded" or not task.storage_key:
+        raise HTTPException(status_code=404, detail="视频文件不存在")
+    path = _task_path(task.storage_key)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="视频文件不存在")
+    return FileResponse(
+        path,
+        media_type=task.mime or "video/mp4",
+        filename=f"veyaship-{task.id}.mp4",
+    )

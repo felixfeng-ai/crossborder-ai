@@ -77,6 +77,9 @@ services:
         condition: service_started
     env_file:
       - .env
+    volumes:
+      # 图片与视频素材必须持久化，容器重建不能让已生成成片丢失。
+      - storage_data:/app/storage
     environment:
       POSTGRES_SERVER: postgres
       QDRANT_HOST: qdrant
@@ -151,6 +154,7 @@ services:
 volumes:
   postgres_data:
   qdrant_data:
+  storage_data:
 
 # ── 内部网络（容器间通信） ────────────────────────────────────
 networks:

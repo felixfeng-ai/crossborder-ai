@@ -11,6 +11,7 @@ from app.models.user import User
 FEATURE_ACCESS: dict[str, list[str]] = {
     "ai_generate": ["free", "standard", "professional"],     # 所有套餐可用（但 free 有次数限制）
     "ai_image": ["professional"],                             # 仅专业版
+    "ai_video": ["professional"],                             # 视频生成成本较高，仅专业版
     "shopify_publish": ["standard", "professional"],          # Standard 起可用
     "agent": ["standard", "professional"],                    # Standard 起可用
     "batch_ai": ["standard", "professional"],                 # Standard 起可用

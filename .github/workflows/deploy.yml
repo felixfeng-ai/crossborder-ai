@@ -14,12 +14,13 @@
         - name: SSH 执行服务器部署脚本
           env:
             JUSTONE_API_TOKEN: ${{ secrets.JUSTONE_API_TOKEN }}
+            MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           uses: appleboy/ssh-action@v1.2.0
           with:
             host: ${{ secrets.VEYASHIP_HOST }}
             username: root
             key: ${{ secrets.VEYASHIP_SSH_KEY }}
-            envs: JUSTONE_API_TOKEN
+            envs: JUSTONE_API_TOKEN,MINIMAX_API_KEY
             script: |
               set -e
               COMPOSE_FILE=$(find /opt/veyaship -maxdepth 4 -name docker-compose.prod.yml -print -quit)
@@ -45,4 +46,15 @@
                 exit 1
               fi
               echo "Just One API 凭据已注入服务器环境"
+
+              if [ -n "${MINIMAX_API_KEY:-}" ]; then
+                if grep -q '^MINIMAX_API_KEY=' "$ENV_FILE"; then
+                  sed -i "s|^MINIMAX_API_KEY=.*|MINIMAX_API_KEY=${MINIMAX_API_KEY}|" "$ENV_FILE"
+                else
+                  printf '\nMINIMAX_API_KEY=%s\n' "$MINIMAX_API_KEY" >> "$ENV_FILE"
+                fi
+                echo "MiniMax 视频凭据已注入服务器环境"
+              else
+                echo "未配置 MINIMAX_API_KEY Secret；可稍后通过管理员服务商配置页填写"
+              fi
               bash /opt/veyaship/cicd-deploy.sh

@@ -26,6 +26,7 @@ from app.models.image_asset import ImageAsset
 from app.models.monitor_setting import MonitorSetting
 from app.models.variant_snapshot import VariantSnapshot
 from app.models.operation_alert import OperationAlert
+from app.models.video_generation_task import VideoGenerationTask
 
 __all__ = [
     "User",
@@ -50,4 +51,5 @@ __all__ = [
     "MonitorSetting",
     "VariantSnapshot",
     "OperationAlert",
+    "VideoGenerationTask",
 ]

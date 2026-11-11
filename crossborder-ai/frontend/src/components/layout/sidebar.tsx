@@ -17,6 +17,7 @@ import {
   X,
   Layers,
   Activity,
+  Video,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
     { icon: Sparkles, label: t('nav.content'), path: '/app/content' },
     { icon: Bot, label: t('nav.agent'), path: '/app/agent' },
     { icon: Image, label: t('nav.images'), path: '/app/images' },
+    { icon: Video, label: 'AI 视频', path: '/app/videos' },
     { icon: Upload, label: t('nav.batch'), path: '/app/batch' },
     { icon: Globe, label: t('nav.shopify'), path: '/app/shopify' },
     { icon: CreditCard, label: t('nav.billing'), path: '/app/billing' },

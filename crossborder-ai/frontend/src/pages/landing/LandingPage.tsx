@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/authStore'
 import {
-  Sparkles, Globe, ShoppingBag, Bot, DollarSign, ShieldCheck, TrendingUp,
+  Sparkles, Globe, ShoppingBag, Bot, DollarSign, ShieldCheck, TrendingUp, ImageIcon,
   ArrowRight, CheckCircle2, Zap,
 } from 'lucide-react'
 import { BrandMark } from '@/components/brand/BrandMark'
@@ -20,12 +20,12 @@ const item = {
 }
 
 const FEATURES = [
-  { icon: Bot, title: 'AI 智能助手', desc: '说一句话就能干活："帮我选蓝牙耳机的品""检查一下我的店铺"。AI 自动拆解任务、调用工具、多步执行、生成结果。' },
-  { icon: TrendingUp, title: 'AI 选品决策', desc: '告诉 AI 你想做的品类，自动分析 Amazon 市场容量、竞争格局、利润空间，判断这个品到底能不能做。' },
-  { icon: DollarSign, title: '利润自动计算', desc: 'AI 自动获取 1688 供货价，结合平台费率、运费、广告成本，算出真实净利润和利润率。' },
-  { icon: Zap, title: 'AI 生成 Listing', desc: '确定商品后自动生成 Amazon / Shopify 的标题、描述、卖点、SEO，多语言翻译对照可查验。' },
-  { icon: ShieldCheck, title: '整店巡检', desc: '每天自动检查商品资料、Listing、素材、SKU、发布和运营风险，并生成可追溯待办。' },
-  { icon: ShoppingBag, title: 'Shopify 一键发布', desc: 'AI 生成内容并合规通过后，可直接发布到绑定的 Shopify 店铺；Amazon、Temu、SHEIN 当前支持文案生成。' },
+  { icon: Bot, title: 'AI 智能体执行', desc: '20 个业务工具、6 个预设工作流。长任务异步执行，前端通过 SSE 实时查看当前步骤和结果。' },
+  { icon: TrendingUp, title: '品类与单品判断', desc: '输入品类或 1688 链接，分析市场机会、竞争、成本与利润，再决定是否进入内容与上架流程。' },
+  { icon: ShieldCheck, title: 'Listing 与合规闭环', desc: '生成标题、描述、卖点和 SEO；合规报告绑定当前版本，内容修改后旧报告自动失效。' },
+  { icon: ImageIcon, title: '图片与视频素材', desc: '商品图去背景、平台尺寸适配、AI 出图、商品图生视频和营销成片项目管理。' },
+  { icon: ShoppingBag, title: 'SKU 与 Shopify 发布', desc: '配置售价、成本、库存和变体，选择要发布的 SKU；合规通过后发布为 Shopify 草稿。' },
+  { icon: Zap, title: '运营监控与巡检', desc: '按 SKU 检查毛利、库存覆盖、补货点、成本上涨和渠道异常，并生成可追溯待办。' },
 ]
 
 const PLATFORMS = ['Amazon', 'Shopify', 'eBay', 'Etsy', 'Temu', 'TikTok Shop', 'Walmart', 'AliExpress']
@@ -78,17 +78,17 @@ export default function LandingPage() {
               <div className="max-w-2xl space-y-6">
                 <motion.div variants={item}>
                   <span className="inline-flex items-center gap-1.5 rounded border border-border bg-card px-3.5 py-1 text-xs font-medium text-muted-foreground">
-                    <Sparkles className="h-3 w-3" /> 跨境电商 AI 决策引擎 · AI Agent 自动化
+                    <Sparkles className="h-3 w-3" /> 跨境电商 AI 决策引擎 · ReAct + Function Calling
                   </span>
                 </motion.div>
 
                 <motion.div variants={item} className="space-y-4">
-                  <h1 className="text-3xl font-bold leading-[1.15] tracking-tight text-foreground sm:text-4xl md:text-5xl">
-                    <span className="block">这个品能不能做？</span>
-                    <span className="block">AI 帮你做跨境决策</span>
+                  <h1 className="text-3xl font-bold leading-[1.16] tracking-normal text-foreground sm:text-4xl md:text-5xl">
+                    <span className="block">从选品判断到合规上架</span>
+                    <span className="block">的一体化 AI 运营台</span>
                   </h1>
                   <p className="max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    说一句话，AI Agent 帮你从选品到上架一条龙完成：选品分析 → 生成 Listing → 合规检查 → Shopify 一键发布，每天自动巡检你的店铺。
+                    输入品类或商品链接，AI Agent 串起市场判断、Listing 生成、合规审查、图片视频素材、SKU 配置和 Shopify 发布，并把每一步结果留成可复核记录。
                   </p>
                 </motion.div>
 
@@ -288,7 +288,7 @@ export default function LandingPage() {
               <h3 className="font-semibold text-slate-100">Standard</h3>
               <p className="text-2xl font-bold text-slate-100 mt-2">¥99<span className="text-sm font-normal text-slate-500">/月</span></p>
               <ul className="mt-4 space-y-2 text-sm text-slate-400">
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />每月 99,999 AI 积分</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />每月 800 AI 积分 · 30 天</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />AI 智能助手（Agent）</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />Shopify 一键发布</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />批量 AI 处理</li>
@@ -301,7 +301,7 @@ export default function LandingPage() {
               <p className="text-2xl font-bold text-slate-100 mt-2">¥249<span className="text-sm font-normal text-slate-500">/月</span></p>
               <ul className="mt-4 space-y-2 text-sm text-slate-400">
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />所有 Standard 功能</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />每月 99,999 AI 积分</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />每月 2,000 AI 积分 · 30 天</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />AI 商品主图生成</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />AI 商品视频生成</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />优先技术支持</li>
@@ -315,7 +315,7 @@ export default function LandingPage() {
         <section className="max-w-3xl mx-auto px-4 py-12">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { value: '9', label: 'AI 业务工具', tone: 'text-slate-100' },
+              { value: '20', label: 'AI 业务工具', tone: 'text-slate-100' },
               { value: '6', label: '自动化工作流', tone: 'text-amber-400' },
               { value: '4', label: '端到端闭环', tone: 'text-emerald-400' },
               { value: '8', label: '支持平台', tone: 'text-amber-400' },

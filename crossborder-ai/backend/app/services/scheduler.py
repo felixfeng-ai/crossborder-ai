@@ -104,6 +104,13 @@ class SchedulerService:
             replace_existing=True,
         )
 
+        self.scheduler.add_job(
+            self._expire_subscriptions_locked,
+            CronTrigger(hour=2, minute=20),
+            id="expire_user_subscriptions",
+            replace_existing=True,
+        )
+
         self.scheduler.start()
         print("[Scheduler] started with all jobs registered")
 
@@ -174,7 +181,7 @@ class SchedulerService:
 
             for user_id in user_ids:
                 user = await db.get(User, user_id)
-                if user is not None:
+                if user is not None and user.plan in {"standard", "professional"}:
                     await run_store_check(db, user)
 
             await db.flush()
@@ -406,3 +413,19 @@ class SchedulerService:
                     applied += 1
             await db.commit()
             print(f"[Scheduler] 月度积分额度检查完成：发放 {applied} 个账号")
+
+    async def _expire_subscriptions_locked(self):
+        """套餐到期处理：每日只允许一个 worker 执行。"""
+        await self._run_with_lock(
+            "expire_user_subscriptions",
+            self._expire_subscriptions,
+        )
+
+    async def _expire_subscriptions(self):
+        """过期订阅降级 Free，并保留购买积分。"""
+        from app.services.plan_service import expire_due_subscriptions
+
+        async with async_session_factory() as db:
+            expired = await expire_due_subscriptions(db)
+            await db.commit()
+            print(f"[Scheduler] 套餐到期检查完成：降级 {expired} 个账号")

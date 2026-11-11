@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { CheckCircle2, XCircle, Loader2, CreditCard } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,6 +17,18 @@ interface UpgradeRecord {
   note: string
   created_at: string | null
   handled_at: string | null
+}
+
+interface CreditPurchaseRecord {
+  id: string
+  pack_name: string
+  credits: number
+  amount: number
+  contact: string
+  order_id: string
+  status: 'pending' | 'approved' | 'rejected'
+  note: string
+  created_at: string | null
 }
 
 const STATUS_META: Record<UpgradeRecord['status'], { label: string; variant: 'success' | 'warning' | 'destructive' }> = {
@@ -51,6 +63,15 @@ export default function AdminUpgradesPage() {
   })
   const items = data || []
 
+  const { data: creditPurchaseData, isFetching: creditPurchasesFetching } = useQuery({
+    queryKey: ['admin-credit-purchases'],
+    queryFn: async () => {
+      const res = await apiClient.get('/billing/admin/credit-packs?status=pending')
+      return res.data.items as CreditPurchaseRecord[]
+    },
+  })
+  const creditPurchases = creditPurchaseData || []
+
   const handleMutation = useMutation({
     mutationFn: async ({ id, action }: { id: string; action: 'approve' | 'reject' }) => {
       const path = action === 'approve'
@@ -60,6 +81,18 @@ export default function AdminUpgradesPage() {
       return res.data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-upgrades'] }),
+  })
+
+  const handleCreditPurchaseMutation = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: 'approve' | 'reject' }) => {
+      const path = action === 'approve'
+        ? `/billing/credit-packs/${id}/approve`
+        : `/billing/credit-packs/${id}/reject`
+      const res = await apiClient.post(path, { note: '' })
+      return res.data
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['admin-credit-purchases'] }),
   })
 
   return (
@@ -146,6 +179,83 @@ export default function AdminUpgradesPage() {
                   </div>
                 )
               })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <CreditCard className="h-4 w-4" />
+            待处理积分包
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            核对转账后将积分加入购买积分钱包，不会随套餐月度重置
+          </p>
+        </CardHeader>
+        <CardContent>
+          {creditPurchasesFetching ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : creditPurchases.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              暂无待处理积分包订单
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {creditPurchases.map((purchase) => (
+                <div key={purchase.id} className="rounded-lg border p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">
+                        {purchase.pack_name} · {purchase.credits} 积分 · ¥{purchase.amount}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        联系方式：{purchase.contact || '—'}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        订单号：<code>{purchase.order_id}</code>
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {fmtTime(purchase.created_at)}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      disabled={handleCreditPurchaseMutation.isPending}
+                      onClick={() =>
+                        handleCreditPurchaseMutation.mutate({
+                          id: purchase.id,
+                          action: 'approve',
+                        })
+                      }
+                    >
+                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                      确认到账
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 text-destructive"
+                      disabled={handleCreditPurchaseMutation.isPending}
+                      onClick={() =>
+                        handleCreditPurchaseMutation.mutate({
+                          id: purchase.id,
+                          action: 'reject',
+                        })
+                      }
+                    >
+                      <XCircle className="mr-1 h-3.5 w-3.5" />
+                      拒绝
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>

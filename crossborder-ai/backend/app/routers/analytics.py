@@ -13,6 +13,7 @@ from app.dependencies import get_current_user
 from app.models.product import Product
 from app.models.user import User
 from app.services.dashboard_service import build_dashboard_data
+from app.services.plan_service import consume_feature_allowance
 from app.services.store_check_service import STORE_CHECK_SCOPES, run_store_check as execute_store_check
 
 router = APIRouter(prefix="/analytics", tags=["数据统计"])
@@ -32,6 +33,7 @@ async def analyze_category(
     keyword: str = Query(..., description="品类关键词，如：蓝牙耳机"),
     current_user: User = Depends(get_current_user),
     _ratelimit=Depends(RateLimit("ai_generate")),
+    db: AsyncSession = Depends(get_db),
 ):
     """AI 品类分析：输入品类名，返回市场分析报告
 
@@ -45,7 +47,17 @@ async def analyze_category(
         f"分析品类「{keyword}」Amazon US市场：1.市场概览（搜索量、商品数、均价）2.价格分布 3.竞争格局 4.用户痛点Top3 5.1688到Amazon利润模型 6.选品建议和评分。数据用具体数字。",
         max_tokens=4000,
     )
-    return {"category": keyword, "report": report, "market": "Amazon US"}
+    usage = await consume_feature_allowance(
+        db,
+        current_user,
+        "category_analysis",
+    )
+    return {
+        "category": keyword,
+        "report": report,
+        "market": "Amazon US",
+        "usage": usage,
+    }
 
 
 @router.get("/store-check-history")
@@ -89,17 +101,13 @@ async def run_store_check(
     db: AsyncSession = Depends(get_db),
 ):
     """手动触发整店巡检：检查当前用户所有商品，记录结果"""
-    if current_user.credits < 1:
-        raise HTTPException(status_code=402, detail="积分不足")
-
     result = await execute_store_check(db, current_user)
-    await current_user.deduct_credits(
+    usage = await consume_feature_allowance(
         db,
-        1,
-        feature="store_check",
-        description="手动整店巡检",
+        current_user,
+        "manual_store_check",
     )
-    return result
+    return {**result, "usage": usage}
 
 
 @router.get("/insights")
@@ -123,4 +131,13 @@ async def get_ai_insights(
     except Exception:
         lines = ["1. 完善商品信息，补充标题和描述", "2. 利用 AI 批量生成 Listing", "3. 定期检查商品销售数据"]
 
-    return {"stats": {"total": total, "pending": no_title, "credits": current_user.credits}, "advice": lines[:3]}
+    usage = await consume_feature_allowance(
+        db,
+        current_user,
+        "ai_insights",
+    )
+    return {
+        "stats": {"total": total, "pending": no_title, "credits": current_user.credits},
+        "advice": lines[:3],
+        "usage": usage,
+    }

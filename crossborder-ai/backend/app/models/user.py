@@ -99,40 +99,70 @@ class User(Base):
         Raises:
             ValueError: 积分不足时抛出
         """
-        # 条件 UPDATE 在数据库内完成“判断 + 扣减”，比先读后写更可靠。
-        # 两个并发事务同时到达时，只有一个能命中 credits >= amount。
         async with db.begin_nested():
-            result = await db.execute(
-                update(User)
-                .where(User.id == self.id, User.credits >= amount)
-                .values(credits=User.credits - amount)
-                .returning(User.credits)
-            )
-            remaining = result.scalar_one_or_none()
-            if remaining is None:
-                current = await db.scalar(
-                    select(User.credits).where(User.id == self.id)
+            from app.models.credit_transaction import CreditTransaction
+            from app.models.credit_wallet import CreditWallet
+
+            wallet = (
+                await db.execute(
+                    select(CreditWallet)
+                    .where(CreditWallet.user_id == self.id)
+                    .with_for_update()
                 )
-                current_value = 0 if current is None else current
+            ).scalar_one_or_none()
+            if wallet is None:
+                wallet = CreditWallet(
+                    user_id=self.id,
+                    plan_credits=max(0, int(self.credits or 0)),
+                    purchased_credits=0,
+                )
+                db.add(wallet)
+                await db.flush()
+            else:
+                wallet_total = int(wallet.plan_credits or 0) + int(wallet.purchased_credits or 0)
+                mirrored_total = int(self.credits or 0)
+                if mirrored_total > wallet_total:
+                    # 兼容旧代码直接改 User.credits：额外部分视为购买积分。
+                    wallet.purchased_credits += mirrored_total - wallet_total
+                elif mirrored_total < wallet_total:
+                    # 旧字段被人工下调时，钱包跟随，避免余额镜像继续漂移。
+                    reduce = wallet_total - mirrored_total
+                    from_plan = min(int(wallet.plan_credits or 0), reduce)
+                    wallet.plan_credits -= from_plan
+                    wallet.purchased_credits -= reduce - from_plan
+
+            available = int(wallet.plan_credits or 0) + int(wallet.purchased_credits or 0)
+            if available < amount:
                 raise InsufficientCreditsError(
-                    f"积分不足，需要 {amount}，当前 {current_value}"
+                    f"积分不足，需要 {amount}，当前 {available}"
                 )
 
-            self.credits = remaining
-            from app.models.credit_transaction import CreditTransaction
+            plan_spend = min(int(wallet.plan_credits or 0), amount)
+            purchased_spend = amount - plan_spend
+            wallet.plan_credits -= plan_spend
+            wallet.purchased_credits -= purchased_spend
+            self.credits = available - amount
+            wallet_type = (
+                "plan"
+                if purchased_spend == 0
+                else "purchased"
+                if plan_spend == 0
+                else "mixed"
+            )
 
             db.add(
                 CreditTransaction(
                     user_id=self.id,
                     delta=-amount,
-                    balance_after=remaining,
+                    balance_after=self.credits,
                     feature=feature,
+                    wallet_type=wallet_type,
                     reference_type=reference_type,
                     reference_id=reference_id,
                     description=description or f"扣减 {amount} 积分",
                 )
             )
-            return remaining
+            return self.credits
 
     def __repr__(self) -> str:
         return f"<User {self.id}: {self.email} ({self.plan}, credits={self.credits})>"

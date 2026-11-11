@@ -34,6 +34,10 @@ from app.models.marketing_video import MarketingVideoProject, MarketingVideoShot
 from app.models.data_retention import DataRetentionRun
 from app.models.shopify_compliance_event import ShopifyComplianceEvent
 from app.models.credit_transaction import CreditTransaction
+from app.models.credit_wallet import CreditWallet
+from app.models.subscription import UserSubscription
+from app.models.feature_usage import FeatureUsageCounter
+from app.models.credit_purchase import CreditPurchase
 
 __all__ = [
     "User",
@@ -70,4 +74,8 @@ __all__ = [
     "DataRetentionRun",
     "ShopifyComplianceEvent",
     "CreditTransaction",
+    "CreditWallet",
+    "UserSubscription",
+    "FeatureUsageCounter",
+    "CreditPurchase",
 ]

@@ -27,6 +27,7 @@ class CreditTransaction(Base):
     delta: Mapped[int] = mapped_column(Integer, nullable=False)
     balance_after: Mapped[int] = mapped_column(Integer, nullable=False)
     feature: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    wallet_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     reference_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reference_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     description: Mapped[str] = mapped_column(String(255), nullable=False, default="")

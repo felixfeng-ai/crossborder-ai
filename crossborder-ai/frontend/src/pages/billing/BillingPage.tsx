@@ -15,7 +15,24 @@ interface Plan {
   price_label: string
   description: string
   features: string[]
+  validity_days: number
   recommended: boolean
+}
+
+interface WalletInfo {
+  plan: string
+  plan_credits: number
+  purchased_credits: number
+  total_credits: number
+  plan_expires_at: string | null
+  subscription_status: string
+}
+
+interface CreditPack {
+  id: string
+  name: string
+  credits: number
+  price: number
 }
 
 interface UpgradeRecord {
@@ -40,6 +57,7 @@ export default function BillingPage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
+  const [selectedPack, setSelectedPack] = useState<string | null>(null)
   const [contact, setContact] = useState('')
 
   const { data } = useQuery({
@@ -50,6 +68,23 @@ export default function BillingPage() {
     },
   })
   const plans = data || []
+
+  const { data: wallet } = useQuery<WalletInfo>({
+    queryKey: ['billing-wallet'],
+    queryFn: async () => {
+      const res = await apiClient.get('/billing/wallet')
+      return res.data
+    },
+  })
+
+  const { data: packsData } = useQuery({
+    queryKey: ['credit-packs'],
+    queryFn: async () => {
+      const res = await apiClient.get('/billing/credit-packs')
+      return res.data.packs as CreditPack[]
+    },
+  })
+  const packs = packsData || []
 
   const { data: upgradeData } = useQuery({
     queryKey: ['my-upgrades'],
@@ -66,6 +101,16 @@ export default function BillingPage() {
       return res.data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-upgrades'] }),
+  })
+
+  const packMutation = useMutation({
+    mutationFn: async (packId: string) => {
+      const res = await apiClient.post('/billing/credit-packs/purchase', {
+        pack_id: packId,
+        contact,
+      })
+      return res.data
+    },
   })
 
   if (!user) return null
@@ -90,9 +135,31 @@ export default function BillingPage() {
           </div>
           <div className="text-right">
             <p className="text-sm text-muted-foreground">剩余积分</p>
-            <p className="text-lg font-semibold mt-0.5">{user.credits ?? 0}</p>
+            <p className="text-lg font-semibold mt-0.5">{wallet?.total_credits ?? user.credits ?? 0}</p>
           </div>
         </CardContent>
+        <div className="grid gap-3 border-t border-border px-4 py-3 text-xs sm:grid-cols-4">
+          <div>
+            <p className="text-muted-foreground">套餐额度</p>
+            <p className="metric-number mt-1 text-foreground">{wallet?.plan_credits ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">购买积分</p>
+            <p className="metric-number mt-1 text-foreground">{wallet?.purchased_credits ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">套餐到期</p>
+            <p className="mt-1 text-foreground">
+              {wallet?.plan_expires_at
+                ? new Date(wallet.plan_expires_at).toLocaleDateString('zh-CN')
+                : '自然月'}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">计费方式</p>
+            <p className="mt-1 text-foreground">按功能扣减</p>
+          </div>
+        </div>
       </Card>
 
       {/* 套餐对比 */}
@@ -112,6 +179,11 @@ export default function BillingPage() {
                 <div>
                   <h3 className="font-semibold">{plan.name}</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">{plan.description}</p>
+                  {plan.validity_days > 0 && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      有效期 {plan.validity_days} 天
+                    </p>
+                  )}
                 </div>
                 <div>
                   <span className="text-2xl font-bold">{plan.price === 0 ? '免费' : `¥${plan.price}`}</span>
@@ -140,6 +212,63 @@ export default function BillingPage() {
           )
         })}
       </div>
+
+      {/* 积分包 */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">超额积分包</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            套餐积分不足时可单独购买，购买积分不随月度额度重置
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-3">
+            {packs.map((pack) => (
+              <button
+                key={pack.id}
+                type="button"
+                onClick={() => setSelectedPack(pack.id)}
+                className={`rounded-md border p-3 text-left transition-colors ${
+                  selectedPack === pack.id
+                    ? 'border-foreground bg-secondary'
+                    : 'border-border hover:border-[var(--factory-line-strong)]'
+                }`}
+              >
+                <p className="text-sm font-medium">{pack.name}</p>
+                <p className="metric-number mt-2 text-lg font-semibold">{pack.credits}</p>
+                <p className="text-[11px] text-muted-foreground">积分</p>
+                <p className="mt-2 text-xs text-muted-foreground">¥{pack.price}</p>
+              </button>
+            ))}
+          </div>
+          {selectedPack && (
+            <div className="space-y-3 border-t border-border pt-3">
+              <input
+                value={contact}
+                onChange={(event) => setContact(event.target.value)}
+                placeholder="微信 / 手机，用于付款确认"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              />
+              <Button
+                className="w-full"
+                disabled={contact.trim().length < 2 || packMutation.isPending}
+                onClick={() => packMutation.mutate(selectedPack)}
+              >
+                {packMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                提交积分包购买申请
+              </Button>
+              {packMutation.data && (
+                <p className="text-xs text-[var(--factory-success)]">{packMutation.data.message}</p>
+              )}
+              {packMutation.error && (
+                <p className="text-xs text-[var(--factory-coral)]">
+                  {packMutation.error instanceof Error ? packMutation.error.message : '提交失败'}
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* 升级流程 */}
       {selectedPlan && (

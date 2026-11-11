@@ -36,7 +36,9 @@ def test_repair_migration_restores_stamped_schema_drift(
     engine = sa.create_engine(sync_url)
 
     with engine.begin() as conn:
-        conn.execute(sa.text("CREATE TABLE users (id VARCHAR(36) PRIMARY KEY)"))
+        conn.execute(sa.text(
+            "CREATE TABLE users (id VARCHAR(36) PRIMARY KEY, credits INTEGER NOT NULL DEFAULT 30, plan VARCHAR(32) NOT NULL DEFAULT 'free')"
+        ))
         conn.execute(sa.text("CREATE TABLE products (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36), url VARCHAR(500) NOT NULL)"))
         conn.execute(sa.text("CREATE TABLE listing_drafts (id VARCHAR(36) PRIMARY KEY)"))
         conn.execute(sa.text("CREATE TABLE batch_jobs (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL)"))
@@ -71,7 +73,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "026_video_credit_refunds"
+    assert version == "027_plan_wallet_overage"
 
 
 def test_full_sqlite_upgrade_from_empty_database(
@@ -95,8 +97,14 @@ def test_full_sqlite_upgrade_from_empty_database(
     assert "data_retention_runs" in inspector.get_table_names()
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "026_video_credit_refunds"
+    assert version == "027_plan_wallet_overage"
     assert "credit_transactions" in inspector.get_table_names()
+    assert {
+        "credit_wallets",
+        "user_subscriptions",
+        "feature_usage_counters",
+        "credit_purchases",
+    } <= set(inspector.get_table_names())
     assert "credit_period_start" in _column_names(engine, "users")
     assert {"credits_cost", "credits_charged"} <= _column_names(
         engine, "image_generation_tasks"

@@ -20,48 +20,46 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.dependencies import get_current_user, require_admin
+from app.models.credit_purchase import CreditPurchase
 from app.models.plan_upgrade import PlanUpgradeRequest
 from app.models.user import User
-from app.services.credit_service import PLAN_MONTHLY_CREDITS, apply_monthly_allowance
+from app.services.credit_service import apply_monthly_allowance
+from app.services.plan_service import (
+    CREDIT_PACKS,
+    PLAN_CATALOG,
+    activate_paid_plan,
+    get_active_subscription,
+    get_or_create_wallet,
+    grant_purchased_credits,
+    plan_wallet_response,
+)
 
 router = APIRouter(prefix="/billing", tags=["套餐与支付"])
 
 PLANS = [
     {
-        "id": "free",
-        "name": "Free",
-        "price": 0,
-        "price_label": "免费",
-        "description": "试试基本功能",
-        "features": ["每月 30 AI 积分", "1688 商品抓取", "利润计算器", "合规审查"],
-        "recommended": False,
-    },
-    {
-        "id": "standard",
-        "name": "Standard",
-        "price": 99,
-        "price_label": "¥99/月",
-        "description": "适合个人卖家",
-        "features": ["每月 99,999 AI 积分", "全部 11 个平台", "16 种语言翻译", "AI 智能助手", "批量生成与 Shopify 发布", "邮件支持"],
-        "recommended": True,
-    },
-    {
-        "id": "professional",
-        "name": "Professional",
-        "price": 249,
-        "price_label": "¥249/月",
-        "description": "适合工作室/团队",
-        "features": ["所有 Standard 功能", "每月 99,999 AI 积分", "AI 图片与视频生成", "优先技术支持"],
-        "recommended": False,
-    },
+        "id": plan,
+        "name": config["name"],
+        "price": config["price"],
+        "price_label": "免费" if config["price"] == 0 else f"¥{config['price']}/月",
+        "description": (
+            "试试基本功能"
+            if plan == "free"
+            else "适合个人卖家"
+            if plan == "standard"
+            else "适合工作室与专业卖家"
+        ),
+        "features": [
+            f"每月 {config['monthly_credits']} AI 积分",
+            *( ["1688 商品抓取", "利润计算器", "合规审查"] if plan == "free" else []),
+            *( ["AI 智能助手", "批量生成与 Shopify 发布", "全部 11 个平台"] if plan == "standard" else []),
+            *( ["所有 Standard 功能", "AI 图片与视频生成", "优先技术支持"] if plan == "professional" else []),
+        ],
+        "validity_days": config["valid_days"],
+        "recommended": plan == "standard",
+    }
+    for plan, config in PLAN_CATALOG.items()
 ]
-
-# 本轮保留现有额度数值，但改为真实自然月额度。
-PLAN_CREDITS = {
-    plan: credits
-    for plan, credits in PLAN_MONTHLY_CREDITS.items()
-    if plan != "free"
-}
 
 
 class UpgradeRequest(BaseModel):
@@ -71,6 +69,11 @@ class UpgradeRequest(BaseModel):
 
 class HandleRequest(BaseModel):
     note: str = Field("", max_length=200, description="管理员备注（拒绝原因等）")
+
+
+class CreditPackPurchaseRequest(BaseModel):
+    pack_id: str
+    contact: str = Field(..., min_length=2, max_length=100)
 
 
 def _request_response(req: PlanUpgradeRequest) -> dict:
@@ -91,6 +94,152 @@ def _request_response(req: PlanUpgradeRequest) -> dict:
 @router.get("/plans")
 async def get_plans():
     return {"plans": PLANS}
+
+
+@router.get("/wallet")
+async def get_wallet(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """返回双钱包、套餐到期时间和当前统计。"""
+    await apply_monthly_allowance(db, current_user)
+    wallet = await get_or_create_wallet(db, current_user)
+    subscription = await get_active_subscription(db, current_user.id)
+    return plan_wallet_response(current_user, wallet, subscription)
+
+
+@router.get("/credit-packs")
+async def list_credit_packs():
+    return {"packs": list(CREDIT_PACKS)}
+
+
+def _credit_purchase_response(purchase: CreditPurchase) -> dict:
+    return {
+        "id": str(purchase.id),
+        "pack_id": purchase.pack_id,
+        "pack_name": purchase.pack_name,
+        "credits": purchase.credits,
+        "amount": purchase.amount,
+        "order_id": purchase.order_id,
+        "contact": purchase.contact,
+        "status": purchase.status,
+        "note": purchase.note or "",
+        "created_at": str(purchase.created_at),
+        "handled_at": str(purchase.handled_at) if purchase.handled_at else None,
+    }
+
+
+@router.post("/credit-packs/purchase")
+async def purchase_credit_pack(
+    payload: CreditPackPurchaseRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    pack = next((item for item in CREDIT_PACKS if item["id"] == payload.pack_id), None)
+    if pack is None:
+        raise HTTPException(status_code=400, detail="积分包不存在")
+    existing = (
+        await db.execute(
+            select(CreditPurchase).where(
+                CreditPurchase.user_id == current_user.id,
+                CreditPurchase.pack_id == payload.pack_id,
+                CreditPurchase.status == "pending",
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return {
+            **_credit_purchase_response(existing),
+            "message": "该积分包已有待确认订单",
+        }
+    order_id = f"CP{datetime.now():%Y%m%d}{uuid_lib.uuid4().hex[:8].upper()}"
+    purchase = CreditPurchase(
+        user_id=current_user.id,
+        pack_id=pack["id"],
+        pack_name=pack["name"],
+        credits=pack["credits"],
+        amount=pack["price"],
+        order_id=order_id,
+        contact=payload.contact,
+        status="pending",
+    )
+    db.add(purchase)
+    await db.commit()
+    return {
+        **_credit_purchase_response(purchase),
+        "message": f"订单已创建，请付款 ¥{pack['price']} 并备注订单号 {order_id}",
+    }
+
+
+@router.get("/credit-packs/purchases")
+async def list_my_credit_purchases(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    purchases = (
+        await db.execute(
+            select(CreditPurchase)
+            .where(CreditPurchase.user_id == current_user.id)
+            .order_by(desc(CreditPurchase.created_at))
+            .limit(100)
+        )
+    ).scalars().all()
+    return {"items": [_credit_purchase_response(item) for item in purchases]}
+
+
+@router.get("/admin/credit-packs")
+async def list_all_credit_purchases(
+    status: str = "",
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(CreditPurchase)
+    if status in {"pending", "approved", "rejected"}:
+        query = query.where(CreditPurchase.status == status)
+    purchases = (
+        await db.execute(query.order_by(desc(CreditPurchase.created_at)).limit(200))
+    ).scalars().all()
+    return {"items": [_credit_purchase_response(item) for item in purchases]}
+
+
+@router.post("/credit-packs/{purchase_id}/approve")
+async def approve_credit_purchase(
+    purchase_id: str,
+    payload: HandleRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    purchase = await _load_pending_credit_purchase(db, purchase_id)
+    user = (await db.execute(select(User).where(User.id == purchase.user_id))).scalar_one()
+    await grant_purchased_credits(
+        db,
+        user,
+        purchase.credits,
+        reference_type="credit_purchase",
+        reference_id=purchase.order_id,
+    )
+    purchase.status = "approved"
+    purchase.handled_by = admin.id
+    purchase.handled_at = datetime.now(timezone.utc)
+    purchase.note = payload.note or "已确认收款，积分包已到账"
+    await db.commit()
+    return {"ok": True, **_credit_purchase_response(purchase)}
+
+
+@router.post("/credit-packs/{purchase_id}/reject")
+async def reject_credit_purchase(
+    purchase_id: str,
+    payload: HandleRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    purchase = await _load_pending_credit_purchase(db, purchase_id)
+    purchase.status = "rejected"
+    purchase.handled_by = admin.id
+    purchase.handled_at = datetime.now(timezone.utc)
+    purchase.note = payload.note or "未收到转账，积分包订单已拒绝"
+    await db.commit()
+    return {"ok": True, **_credit_purchase_response(purchase)}
 
 
 @router.post("/upgrade")
@@ -189,9 +338,7 @@ async def approve_upgrade(
     req = await _load_pending_request(db, request_id)
 
     user = (await db.execute(select(User).where(User.id == req.user_id))).scalar_one()
-    user.plan = req.plan
-    user.credit_period_start = None
-    await apply_monthly_allowance(db, user, force=True)
+    await activate_paid_plan(db, user, req.plan)
 
     req.status = "approved"
     req.handled_by = admin.id
@@ -200,6 +347,25 @@ async def approve_upgrade(
     await db.commit()
 
     return {"ok": True, **_request_response(req)}
+
+
+async def _load_pending_credit_purchase(
+    db: AsyncSession,
+    purchase_id: str,
+) -> CreditPurchase:
+    from uuid import UUID
+    try:
+        pid = UUID(purchase_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的积分包订单 ID")
+    purchase = (
+        await db.execute(select(CreditPurchase).where(CreditPurchase.id == pid))
+    ).scalar_one_or_none()
+    if purchase is None:
+        raise HTTPException(status_code=404, detail="积分包订单不存在")
+    if purchase.status != "pending":
+        raise HTTPException(status_code=400, detail="该积分包订单已处理")
+    return purchase
 
 
 @router.post("/upgrades/{request_id}/reject")

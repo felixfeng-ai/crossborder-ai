@@ -13,6 +13,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.models.plan_upgrade import PlanUpgradeRequest
+from app.models.credit_wallet import CreditWallet
+from app.models.subscription import UserSubscription
 from app.models.user import User
 
 ADMIN_EMAIL = "admin@veyaship.com"
@@ -166,7 +168,20 @@ async def test_admin_approve_opens_plan(
         select(User).where(User.id == req.user_id)
     )).scalar_one()
     assert buyer.plan == "standard"
-    assert buyer.credits == 99999
+    assert buyer.credits == 800
+    wallet = (
+        await db_session.execute(
+            select(CreditWallet).where(CreditWallet.user_id == buyer.id)
+        )
+    ).scalar_one()
+    assert wallet.plan_credits == 800
+    subscription = (
+        await db_session.execute(
+            select(UserSubscription).where(UserSubscription.user_id == buyer.id)
+        )
+    ).scalar_one()
+    assert subscription.plan == "standard"
+    assert subscription.status == "active"
 
 
 @pytest.mark.asyncio
@@ -214,3 +229,42 @@ async def test_approve_twice_rejected_400(client: AsyncClient, buyer_headers: di
     )
     assert second.status_code == 400
     assert "已处理" in second.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_credit_pack_purchase_and_admin_approval(
+    client: AsyncClient,
+    buyer_headers: dict,
+    admin_headers: dict,
+):
+    created = await client.post(
+        "/api/v1/billing/credit-packs/purchase",
+        json={"pack_id": "pack_200", "contact": "wx-test"},
+        headers=buyer_headers,
+    )
+    assert created.status_code == 200, created.text
+    purchase = created.json()
+    assert purchase["credits"] == 200
+
+    approved = await client.post(
+        f"/api/v1/billing/credit-packs/{purchase['id']}/approve",
+        json={"note": "已到账"},
+        headers=admin_headers,
+    )
+    assert approved.status_code == 200, approved.text
+
+    repeated = await client.post(
+        f"/api/v1/billing/credit-packs/{purchase['id']}/approve",
+        json={"note": "重复"},
+        headers=admin_headers,
+    )
+    assert repeated.status_code == 400
+
+    wallet_response = await client.get(
+        "/api/v1/billing/wallet",
+        headers=buyer_headers,
+    )
+    assert wallet_response.status_code == 200, wallet_response.text
+    wallet = wallet_response.json()
+    assert wallet["purchased_credits"] == 200
+    assert wallet["total_credits"] == 230

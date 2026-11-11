@@ -423,7 +423,7 @@ async def scan_all_users(db: AsyncSession) -> int:
     count = 0
     for user_id in user_ids:
         user = await db.get(User, user_id)
-        if user:
+        if user and user.plan in {"standard", "professional"}:
             await run_monitor_scan(db, user)
             count += 1
     return count

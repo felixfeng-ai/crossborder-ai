@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import shutil
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -18,6 +19,20 @@ from app.services.video_task_executor import cancel_video_task, submit_video_tas
 
 
 logger = logging.getLogger("veyaship")
+
+
+def _ffmpeg_executable() -> str:
+    """优先使用系统 FFmpeg，缺失时使用 Python 包内置二进制。"""
+    executable = shutil.which("ffmpeg")
+    if executable:
+        return executable
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        # 保留标准命令，让 subprocess 抛出清晰错误并由项目状态记录。
+        return "ffmpeg"
 
 
 def _video_path(storage_key: str) -> Path:
@@ -58,7 +73,7 @@ def assemble_marketing_video(segment_paths: list[Path], output_path: Path) -> No
     _ffmpeg_concat_file(segment_paths, manifest)
 
     copy_command = [
-        "ffmpeg",
+        _ffmpeg_executable(),
         "-y",
         "-f",
         "concat",
@@ -83,7 +98,7 @@ def assemble_marketing_video(segment_paths: list[Path], output_path: Path) -> No
         if copied.returncode != 0 or not output_path.is_file():
             # 不同模型版本可能产生不同编码参数，统一重编码保证成片可播放。
             reencode_command = [
-                "ffmpeg",
+                _ffmpeg_executable(),
                 "-y",
                 "-f",
                 "concat",

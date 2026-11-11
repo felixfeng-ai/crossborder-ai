@@ -9,20 +9,24 @@ SERVICE_NAME="${VEYASHIP_SERVICE_NAME:-veyaship-backend.service}"
 
 echo "===== VeyaShip 部署开始 $(date '+%F %T') ====="
 
-cd "$REPO_ROOT"
-for attempt in 1 2 3 4 5; do
-  if timeout 45s git -c http.version=HTTP/1.1 fetch origin main; then
-    git reset --hard origin/main
-    echo "[1/5] 代码已同步到 $(git log --oneline -1)"
-    break
-  fi
-  echo "[1/5] git fetch 失败（第 ${attempt} 次），5 秒后重试..."
-  sleep 5
-  if [ "$attempt" -eq 5 ]; then
-    echo "git fetch 连续 5 次失败，终止部署"
-    exit 1
-  fi
-done
+if [ "${VEYASHIP_SKIP_SYNC:-0}" = "1" ]; then
+  echo "[1/5] 使用 GitHub Actions 上传的代码"
+else
+  cd "$REPO_ROOT"
+  for attempt in 1 2 3 4 5; do
+    if timeout 45s git -c http.version=HTTP/1.1 fetch origin main; then
+      git reset --hard origin/main
+      echo "[1/5] 代码已同步到 $(git log --oneline -1)"
+      break
+    fi
+    echo "[1/5] git fetch 失败（第 ${attempt} 次），5 秒后重试..."
+    sleep 5
+    if [ "$attempt" -eq 5 ]; then
+      echo "git fetch 连续 5 次失败，终止部署"
+      exit 1
+    fi
+  done
+fi
 
 cd "$PROJECT_DIR/backend"
 ./venv/bin/pip install -q -r requirements.txt

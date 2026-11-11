@@ -11,16 +11,30 @@
       runs-on: ubuntu-latest
       timeout-minutes: 20
       steps:
-        - name: SSH 执行服务器部署脚本
-          env:
-            JUSTONE_API_TOKEN: ${{ secrets.JUSTONE_API_TOKEN }}
-            MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
-          uses: appleboy/ssh-action@v1.2.0
+        - name: Checkout repository
+          uses: actions/checkout@v4
+
+        - name: Upload application code
+          uses: appleboy/scp-action@v0.1.7
           with:
             host: ${{ secrets.VEYASHIP_HOST }}
             username: root
             key: ${{ secrets.VEYASHIP_SSH_KEY }}
-            envs: JUSTONE_API_TOKEN,MINIMAX_API_KEY
+            source: "crossborder-ai"
+            target: "/opt/veyaship"
+            overwrite: true
+
+        - name: SSH 执行服务器部署脚本
+          uses: appleboy/ssh-action@v1.2.0
+          env:
+            JUSTONE_API_TOKEN: ${{ secrets.JUSTONE_API_TOKEN }}
+            MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+            VEYASHIP_SKIP_SYNC: "1"
+          with:
+            host: ${{ secrets.VEYASHIP_HOST }}
+            username: root
+            key: ${{ secrets.VEYASHIP_SSH_KEY }}
+            envs: JUSTONE_API_TOKEN,MINIMAX_API_KEY,VEYASHIP_SKIP_SYNC
             script: |
               set -e
               COMPOSE_FILE=$(find /opt/veyaship -maxdepth 4 -name docker-compose.prod.yml -print -quit)
@@ -52,17 +66,6 @@
                 REPO_ROOT=$(git -C "$PROJECT_DIR" rev-parse --show-toplevel)
                 git -C "$REPO_ROOT" remote set-url origin https://github.com/felixfeng-ai/crossborder-ai.git
                 echo "服务器 Git remote 已切换到当前仓库"
-                for attempt in 1 2 3 4 5; do
-                  if timeout 45s git -C "$REPO_ROOT" -c http.version=HTTP/1.1 fetch origin main; then
-                    git -C "$REPO_ROOT" reset --hard origin/main
-                    break
-                  fi
-                  sleep 5
-                  if [ "$attempt" -eq 5 ]; then
-                    echo "拉取最新部署脚本失败，终止部署"
-                    exit 1
-                  fi
-                done
               fi
 
               if [ -n "${MINIMAX_API_KEY:-}" ]; then

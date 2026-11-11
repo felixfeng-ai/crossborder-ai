@@ -104,7 +104,9 @@ export default function RadarPage() {
           <Radar className="h-6 w-6 text-primary" />
           竞品分析
         </h1>
-        <p className="text-muted-foreground mt-1">输入多个 1688 商品链接，对比分析价格和市场</p>
+        <p className="text-muted-foreground mt-1">
+          输入多个 1688 商品链接，对比分析价格和市场；每个成功抓取消耗 1 积分
+        </p>
       </div>
 
       {/* ── 输入区域 ────────────────────────────────────── */}

@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.rate_limit import RateLimit
 from app.core.access_control import check_feature_access
 from app.core.crypto import decrypt_value, encrypt_value, mask_secret
 from app.core.security import create_access_token, decode_token_safe
@@ -712,8 +713,13 @@ async def unbind_channel(
 @router.post("/compliance")
 async def check_compliance(
     payload: ComplianceRequest,
+    current_user: User = Depends(get_current_user),
+    _ratelimit=Depends(RateLimit("ai_generate")),
+    db: AsyncSession = Depends(get_db),
 ):
-    """合规审查：正则检测违禁词 + AI 检测不当用语"""
+    """合规审查：登录用户每次消耗 1 积分。"""
+    if current_user.credits < 1:
+        raise HTTPException(status_code=402, detail="积分不足，每次 AI 合规检查需要 1 积分")
     violations = compliance_check(payload.text)
 
     # AI 二次检测不当内容
@@ -721,6 +727,12 @@ async def check_compliance(
     if not ai_result.get("safe", True):
         violations.append(ai_result.get("reason", "内容不当"))
 
+    await current_user.deduct_credits(
+        db,
+        1,
+        feature="shopify_compliance",
+        description="Shopify AI 合规检查",
+    )
     return ComplianceResult(passed=len(violations) == 0, violations=violations)
 
 

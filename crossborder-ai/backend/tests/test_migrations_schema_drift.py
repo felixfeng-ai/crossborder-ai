@@ -42,6 +42,8 @@ def test_repair_migration_restores_stamped_schema_drift(
         conn.execute(sa.text("CREATE TABLE batch_jobs (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL)"))
         conn.execute(sa.text("CREATE TABLE image_generation_tasks (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL)"))
         conn.execute(sa.text("CREATE TABLE product_variants (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL, sku VARCHAR(100) NOT NULL)"))
+        conn.execute(sa.text("CREATE TABLE video_generation_tasks (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL)"))
+        conn.execute(sa.text("CREATE TABLE marketing_video_projects (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL)"))
         conn.execute(sa.text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"))
         conn.execute(sa.text("INSERT INTO alembic_version (version_num) VALUES ('021_marketing_video_projects')"))
 
@@ -69,7 +71,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "025_credit_transactions"
+    assert version == "026_video_credit_refunds"
 
 
 def test_full_sqlite_upgrade_from_empty_database(
@@ -93,9 +95,12 @@ def test_full_sqlite_upgrade_from_empty_database(
     assert "data_retention_runs" in inspector.get_table_names()
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "025_credit_transactions"
+    assert version == "026_video_credit_refunds"
     assert "credit_transactions" in inspector.get_table_names()
     assert "credit_period_start" in _column_names(engine, "users")
     assert {"credits_cost", "credits_charged"} <= _column_names(
         engine, "image_generation_tasks"
+    )
+    assert {"credits_charged", "credits_refunded"} <= _column_names(
+        engine, "video_generation_tasks"
     )

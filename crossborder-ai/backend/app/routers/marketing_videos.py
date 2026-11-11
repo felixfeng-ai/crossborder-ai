@@ -83,6 +83,7 @@ class MarketingProjectResponse(BaseModel):
     shots: list[MarketingShotResponse]
     credits_estimated: int
     credits_charged: int
+    credits_refunded: int
     final_video_url: Optional[str] = None
     error: Optional[str] = None
     created_at: str
@@ -204,6 +205,7 @@ async def _serialize_project(
         shots=shot_items,
         credits_estimated=project.credits_estimated,
         credits_charged=project.credits_charged,
+        credits_refunded=project.credits_refunded,
         final_video_url=(
             f"{settings.API_V1_PREFIX}/marketing-videos/projects/{project.id}/file"
             if project.status == "succeeded"
@@ -244,6 +246,8 @@ async def create_marketing_project(
         raise HTTPException(status_code=400, detail="目标平台不支持")
     if not any(item["id"] == payload.template_id for item in MARKETING_TEMPLATES):
         raise HTTPException(status_code=400, detail="营销视频模板不存在")
+    if current_user.credits < 1:
+        raise HTTPException(status_code=402, detail="积分不足，生成营销方案需要 1 积分")
 
     await _asset_owned(db, payload.source_asset_id, current_user.id)
     (
@@ -317,6 +321,14 @@ async def create_marketing_project(
                 status="planned",
             )
         )
+    await current_user.deduct_credits(
+        db,
+        1,
+        feature="marketing_video_plan",
+        reference_type="marketing_video_project",
+        reference_id=str(project.id),
+        description="AI 营销方案与分镜",
+    )
     await db.flush()
     return await _serialize_project(db, project)
 

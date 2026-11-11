@@ -3,6 +3,7 @@
 import json
 from datetime import datetime, timezone
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.credit_transaction import CreditTransaction
@@ -60,3 +61,39 @@ async def apply_monthly_allowance(
     db.add(transaction)
     await db.flush()
     return transaction
+
+
+async def add_credits(
+    db: AsyncSession,
+    user: User,
+    amount: int,
+    *,
+    feature: str,
+    reference_type: str | None = None,
+    reference_id: str | None = None,
+    description: str = "",
+) -> int:
+    """原子增加积分并写入流水，用于退款、补偿或管理员加积分。"""
+    if amount <= 0:
+        return user.credits
+    result = await db.execute(
+        update(User)
+        .where(User.id == user.id)
+        .values(credits=User.credits + amount)
+        .returning(User.credits)
+    )
+    remaining = int(result.scalar_one())
+    user.credits = remaining
+    db.add(
+        CreditTransaction(
+            user_id=user.id,
+            delta=amount,
+            balance_after=remaining,
+            feature=feature,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            description=description or f"增加 {amount} 积分",
+        )
+    )
+    await db.flush()
+    return remaining

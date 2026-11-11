@@ -53,6 +53,7 @@ class MarketingVideoProject(Base):
     brief_json: Mapped[str] = mapped_column(Text, nullable=False)
     credits_estimated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     credits_charged: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    credits_refunded: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     final_storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     mime: Mapped[str | None] = mapped_column(String(100), nullable=True)
     file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)

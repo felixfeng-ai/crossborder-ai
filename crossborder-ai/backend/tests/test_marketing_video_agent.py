@@ -266,6 +266,7 @@ async def test_create_marketing_project_generates_brief_without_render(
     monkeypatch,
 ):
     asset = await _seed_asset(db_session, tmp_path, monkeypatch)
+    user = await _professional_user(db_session)
     monkeypatch.setattr(settings, "MINIMAX_API_KEY", "video-key")
     monkeypatch.setattr(settings, "DEEPSEEK_API_KEY", "")
     provider_config.clear_cache()
@@ -291,6 +292,8 @@ async def test_create_marketing_project_generates_brief_without_render(
     body = response.json()
     assert body["status"] == "brief_ready"
     assert len(body["brief"]["shots"]) == 3
+    await db_session.refresh(user)
+    assert user.credits == 199
     task_count = await db_session.scalar(
         select(func.count()).select_from(VideoGenerationTask)
     )
@@ -353,7 +356,7 @@ async def test_render_marketing_project_creates_shot_tasks_and_deducts_credits(
     )
     assert task_count == 3
     await db_session.refresh(user)
-    assert user.credits == 200 - body["credits_charged"]
+    assert user.credits == 199 - body["credits_charged"]
 
 
 @pytest.mark.asyncio
@@ -541,6 +544,7 @@ async def test_sync_marks_project_failed_when_any_shot_fails(
     auth_headers,
 ):
     user = await _professional_user(db_session)
+    user.credits = 100
     monkeypatch.setattr(settings, "VIDEO_STORAGE_DIR", str(tmp_path / "videos"))
     project = MarketingVideoProject(
         user_id=user.id,
@@ -557,6 +561,8 @@ async def test_sync_marks_project_failed_when_any_shot_fails(
         resolution="480P",
         status="rendering",
         brief_json="{}",
+        credits_estimated=30,
+        credits_charged=30,
     )
     db_session.add(project)
     await db_session.flush()
@@ -593,6 +599,9 @@ async def test_sync_marks_project_failed_when_any_shot_fails(
 
     assert project.status == "failed"
     assert project.error == "审核失败"
+    assert project.credits_refunded == 30
+    await db_session.refresh(user)
+    assert user.credits == 130
 
 
 @pytest.mark.asyncio

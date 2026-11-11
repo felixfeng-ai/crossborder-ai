@@ -54,6 +54,8 @@ class VideoGenerationTask(Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     poll_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     credits_cost: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    credits_charged: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    credits_refunded: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     estimated_cost_micros: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     idempotency_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

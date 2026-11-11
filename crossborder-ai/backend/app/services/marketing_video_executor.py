@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.models.marketing_video import MarketingVideoProject, MarketingVideoShot
 from app.models.user import InsufficientCreditsError, User
 from app.models.video_generation_task import VideoGenerationTask
+from app.services.credit_service import add_credits
 from app.services.video_task_executor import cancel_video_task, submit_video_task
 
 
@@ -211,6 +212,38 @@ async def start_marketing_project(
     await db.flush()
 
 
+async def _refund_marketing_project(
+    db: AsyncSession,
+    project: MarketingVideoProject,
+) -> int:
+    """项目失败或取消时退回整单积分，避免重复退款。"""
+    refundable = max(
+        0,
+        int(project.credits_charged or 0) - int(project.credits_refunded or 0),
+    )
+    if refundable <= 0:
+        return 0
+    user = (
+        await db.execute(
+            select(User).where(User.id == project.user_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if user is None:
+        return 0
+    await add_credits(
+        db,
+        user,
+        refundable,
+        feature="marketing_video_refund",
+        reference_type="marketing_video_project",
+        reference_id=str(project.id),
+        description="营销成片失败自动退还积分",
+    )
+    project.credits_refunded += refundable
+    await db.flush()
+    return refundable
+
+
 def _file_sha256(path: Path) -> str:
     """分块计算成片哈希，避免把大文件一次性读入内存。"""
     digest = hashlib.sha256()
@@ -258,6 +291,7 @@ async def sync_marketing_video_projects(
             project.status = "failed"
             project.error = "营销视频镜头任务不完整"
             project.finished_at = datetime.now(timezone.utc)
+            await _refund_marketing_project(db, project)
             processed += 1
             continue
 
@@ -275,6 +309,7 @@ async def sync_marketing_video_projects(
             project.status = "failed"
             project.error = failed_task.error or "营销视频有镜头生成失败"
             project.finished_at = datetime.now(timezone.utc)
+            await _refund_marketing_project(db, project)
             for shot in shots:
                 task = task_by_id.get(shot.video_task_id)
                 shot.status = task.status if task else "failed"
@@ -317,6 +352,7 @@ async def sync_marketing_video_projects(
             project.status = "failed"
             project.error = str(exc) or "营销视频合成失败"
             project.finished_at = datetime.now(timezone.utc)
+            await _refund_marketing_project(db, project)
             processed += 1
 
     if processed:
@@ -362,5 +398,6 @@ async def cancel_marketing_project(
     project.status = "canceled"
     project.error = None
     project.finished_at = datetime.now(timezone.utc)
+    await _refund_marketing_project(db, project)
     await db.flush()
     return True

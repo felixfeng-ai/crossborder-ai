@@ -361,6 +361,7 @@ async def create_product_video_task(
             reference_id=str(task.id),
             description="Agent 提交商品图生视频",
         )
+        task.credits_charged = credits_cost
     except Exception:
         # 供应商已经受理，任务不能因本地扣分异常被撤回；留给运营对账。
         task.error = "视频已提交，但积分扣减失败，请联系管理员"

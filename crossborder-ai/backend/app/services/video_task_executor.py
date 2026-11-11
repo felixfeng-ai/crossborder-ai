@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.image_asset import ImageAsset
+from app.models.user import User
 from app.models.video_generation_task import VideoGenerationTask
+from app.services.credit_service import add_credits
 from app.services.minimax_video import (
     cancel_minimax_video,
     download_minimax_video,
@@ -116,6 +118,7 @@ async def _poll_one(db: AsyncSession, task: VideoGenerationTask) -> bool:
         task.status = "failed"
         task.error = "视频任务缺少供应商任务 ID"
         task.finished_at = datetime.now(timezone.utc)
+        await _refund_video_task(db, task)
         return True
 
     try:
@@ -132,6 +135,7 @@ async def _poll_one(db: AsyncSession, task: VideoGenerationTask) -> bool:
             task.error = result.get("error") or "视频生成失败"
             task.finished_at = datetime.now(timezone.utc)
             task.next_poll_at = None
+            await _refund_video_task(db, task)
             return True
 
         if status == "canceled":
@@ -139,6 +143,7 @@ async def _poll_one(db: AsyncSession, task: VideoGenerationTask) -> bool:
             task.error = None
             task.finished_at = datetime.now(timezone.utc)
             task.next_poll_at = None
+            await _refund_video_task(db, task)
             return True
 
         if status == "succeeded":
@@ -166,8 +171,41 @@ async def _poll_one(db: AsyncSession, task: VideoGenerationTask) -> bool:
             task.error = "视频任务多次查询失败，请稍后重新生成"
             task.next_poll_at = None
             task.finished_at = datetime.now(timezone.utc)
+            await _refund_video_task(db, task)
             return True
         return False
+
+
+async def _refund_video_task(
+    db: AsyncSession,
+    task: VideoGenerationTask,
+) -> int:
+    """任务失败或取消时退回已扣积分，refunded 字段保证幂等。"""
+    refundable = max(
+        0,
+        int(task.credits_charged or 0) - int(task.credits_refunded or 0),
+    )
+    if refundable <= 0:
+        return 0
+    user = (
+        await db.execute(
+            select(User).where(User.id == task.user_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if user is None:
+        return 0
+    await add_credits(
+        db,
+        user,
+        refundable,
+        feature="ai_video_refund",
+        reference_type="video_task",
+        reference_id=str(task.id),
+        description="视频生成失败自动退还积分",
+    )
+    task.credits_refunded += refundable
+    await db.flush()
+    return refundable
 
 
 async def poll_video_tasks(db: AsyncSession, limit: int = 6) -> int:
@@ -216,6 +254,7 @@ async def cancel_video_task(
         task.next_poll_at = None
         task.finished_at = datetime.now(timezone.utc)
         task.error = None
+        await _refund_video_task(db, task)
         await db.flush()
         return True
     except Exception as exc:

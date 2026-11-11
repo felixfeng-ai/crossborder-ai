@@ -310,7 +310,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <WandSparkles className="h-4 w-4 text-[color:var(--factory-accent)]" />
-                生成方案不扣积分，渲染前会展示镜头与总积分
+                生成方案消耗 1 积分；正式渲染前会展示镜头和总积分
               </div>
               <Button
                 onClick={() => createMutation.mutate()}

@@ -245,6 +245,7 @@ async def generate_video(
             reference_id=str(task.id),
             description="商品图生视频",
         )
+        task.credits_charged = credits_cost
     except Exception:
         # 供应商已经受理，任务仍可继续；本地积分异常交给调度和人工处理。
         task.error = "视频已提交，但积分扣减失败，请联系管理员"

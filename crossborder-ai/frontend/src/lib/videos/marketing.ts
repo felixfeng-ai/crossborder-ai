@@ -36,6 +36,7 @@ export interface MarketingVideoProject {
   shots: MarketingVideoShot[]
   credits_estimated: number
   credits_charged: number
+  credits_refunded?: number
   final_video_url?: string | null
   error?: string | null
   created_at: string

@@ -8,6 +8,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, Integer, String, func, select, update
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -111,13 +112,23 @@ class User(Base):
                 )
             ).scalar_one_or_none()
             if wallet is None:
-                wallet = CreditWallet(
-                    user_id=self.id,
-                    plan_credits=max(0, int(self.credits or 0)),
-                    purchased_credits=0,
-                )
-                db.add(wallet)
-                await db.flush()
+                try:
+                    async with db.begin_nested():
+                        wallet = CreditWallet(
+                            user_id=self.id,
+                            plan_credits=max(0, int(self.credits or 0)),
+                            purchased_credits=0,
+                        )
+                        db.add(wallet)
+                        await db.flush()
+                except IntegrityError:
+                    wallet = (
+                        await db.execute(
+                            select(CreditWallet)
+                            .where(CreditWallet.user_id == self.id)
+                            .with_for_update()
+                        )
+                    ).scalar_one()
             else:
                 wallet_total = int(wallet.plan_credits or 0) + int(wallet.purchased_credits or 0)
                 mirrored_total = int(self.credits or 0)

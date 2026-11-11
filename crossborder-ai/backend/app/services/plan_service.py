@@ -4,7 +4,9 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.credit_transaction import CreditTransaction
@@ -64,13 +66,35 @@ async def get_or_create_wallet(
         query = query.with_for_update()
     wallet = (await db.execute(query)).scalar_one_or_none()
     if wallet is None:
-        wallet = CreditWallet(
-            user_id=user.id,
-            plan_credits=max(0, int(user.credits or 0)),
-            purchased_credits=0,
-        )
-        db.add(wallet)
+        initial_credits = max(0, int(user.credits or 0))
+        dialect = db.get_bind().dialect.name
+        if dialect == "postgresql":
+            statement = postgresql_insert(CreditWallet).values(
+                user_id=user.id,
+                plan_credits=initial_credits,
+                purchased_credits=0,
+            ).on_conflict_do_nothing(index_elements=["user_id"])
+        elif dialect == "sqlite":
+            statement = sqlite_insert(CreditWallet).values(
+                user_id=user.id,
+                plan_credits=initial_credits,
+                purchased_credits=0,
+            ).on_conflict_do_nothing(index_elements=["user_id"])
+        else:
+            statement = insert(CreditWallet).values(
+                user_id=user.id,
+                plan_credits=initial_credits,
+                purchased_credits=0,
+            )
+        await db.execute(statement)
         await db.flush()
+        wallet = (
+            await db.execute(
+                select(CreditWallet)
+                .where(CreditWallet.user_id == user.id)
+                .with_for_update() if lock else select(CreditWallet).where(CreditWallet.user_id == user.id)
+            )
+        ).scalar_one()
     return wallet
 
 

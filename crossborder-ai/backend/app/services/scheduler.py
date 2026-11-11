@@ -27,10 +27,10 @@ class SchedulerService:
 
     async def start(self):
         """Register and start all scheduled tasks."""
-        # Weekly cleanup of old generation records
+        # 每天清理过期临时记录；实际删除范围由 data_retention 服务统一控制。
         self.scheduler.add_job(
-            self._cleanup_old_records,
-            CronTrigger(day_of_week="mon", hour=3, minute=0),  # Monday 3am
+            self._cleanup_old_records_locked,
+            CronTrigger(hour=3, minute=0),
             id="cleanup_old_records",
             replace_existing=True,
         )
@@ -180,11 +180,22 @@ class SchedulerService:
             self.scheduler.shutdown(wait=False)
             print("[Scheduler] stopped")
 
+    async def _cleanup_old_records_locked(self):
+        """多 worker 下只允许一个实例执行数据保留清理。"""
+        if not settings.DATA_RETENTION_ENABLED:
+            return
+        await self._run_with_lock("data_retention", self._cleanup_old_records)
+
     async def _cleanup_old_records(self):
-        """Clean up content generation records older than 90 days."""
+        """删除过期临时记录，并写入 data_retention_runs 审计。"""
+        from app.services.data_retention import run_retention_cleanup
+
         async with async_session_factory() as db:
-            # Archival logic here
-            print("[Scheduler] Cleaned up old records")
+            result = await run_retention_cleanup(db)
+            print(
+                "[Scheduler] 数据保留清理完成："
+                f"dry_run={result['dry_run']} deleted={result['deleted']}"
+            )
 
     async def _process_pending_generations(self):
         """Process any pending AI content generations."""

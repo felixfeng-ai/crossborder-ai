@@ -29,6 +29,12 @@ jobs:
           cache-dependency-path: crossborder-ai/backend/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Validate deployment shell syntax
+        working-directory: crossborder-ai
+        run: |
+          bash -n deploy/backup.sh
+          bash -n deploy/security-check.sh
+          bash -n deploy/veyaship/cicd-deploy.sh
       - name: Run backend tests
         run: python -m pytest -q
 

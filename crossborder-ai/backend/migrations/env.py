@@ -79,6 +79,7 @@ from app.models.product_variant import ProductVariant  # noqa: F401
 from app.models.payment import Subscription, PaymentInvoice  # noqa: F401
 from app.models.conversation import Conversation, ConversationMessage  # noqa: F401
 from app.models.store_check_log import StoreCheckLog  # noqa: F401
+from app.models.data_retention import DataRetentionRun  # noqa: F401
 
 target_metadata = Base.metadata
 

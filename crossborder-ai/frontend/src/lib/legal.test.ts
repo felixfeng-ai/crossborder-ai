@@ -56,6 +56,8 @@ describe('公网法务与合规页面', () => {
     expect(combined).toContain('删除')
     expect(combined).toContain('安全事件')
     expect(combined).toContain(LEGAL_CONTACT_EMAIL)
+    expect(combined).toContain('90 天')
+    expect(combined).toContain('180 天')
   })
 
   it('法务正文在桌面和移动端包含标题、目录与可读结构', () => {

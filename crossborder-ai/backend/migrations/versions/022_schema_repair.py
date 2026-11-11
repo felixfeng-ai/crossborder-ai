@@ -26,10 +26,17 @@ def _index_map(inspector: sa.Inspector, table_name: str) -> dict[str, dict]:
 
 
 def _unique_column_sets(inspector: sa.Inspector, table_name: str) -> set[frozenset[str]]:
-    return {
+    unique_sets = {
         frozenset(item.get("column_names") or [])
         for item in inspector.get_unique_constraints(table_name)
     }
+    # SQLite 把唯一约束实现为唯一索引，重复升级时必须同时检查索引。
+    unique_sets.update(
+        frozenset(item.get("column_names") or [])
+        for item in inspector.get_indexes(table_name)
+        if item.get("unique")
+    )
+    return unique_sets
 
 
 def _add_column_if_missing(

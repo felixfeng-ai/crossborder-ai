@@ -24,6 +24,8 @@ BACKUP_DIR="${BACKUP_DIR:-/opt/veyaship/backups}"
 RETENTION_DAYS="${RETENTION_DAYS:-7}"
 ENV_FILE="${ENV_FILE:-/opt/veyaship/crossborder-ai/.env}"
 BACKUP_REMOTE="${BACKUP_REMOTE:-}"
+BACKUP_ENCRYPTION_KEY_FILE="${BACKUP_ENCRYPTION_KEY_FILE:-}"
+BACKUP_ENCRYPTION_REQUIRED="${BACKUP_ENCRYPTION_REQUIRED:-0}"
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # ── 从 .env 读取数据库凭据 ────────────────────────────────────
@@ -38,6 +40,31 @@ PGDB="${PGDB:-${POSTGRES_DB:-crossborder_ai}}"
 PGPASSWORD="${PGPASSWORD:-${POSTGRES_PASSWORD:-}}"
 export PGPASSWORD
 
+ENCRYPT_SUFFIX=""
+if [ -n "$BACKUP_ENCRYPTION_KEY_FILE" ]; then
+  if [ ! -r "$BACKUP_ENCRYPTION_KEY_FILE" ]; then
+    echo "[backup] 备份加密密钥文件不可读：$BACKUP_ENCRYPTION_KEY_FILE" >&2
+    exit 1
+  fi
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "[backup] 找不到 openssl，无法执行备份加密" >&2
+    exit 1
+  fi
+  ENCRYPT_SUFFIX=".enc"
+elif [ "$BACKUP_ENCRYPTION_REQUIRED" = "1" ]; then
+  echo "[backup] 已要求加密备份，但未配置 BACKUP_ENCRYPTION_KEY_FILE" >&2
+  exit 1
+fi
+
+encrypt_stream() {
+  if [ -n "$ENCRYPT_SUFFIX" ]; then
+    openssl enc -aes-256-cbc -salt -pbkdf2 \
+      -pass "file:$BACKUP_ENCRYPTION_KEY_FILE"
+  else
+    cat
+  fi
+}
+
 mkdir -p "$BACKUP_DIR"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 
@@ -48,17 +75,19 @@ BACKED_UP=0
 
 # ── PostgreSQL（生产） ───────────────────────────────────────
 if command -v pg_dump >/dev/null 2>&1 && pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; then
-  OUT="$BACKUP_DIR/veyaship_pg_$STAMP.dump.gz"
+  OUT="$BACKUP_DIR/veyaship_pg_$STAMP.dump.gz$ENCRYPT_SUFFIX"
   echo "[backup] 检测到 PostgreSQL，开始备份 $PGDB@$PGHOST ..."
   # -Fc = 自定义格式（压缩、可 pg_restore 选择性恢复）
-  pg_dump -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDB" -Fc | gzip > "$OUT"
+  pg_dump -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDB" -Fc \
+    | gzip \
+    | encrypt_stream > "$OUT"
   echo "[backup] PostgreSQL 备份完成：$OUT"
   BACKED_UP=1
 
 # ── SQLite（本地开发） ───────────────────────────────────────
 elif [ -f "$PROJECT_ROOT/backend/crossborder_ai.db" ]; then
   DB_FILE="$PROJECT_ROOT/backend/crossborder_ai.db"
-  OUT="$BACKUP_DIR/veyaship_sqlite_$STAMP.db.gz"
+  OUT="$BACKUP_DIR/veyaship_sqlite_$STAMP.db.gz$ENCRYPT_SUFFIX"
   echo "[backup] 检测到 SQLite，开始备份 $DB_FILE ..."
   # Windows (Git Bash/MSYS) 下把 POSIX 路径转成 Windows 路径，Linux 服务器原样
   if uname -s 2>/dev/null | grep -qi "MINGW\|MSYS"; then
@@ -78,7 +107,12 @@ con.backup(b)
 b.close(); con.close()
 print('[backup] sqlite backup ok')
 "
-  gzip "$OUT.tmp" && mv "$OUT.tmp.gz" "$OUT"
+  if ! gzip -c "$OUT.tmp" | encrypt_stream > "$OUT"; then
+    rm -f "$OUT.tmp"
+    echo "[backup] SQLite 备份加密失败" >&2
+    exit 1
+  fi
+  rm -f "$OUT.tmp"
   echo "[backup] SQLite 备份完成：$OUT"
   BACKED_UP=1
 fi
@@ -86,6 +120,12 @@ fi
 if [ "$BACKED_UP" -eq 0 ]; then
   echo "[backup] 未找到可备份的数据库（无 pg 且无 sqlite）" >&2
   exit 1
+fi
+
+if [ -n "$ENCRYPT_SUFFIX" ]; then
+  echo "[backup] 备份已使用 AES-256 加密"
+else
+  echo "[backup] 警告：本次备份未加密，生产环境必须启用 BACKUP_ENCRYPTION_KEY_FILE" >&2
 fi
 
 # ════════════════════════════════════════════════════════════════

@@ -84,6 +84,24 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days
 
+    # --- Data protection ---
+    # 敏感字段优先使用独立密钥；旧 JWT 密钥保留为只读回退，避免存量密文失效。
+    DATA_ENCRYPTION_KEY: str = ""
+    DATA_ENCRYPTION_PREVIOUS_KEYS: str = ""
+
+    # PostgreSQL TLS：生产应使用 verify-ca 或 verify-full。
+    DB_SSL_MODE: str = "disable"
+    DB_SSL_CA_PATH: str = ""
+    DB_SSL_CERT_PATH: str = ""
+    DB_SSL_KEY_PATH: str = ""
+
+    # --- Data retention ---
+    DATA_RETENTION_ENABLED: bool = True
+    DATA_RETENTION_DAYS: int = 90
+    DATA_RETENTION_STORE_CHECK_DAYS: int = 180
+    DATA_RETENTION_BATCH_SIZE: int = 500
+    DATA_RETENTION_DRY_RUN: bool = False
+
     # --- CORS ---
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:5173",

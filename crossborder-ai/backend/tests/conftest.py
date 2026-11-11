@@ -34,6 +34,7 @@ from sqlalchemy.pool import StaticPool
 from app.core.database import Base, get_db
 from app.core.config import settings
 from app.core import rate_limit as rate_limit_module
+import app.models  # noqa: F401  # 建立完整 metadata，避免单测导入顺序导致外键缺表
 from app.main import app
 
 # ── 测试数据库 URL ────────────────────────────────────────────

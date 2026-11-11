@@ -13,11 +13,58 @@
 - 依赖注入（Dependency Injection）：FastAPI 自动把会话传给路由函数
 """
 
+import ssl
+from pathlib import Path
+
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
+
+
+def _database_connect_args(
+    *,
+    use_sqlite: bool,
+    ssl_mode: str,
+    ssl_ca_path: str,
+    ssl_cert_path: str,
+    ssl_key_path: str,
+) -> dict:
+    """构造数据库连接参数，生产 PostgreSQL 可强制使用 TLS。
+
+    verify-full 同时校验 CA 和主机名；verify-ca 只校验 CA。
+    require 提供加密但不验证服务端证书，仅用于无法部署 CA 的过渡环境。
+    """
+    if use_sqlite:
+        return {"check_same_thread": False}
+
+    mode = (ssl_mode or "disable").strip().lower()
+    if mode == "disable":
+        return {}
+    if mode == "require":
+        return {"ssl": "require"}
+    if mode not in {"verify-ca", "verify-full"}:
+        raise ValueError(
+            "DB_SSL_MODE 仅支持 disable、require、verify-ca、verify-full"
+        )
+
+    context = ssl.create_default_context(
+        cafile=ssl_ca_path or None,
+    )
+    context.check_hostname = mode == "verify-full"
+    context.verify_mode = ssl.CERT_REQUIRED
+
+    if ssl_cert_path or ssl_key_path:
+        if not ssl_cert_path or not ssl_key_path:
+            raise ValueError("PostgreSQL 客户端证书和私钥必须同时配置")
+        for path in (ssl_cert_path, ssl_key_path):
+            if not Path(path).is_file():
+                raise ValueError(f"PostgreSQL TLS 凭证文件不存在：{path}")
+        context.load_cert_chain(ssl_cert_path, ssl_key_path)
+
+    return {"ssl": context}
+
 
 # ── 1. 创建异步数据库引擎 ───────────────────────────────────────
 # create_async_engine 创建了一个异步连接池
@@ -33,9 +80,13 @@ engine = create_async_engine(
     settings.DB_URL,
     echo=settings.DEBUG,
     pool_pre_ping=True,
-    # SQLite 的一个限制：默认只能创建它的线程使用
-    # check_same_thread=False 允许跨线程使用（FastAPI 是异步的，线程不固定）
-    connect_args={"check_same_thread": False} if settings.USE_SQLITE else {},
+    connect_args=_database_connect_args(
+        use_sqlite=settings.USE_SQLITE,
+        ssl_mode=settings.DB_SSL_MODE,
+        ssl_ca_path=settings.DB_SSL_CA_PATH,
+        ssl_cert_path=settings.DB_SSL_CERT_PATH,
+        ssl_key_path=settings.DB_SSL_KEY_PATH,
+    ),
 )
 
 # ── 2. SQLite 专有优化 ─────────────────────────────────────────

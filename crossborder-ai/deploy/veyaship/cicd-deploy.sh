@@ -6,8 +6,56 @@ REPO_ROOT="${VEYASHIP_REPO_ROOT:-/opt/veyaship}"
 PROJECT_DIR="$REPO_ROOT/crossborder-ai"
 WEB_ROOT="${VEYASHIP_WEB_ROOT:-/var/www/veyaship}"
 SERVICE_NAME="${VEYASHIP_SERVICE_NAME:-veyaship-backend.service}"
+ENV_FILE="$PROJECT_DIR/.env"
 
 echo "===== VeyaShip 部署开始 $(date '+%F %T') ====="
+
+# 生产密钥只在服务器生成并落盘，不进入仓库或 Actions 日志。
+ensure_env_value() {
+  local key="$1"
+  local value="$2"
+  if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+    if ! grep -Eq "^${key}=.+$" "$ENV_FILE"; then
+      sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+    fi
+  else
+    printf '\n%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
+
+ensure_random_env_secret() {
+  local key="$1"
+  if grep -Eq "^${key}=.+$" "$ENV_FILE" 2>/dev/null; then
+    return
+  fi
+  local generated
+  generated="$(openssl rand -base64 48)"
+  if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${generated}|" "$ENV_FILE"
+  else
+    printf '\n%s=%s\n' "$key" "$generated" >> "$ENV_FILE"
+  fi
+}
+
+touch "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+
+# 独立数据密钥用于新写入的敏感字段；旧 JWT 派生密文仍可回退解密。
+ensure_random_env_secret "DATA_ENCRYPTION_KEY"
+
+BACKUP_KEY_FILE="/etc/veyaship/backup.key"
+install -d -m 700 /etc/veyaship
+if [ ! -s "$BACKUP_KEY_FILE" ]; then
+  (
+    umask 077
+    openssl rand -base64 48 > "$BACKUP_KEY_FILE"
+  )
+fi
+chmod 600 "$BACKUP_KEY_FILE"
+ensure_env_value "BACKUP_ENCRYPTION_KEY_FILE" "$BACKUP_KEY_FILE"
+ensure_env_value "BACKUP_ENCRYPTION_REQUIRED" "1"
+
+echo "[0/5] 生产加密密钥已就绪"
 
 if [ "${VEYASHIP_SKIP_SYNC:-0}" = "1" ]; then
   echo "[1/5] 使用 GitHub Actions 上传的代码"

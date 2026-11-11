@@ -68,4 +68,28 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "022_schema_repair"
+    assert version == "023_data_retention_runs"
+
+
+def test_full_sqlite_upgrade_from_empty_database(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """全新 SQLite 也必须能一次性升级到包含数据保留审计表的 head。"""
+    db_path = tmp_path / "fresh-upgrade.db"
+    sync_url = f"sqlite:///{db_path.as_posix()}"
+    async_url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+    engine = sa.create_engine(sync_url)
+
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
+    config.set_main_option("sqlalchemy.url", async_url)
+    monkeypatch.setenv("DATABASE_URL", async_url)
+
+    command.upgrade(config, "head")
+
+    inspector = sa.inspect(engine)
+    assert "data_retention_runs" in inspector.get_table_names()
+    with engine.connect() as conn:
+        version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
+    assert version == "023_data_retention_runs"

@@ -47,6 +47,12 @@
               fi
               echo "Just One API 凭据已注入服务器环境"
 
+              # 仓库迁移后服务器 remote 可能仍指向旧地址，部署前自动纠正。
+              if git -C "$PROJECT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+                git -C "$PROJECT_DIR" remote set-url origin https://github.com/felixfeng-ai/crossborder-ai.git
+                echo "服务器 Git remote 已切换到当前仓库"
+              fi
+
               if [ -n "${MINIMAX_API_KEY:-}" ]; then
                 if grep -q '^MINIMAX_API_KEY=' "$ENV_FILE"; then
                   sed -i "s|^MINIMAX_API_KEY=.*|MINIMAX_API_KEY=${MINIMAX_API_KEY}|" "$ENV_FILE"

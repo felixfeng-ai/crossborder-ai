@@ -15,8 +15,7 @@ export interface User {
   is_active: boolean
   is_verified: boolean
   plan: UserPlan
-  credits_remaining: number
-  credits_total: number
+  credits: number
   shopify_shop_name: string | null
   created_at: string
   updated_at: string

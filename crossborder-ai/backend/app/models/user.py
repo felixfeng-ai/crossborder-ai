@@ -56,6 +56,9 @@ class User(Base):
     # ── 业务字段 ──────────────────────────────────────────────
     # credits（积分）用于消耗式计费，每次 AI 生成/抓取扣 1 分
     credits: Mapped[int] = mapped_column(Integer, default=30)
+    credit_period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # plan（套餐）控制可用功能范围，free / standard / professional
     plan: Mapped[str] = mapped_column(String(50), default="free")
 
@@ -70,7 +73,16 @@ class User(Base):
     # 这个方法不是在数据库层面做的，而是在 Python 层面操作对象，
     # 然后通过 session 同步到数据库
 
-    async def deduct_credits(self, db: AsyncSession, amount: int) -> int:
+    async def deduct_credits(
+        self,
+        db: AsyncSession,
+        amount: int,
+        *,
+        feature: str = "unknown",
+        reference_type: str | None = None,
+        reference_id: str | None = None,
+        description: str = "",
+    ) -> int:
         """原子扣减积分（带行级锁，防并发扣超）
 
         场景：用户同时发两个请求，各需扣 1 分，但只剩 1 分。
@@ -107,6 +119,19 @@ class User(Base):
                 )
 
             self.credits = remaining
+            from app.models.credit_transaction import CreditTransaction
+
+            db.add(
+                CreditTransaction(
+                    user_id=self.id,
+                    delta=-amount,
+                    balance_after=remaining,
+                    feature=feature,
+                    reference_type=reference_type,
+                    reference_id=reference_id,
+                    description=description or f"扣减 {amount} 积分",
+                )
+            )
             return remaining
 
     def __repr__(self) -> str:

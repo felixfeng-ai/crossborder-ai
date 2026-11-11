@@ -80,6 +80,8 @@ from app.models.payment import Subscription, PaymentInvoice  # noqa: F401
 from app.models.conversation import Conversation, ConversationMessage  # noqa: F401
 from app.models.store_check_log import StoreCheckLog  # noqa: F401
 from app.models.data_retention import DataRetentionRun  # noqa: F401
+from app.models.shopify_compliance_event import ShopifyComplianceEvent  # noqa: F401
+from app.models.credit_transaction import CreditTransaction  # noqa: F401
 
 target_metadata = Base.metadata
 

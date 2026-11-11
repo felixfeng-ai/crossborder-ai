@@ -97,6 +97,13 @@ class SchedulerService:
             replace_existing=True,
         )
 
+        self.scheduler.add_job(
+            self._refresh_monthly_credit_allowances_locked,
+            CronTrigger(hour=3, minute=10),
+            id="monthly_credit_allowance",
+            replace_existing=True,
+        )
+
         self.scheduler.start()
         print("[Scheduler] started with all jobs registered")
 
@@ -377,3 +384,25 @@ class SchedulerService:
 
         async with async_session_factory() as db:
             await provider_config.refresh(db)
+
+    async def _refresh_monthly_credit_allowances_locked(self):
+        """每日检查自然月额度，跨进程只允许一个 worker 发放。"""
+        await self._run_with_lock(
+            "monthly_credit_allowance",
+            self._refresh_monthly_credit_allowances,
+        )
+
+    async def _refresh_monthly_credit_allowances(self):
+        """给所有跨月用户补充额度；同月重复执行不会重复发放。"""
+        from app.models.user import User
+        from app.services.credit_service import apply_monthly_allowance
+
+        async with async_session_factory() as db:
+            users = (await db.execute(select(User))).scalars().all()
+            applied = 0
+            for user in users:
+                transaction = await apply_monthly_allowance(db, user)
+                if transaction is not None:
+                    applied += 1
+            await db.commit()
+            print(f"[Scheduler] 月度积分额度检查完成：发放 {applied} 个账号")

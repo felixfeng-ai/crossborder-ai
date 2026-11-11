@@ -31,6 +31,7 @@ async def get_dashboard(
 async def analyze_category(
     keyword: str = Query(..., description="品类关键词，如：蓝牙耳机"),
     current_user: User = Depends(get_current_user),
+    _ratelimit=Depends(RateLimit("ai_generate")),
 ):
     """AI 品类分析：输入品类名，返回市场分析报告
 
@@ -92,13 +93,19 @@ async def run_store_check(
         raise HTTPException(status_code=402, detail="积分不足")
 
     result = await execute_store_check(db, current_user)
-    await current_user.deduct_credits(db, 1)
+    await current_user.deduct_credits(
+        db,
+        1,
+        feature="store_check",
+        description="手动整店巡检",
+    )
     return result
 
 
 @router.get("/insights")
 async def get_ai_insights(
     current_user: User = Depends(get_current_user),
+    _ratelimit=Depends(RateLimit("ai_generate")),
     db: AsyncSession = Depends(get_db),
 ):
     """AI 分析经营数据，给出经营建议"""

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
@@ -106,6 +106,7 @@ export default function ContentPage() {
   const [customTone, setCustomTone] = useState('')
   const [copied, setCopied] = useState('')
   const [selectedChannel, setSelectedChannel] = useState('')
+  const [selectedVariantIds, setSelectedVariantIds] = useState<string[]>([])
 
   const { data: capabilities } = useQuery<Record<string, PlatformCapability>>({
     queryKey: ['platform-capabilities'],
@@ -146,12 +147,17 @@ export default function ContentPage() {
   )
   const hasPublishableVariant = sellableVariants.length > 0
 
+  useEffect(() => {
+    setSelectedVariantIds(sellableVariants.map((variant) => variant.id))
+  }, [selectedProduct, platform, publishVariants])
+
   // 发布到 Shopify
   const publishMutation = useMutation({
     mutationFn: async () => {
       const res = await apiClient.post('/shopify/push', {
         listing_id: generateMutation.data?.listing_id,
         channel_id: selectedChannel,
+        variant_ids: selectedVariantIds,
       }, {
         headers: { 'Idempotency-Key': createIdempotencyKey() },
       })
@@ -164,7 +170,8 @@ export default function ContentPage() {
       !generateMutation.data?.listing_id ||
       generateMutation.data.compliance_status !== 'pass' ||
       !selectedChannel ||
-      !hasPublishableVariant
+      !hasPublishableVariant ||
+      selectedVariantIds.length === 0
     ) return
     publishMutation.mutate()
   }
@@ -497,6 +504,41 @@ export default function ContentPage() {
                     <option key={c.id} value={c.id}>{c.shop_name}</option>
                   ))}
                 </select>
+                {sellableVariants.length > 0 && (
+                  <div className="space-y-1 rounded-md border border-border p-2">
+                    <div className="mb-1 flex items-center justify-between text-xs">
+                      <span className="font-medium">选择发布 SKU</span>
+                      <span className="text-muted-foreground">
+                        已选 {selectedVariantIds.length}/{sellableVariants.length}
+                      </span>
+                    </div>
+                    {sellableVariants.map((variant) => (
+                      <label
+                        key={variant.id}
+                        className="flex min-h-10 cursor-pointer items-center gap-2 rounded px-1.5 text-xs hover:bg-[var(--factory-raised)]"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedVariantIds.includes(variant.id)}
+                          onChange={(event) =>
+                            setSelectedVariantIds((current) =>
+                              event.target.checked
+                                ? Array.from(new Set([...current, variant.id]))
+                                : current.filter((id) => id !== variant.id),
+                            )
+                          }
+                          className="h-4 w-4 accent-[var(--factory-ink)]"
+                        />
+                        <span className="min-w-0 flex-1 truncate font-mono">
+                          {variant.sku}
+                        </span>
+                        <span className="metric-number text-muted-foreground">
+                          ¥{Number(variant.price).toFixed(2)}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
                 {!publishVariantsLoading && !hasPublishableVariant && (
                   <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -515,7 +557,8 @@ export default function ContentPage() {
                     publishMutation.isPending ||
                     generateMutation.data.compliance_status !== 'pass' ||
                     !generateMutation.data.listing_id ||
-                    !hasPublishableVariant
+                    !hasPublishableVariant ||
+                    selectedVariantIds.length === 0
                   }
                   onClick={handlePublish}
                 >
@@ -525,6 +568,8 @@ export default function ContentPage() {
                     <><AlertTriangle className="mr-2 h-4 w-4" />合规未通过，禁止发布</>
                   ) : !hasPublishableVariant ? (
                     <><AlertTriangle className="mr-2 h-4 w-4" />请先配置 SKU 售价</>
+                  ) : selectedVariantIds.length === 0 ? (
+                    <><AlertTriangle className="mr-2 h-4 w-4" />请选择要发布的 SKU</>
                   ) : (
                     <><ShoppingBag className="mr-2 h-4 w-4" />发布 Shopify 草稿</>
                   )}

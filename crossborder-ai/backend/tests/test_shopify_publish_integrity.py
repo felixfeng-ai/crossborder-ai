@@ -23,6 +23,7 @@ from app.services.shopify_publish_service import (
     PreparedShopifyProduct,
     ShopifyPublishResult,
     ShopifyPublishValidationError,
+    _load_active_variants,
     build_shopify_product_payload,
     publish_shopify_product,
 )
@@ -413,6 +414,63 @@ async def test_publish_endpoint_sends_complete_variant_payload(
     assert direct.prepared is not None
     assert direct.prepared.variant_count == 1
     assert direct.publication.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_shopify_publish_can_select_specific_variants(db_session):
+    """指定 variant_ids 时只发布勾选 SKU，不能把其他变体一起带上。"""
+    user = User(
+        email=f"variant-publish-{uuid.uuid4().hex[:8]}@example.com",
+        username="variant-publish",
+        password_hash="x",
+        plan="standard",
+    )
+    db_session.add(user)
+    await db_session.flush()
+    product = Product(
+        user_id=user.id,
+        url=f"https://detail.1688.com/offer/{uuid.uuid4().hex}.html",
+        title="Variant Product",
+        price=10,
+    )
+    db_session.add(product)
+    await db_session.flush()
+    selected = ProductVariant(
+        user_id=user.id,
+        product_id=product.id,
+        sku="SELECTED-SKU",
+        attributes_json='{"Color":"Black"}',
+        price=29.9,
+        stock_quantity=5,
+        is_active=True,
+    )
+    ignored = ProductVariant(
+        user_id=user.id,
+        product_id=product.id,
+        sku="IGNORED-SKU",
+        attributes_json='{"Color":"White"}',
+        price=31.9,
+        stock_quantity=8,
+        is_active=True,
+    )
+    db_session.add_all([selected, ignored])
+    await db_session.flush()
+
+    variants = await _load_active_variants(
+        db_session,
+        product,
+        user.id,
+        variant_ids=[selected.id],
+    )
+
+    assert [item.sku for item in variants] == ["SELECTED-SKU"]
+    with pytest.raises(ShopifyPublishValidationError, match="不属于当前商品"):
+        await _load_active_variants(
+            db_session,
+            product,
+            user.id,
+            variant_ids=[uuid.uuid4()],
+        )
 
 
 @pytest.mark.asyncio

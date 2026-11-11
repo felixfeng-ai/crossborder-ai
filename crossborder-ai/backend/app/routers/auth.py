@@ -37,6 +37,7 @@ from app.core.security import (
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.user import UserCreate, UserResponse, TokenResponse
+from app.services.credit_service import apply_monthly_allowance
 
 # ── 创建路由实例 ──────────────────────────────────────────────
 # prefix="/auth" 表示这个路由下的所有接口都以 /api/v1/auth 开头
@@ -105,9 +106,11 @@ async def register(
         email=payload.email,
         username=payload.username or payload.email.split("@")[0],
         password_hash=hash_password(payload.password),
+        credits=0,
     )
     db.add(user)
     await db.flush()
+    await apply_monthly_allowance(db, user)
 
     # ── Step 3: 签发 JWT ───────────────────────────────────
     # 注册成功后直接返回 token，用户不需要再登录一次
@@ -171,6 +174,7 @@ async def login(
 @router.get("/me", response_model=UserResponse)
 async def get_me(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """获取当前登录用户的信息
 
@@ -195,6 +199,11 @@ async def get_me(
     Returns:
         UserResponse: 用户信息（不会暴露密码哈希）
     """
+    applied = await apply_monthly_allowance(db, current_user)
+    if applied is not None:
+        await db.commit()
+        await db.refresh(current_user)
+
     return UserResponse(
         id=current_user.id,
         email=current_user.email,

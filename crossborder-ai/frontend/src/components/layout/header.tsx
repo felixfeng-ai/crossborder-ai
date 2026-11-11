@@ -151,7 +151,7 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
         {user && (
           <Badge variant="secondary" className="metric-number gap-1 px-2 py-1 text-xs">
             <CreditCard className="h-3 w-3" />
-            <span>{user.credits_remaining}</span>
+            <span>{user.credits}</span>
             <span className="hidden sm:inline">{t('header.credits')}</span>
           </Badge>
         )}

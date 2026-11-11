@@ -134,7 +134,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
     shortTitle: '隐私政策',
     summary:
       '本政策说明 VeyaShip 收集哪些数据、为什么处理、如何使用第三方服务，以及你如何访问、更正和删除数据。',
-    version: '1.1',
+    version: '1.2',
     effectiveDate: '2026-11-11',
     sections: [
       {
@@ -159,6 +159,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
         paragraphs: [
           'VeyaShip 仅在商家授权和实现订单履约、销量汇总或运营分析所必需的范围内访问 Shopify 订单数据。系统当前不持久化客户姓名、客户邮箱、电话、收货地址或其他受保护客户数据。',
           '为生成 SKU 销量指标，系统可在同步过程中临时读取订单行项目数量、SKU、订单状态和金额，并只保留与商家商品运营相关的聚合结果。不会将 Shopify 客户数据用于广告画像、出售或与无关第三方共享。',
+          'VeyaShip 支持 Shopify 强制隐私事件 customers/data_request、customers/redact 和 shop/redact。前两类事件因平台不持久化客户 PII 而只记录处理结果；shop/redact 会删除对应店铺 Token 和该渠道发布记录。',
           '商家是 Shopify 店铺数据的控制者，VeyaShip 按商家指令作为处理者提供服务。商家应确保其隐私声明和客户授权覆盖相关处理。',
         ],
       },
@@ -243,7 +244,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
     shortTitle: '数据处理',
     summary:
       '说明 VeyaShip 如何按商家指令处理店铺数据，以及解绑、删除、保留和安全事件通知的实际流程。',
-    version: '1.1',
+    version: '1.2',
     effectiveDate: '2026-11-11',
     sections: [
       {
@@ -268,6 +269,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
         paragraphs: [
           '订单数据仅用于商家发起的销量汇总、运营同步、订单查看或履约辅助。系统可读取订单号、金额、币种、状态、时间和行项目中的 SKU 与数量，用于聚合计算。',
           '原始订单数据不用于出售、广告画像或无关营销。系统不持久化客户姓名、客户邮箱、电话和地址；只保存与商家商品经营相关的 SKU 销量和库存结果。',
+          '系统接收 customers/data_request、customers/redact 和 shop/redact 三类 Shopify 隐私请求，验证 HMAC 后按事件类型处理。删除事件不保存完整 payload，并防止相同 Webhook ID 重复执行。',
         ],
       },
       {
@@ -387,7 +389,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
     shortTitle: '安全说明',
     summary:
       '介绍 VeyaShip 的数据安全措施、店铺授权保护、漏洞报告和安全事件响应方式。',
-    version: '1.0',
+    version: '1.1',
     effectiveDate: '2026-11-11',
     sections: [
       {

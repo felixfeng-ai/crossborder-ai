@@ -36,6 +36,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     engine = sa.create_engine(sync_url)
 
     with engine.begin() as conn:
+        conn.execute(sa.text("CREATE TABLE users (id VARCHAR(36) PRIMARY KEY)"))
         conn.execute(sa.text("CREATE TABLE products (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36), url VARCHAR(500) NOT NULL)"))
         conn.execute(sa.text("CREATE TABLE listing_drafts (id VARCHAR(36) PRIMARY KEY)"))
         conn.execute(sa.text("CREATE TABLE batch_jobs (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL)"))
@@ -68,7 +69,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "023_data_retention_runs"
+    assert version == "025_credit_transactions"
 
 
 def test_full_sqlite_upgrade_from_empty_database(
@@ -92,4 +93,9 @@ def test_full_sqlite_upgrade_from_empty_database(
     assert "data_retention_runs" in inspector.get_table_names()
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "023_data_retention_runs"
+    assert version == "025_credit_transactions"
+    assert "credit_transactions" in inspector.get_table_names()
+    assert "credit_period_start" in _column_names(engine, "users")
+    assert {"credits_cost", "credits_charged"} <= _column_names(
+        engine, "image_generation_tasks"
+    )

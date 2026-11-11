@@ -196,7 +196,14 @@ async def start_marketing_project(
         await db.commit()
         raise ValueError(project.error)
 
-    await locked_user.deduct_credits(db, project.credits_estimated)
+    await locked_user.deduct_credits(
+        db,
+        project.credits_estimated,
+        feature="marketing_video",
+        reference_type="marketing_video_project",
+        reference_id=str(project.id),
+        description="营销成片渲染",
+    )
     project.status = "rendering"
     project.credits_charged = project.credits_estimated
     project.approved_at = datetime.now(timezone.utc)

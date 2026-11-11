@@ -94,7 +94,14 @@ async def execute_agent_task(task_id) -> None:
 
             # 成功才扣积分（幂等：每个任务只扣一次；行级锁防并发扣超）
             try:
-                await user.deduct_credits(db, task.cost)
+                await user.deduct_credits(
+                    db,
+                    task.cost,
+                    feature=task.task_type,
+                    reference_type="agent_task",
+                    reference_id=str(task.id),
+                    description="AI Agent 任务执行",
+                )
             except InsufficientCreditsError as e:
                 task.status = "failed"
                 task.error = str(e)

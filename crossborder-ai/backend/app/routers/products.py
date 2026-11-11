@@ -181,9 +181,6 @@ async def scrape_product(
             detail={"code": "scrape_failed", "message": str(e) or "抓取失败，请稍后重试"},
         ) from e
 
-    # ── 扣积分（修改已有数据） ─────────────────────────────
-    await current_user.deduct_credits(db, 1)
-
     # ── INSERT ─────────────────────────────────────────────
     # user_id 记录是谁抓取的，用于后续按用户统计
     product = Product(
@@ -197,6 +194,14 @@ async def scrape_product(
     )
     db.add(product)
     await db.flush()  # 立即写入，获取 product.id
+    await current_user.deduct_credits(
+        db,
+        1,
+        feature="product_scrape",
+        reference_type="product",
+        reference_id=str(product.id),
+        description="抓取 1688 商品",
+    )
 
     # ── 缓存相关 ───────────────────────────────────────────
     await cache_clear(pattern="products_list")

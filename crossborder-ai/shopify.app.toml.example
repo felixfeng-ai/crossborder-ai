@@ -1,0 +1,25 @@
+# 复制为 shopify.app.toml 后，把 client_id 替换为当前应用的真实值。
+client_id = "REPLACE_WITH_SHOPIFY_CLIENT_ID"
+name = "VeyaShip"
+application_url = "https://veyaship.com"
+
+[access_scopes]
+scopes = "write_products,read_products,read_orders,write_orders"
+
+[auth]
+redirect_urls = ["https://veyaship.com/api/v1/shopify/callback"]
+
+[webhooks]
+api_version = "2026-10"
+
+[[webhooks.subscriptions]]
+uri = "/api/v1/shopify/webhooks/customers/data_request"
+compliance_topics = ["customers/data_request"]
+
+[[webhooks.subscriptions]]
+uri = "/api/v1/shopify/webhooks/customers/redact"
+compliance_topics = ["customers/redact"]
+
+[[webhooks.subscriptions]]
+uri = "/api/v1/shopify/webhooks/shop/redact"
+compliance_topics = ["shop/redact"]

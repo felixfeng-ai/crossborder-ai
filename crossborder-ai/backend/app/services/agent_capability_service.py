@@ -353,7 +353,14 @@ async def create_product_video_task(
         raise ValueError(task.error) from exc
 
     try:
-        await locked_user.deduct_credits(db, credits_cost)
+        await locked_user.deduct_credits(
+            db,
+            credits_cost,
+            feature="ai_video",
+            reference_type="video_task",
+            reference_id=str(task.id),
+            description="Agent 提交商品图生视频",
+        )
     except Exception:
         # 供应商已经受理，任务不能因本地扣分异常被撤回；留给运营对账。
         task.error = "视频已提交，但积分扣减失败，请联系管理员"

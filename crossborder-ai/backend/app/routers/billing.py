@@ -22,6 +22,7 @@ from app.core.database import get_db
 from app.dependencies import get_current_user, require_admin
 from app.models.plan_upgrade import PlanUpgradeRequest
 from app.models.user import User
+from app.services.credit_service import PLAN_MONTHLY_CREDITS, apply_monthly_allowance
 
 router = APIRouter(prefix="/billing", tags=["套餐与支付"])
 
@@ -32,7 +33,7 @@ PLANS = [
         "price": 0,
         "price_label": "免费",
         "description": "试试基本功能",
-        "features": ["AI 生成文案 30 次", "1688 商品抓取", "利润计算器", "合规审查"],
+        "features": ["每月 30 AI 积分", "1688 商品抓取", "利润计算器", "合规审查"],
         "recommended": False,
     },
     {
@@ -41,7 +42,7 @@ PLANS = [
         "price": 99,
         "price_label": "¥99/月",
         "description": "适合个人卖家",
-        "features": ["AI 生成不限次", "1688 抓取不限次", "全部 11 个平台", "16 种语言翻译", "AI 智能助手", "邮件支持"],
+        "features": ["每月 99,999 AI 积分", "全部 11 个平台", "16 种语言翻译", "AI 智能助手", "批量生成与 Shopify 发布", "邮件支持"],
         "recommended": True,
     },
     {
@@ -50,13 +51,17 @@ PLANS = [
         "price": 249,
         "price_label": "¥249/月",
         "description": "适合工作室/团队",
-        "features": ["所有 Standard 功能", "AI 商品主图生成", "Shopify 一键发布", "优先技术支持"],
+        "features": ["所有 Standard 功能", "每月 99,999 AI 积分", "AI 图片与视频生成", "优先技术支持"],
         "recommended": False,
     },
 ]
 
-# 开通套餐后给用户的积分（对应"AI 生成不限次"，实际按量扣减，额度给足）
-PLAN_CREDITS = {"standard": 99999, "professional": 99999}
+# 本轮保留现有额度数值，但改为真实自然月额度。
+PLAN_CREDITS = {
+    plan: credits
+    for plan, credits in PLAN_MONTHLY_CREDITS.items()
+    if plan != "free"
+}
 
 
 class UpgradeRequest(BaseModel):
@@ -185,7 +190,8 @@ async def approve_upgrade(
 
     user = (await db.execute(select(User).where(User.id == req.user_id))).scalar_one()
     user.plan = req.plan
-    user.credits = PLAN_CREDITS.get(req.plan, user.credits)
+    user.credit_period_start = None
+    await apply_monthly_allowance(db, user, force=True)
 
     req.status = "approved"
     req.handled_by = admin.id

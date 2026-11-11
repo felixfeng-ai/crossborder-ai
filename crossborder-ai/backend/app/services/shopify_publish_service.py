@@ -281,18 +281,29 @@ async def _load_active_variants(
     db: AsyncSession,
     product: Product,
     user_id: UUID,
+    variant_ids: Iterable[UUID] | None = None,
 ) -> list[ProductVariant]:
-    return (
+    query = select(ProductVariant).where(
+        ProductVariant.product_id == product.id,
+        ProductVariant.user_id == user_id,
+        ProductVariant.is_active.is_(True),
+    )
+    selected_ids = list(dict.fromkeys(variant_ids or []))
+    if variant_ids is not None:
+        if not selected_ids:
+            raise ShopifyPublishValidationError("请至少选择一个要发布的 SKU")
+        query = query.where(ProductVariant.id.in_(selected_ids))
+
+    variants = (
         await db.execute(
-            select(ProductVariant)
-            .where(
-                ProductVariant.product_id == product.id,
-                ProductVariant.user_id == user_id,
-                ProductVariant.is_active.is_(True),
-            )
-            .order_by(ProductVariant.created_at, ProductVariant.sku)
+            query.order_by(ProductVariant.created_at, ProductVariant.sku)
         )
     ).scalars().all()
+    if variant_ids is not None and len(variants) != len(selected_ids):
+        raise ShopifyPublishValidationError(
+            "指定 SKU 不属于当前商品或未启用，请刷新后重试"
+        )
+    return variants
 
 
 async def publish_shopify_product(
@@ -304,6 +315,7 @@ async def publish_shopify_product(
     channel: ShopifyChannel,
     idempotency_key: str = "",
     app_url: str | None = None,
+    variant_ids: Iterable[UUID] | None = None,
 ) -> ShopifyPublishResult:
     """构建完整 Payload、调用 Shopify 并写入统一发布记录。"""
     existing = await find_publication_by_idempotency(
@@ -323,7 +335,12 @@ async def publish_shopify_product(
             "相同发布请求正在处理或上次已失败，请使用新的幂等键重试"
         )
 
-    variants = await _load_active_variants(db, product, user.id)
+    variants = await _load_active_variants(
+        db,
+        product,
+        user.id,
+        variant_ids=variant_ids,
+    )
     prepared = build_shopify_product_payload(
         product,
         listing,

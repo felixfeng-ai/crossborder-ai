@@ -58,6 +58,9 @@ describe('公网法务与合规页面', () => {
     expect(combined).toContain(LEGAL_CONTACT_EMAIL)
     expect(combined).toContain('90 天')
     expect(combined).toContain('180 天')
+    expect(combined).toContain('customers/data_request')
+    expect(combined).toContain('customers/redact')
+    expect(combined).toContain('shop/redact')
   })
 
   it('公开展示个人经营者身份且只提供联系邮箱', () => {

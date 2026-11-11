@@ -384,6 +384,8 @@ async def run_workflow(
     template = WORKFLOW_TEMPLATES.get(payload.workflow)
     if not template:
         raise HTTPException(status_code=400, detail="未知的工作流，请刷新后重试")
+    if not check_feature_access(current_user, "agent"):
+        raise HTTPException(status_code=403, detail="AI 智能助手仅限 Standard 及以上套餐使用")
     cost = template["cost"]
     if current_user.credits < cost:
         raise HTTPException(status_code=402, detail="积分不足")

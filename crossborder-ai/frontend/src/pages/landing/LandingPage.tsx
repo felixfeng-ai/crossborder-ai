@@ -266,15 +266,17 @@ export default function LandingPage() {
         {/* ── 定价 ────────────────────────────────────────── */}
         <section className="max-w-3xl mx-auto px-4 py-16">
           <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">简单透明的定价</h2>
-          <p className="text-sm text-slate-500 text-center mb-8">免费开始，按需升级</p>
+          <p className="text-sm text-slate-500 text-center mb-8">
+            免费开始，按需升级；积分按实际功能扣减，视频生成最低 10 积分
+          </p>
           <div className="grid md:grid-cols-3 gap-4">
             <motion.div initial={false}
               className="rounded-xl border border-white/10 bg-white/5 p-6">
               <h3 className="font-semibold text-slate-100">免费版</h3>
               <p className="text-2xl font-bold text-slate-100 mt-2">¥0<span className="text-sm font-normal text-slate-500">/月</span></p>
               <ul className="mt-4 space-y-2 text-sm text-slate-400">
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />AI 品类分析（不限次）</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />AI 生成 30 次/月</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />每月 30 AI 积分</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />AI 品类分析</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />利润计算器</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />合规审查</li>
               </ul>
@@ -286,7 +288,7 @@ export default function LandingPage() {
               <h3 className="font-semibold text-slate-100">Standard</h3>
               <p className="text-2xl font-bold text-slate-100 mt-2">¥99<span className="text-sm font-normal text-slate-500">/月</span></p>
               <ul className="mt-4 space-y-2 text-sm text-slate-400">
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />品类分析 + AI 生成不限次</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />每月 99,999 AI 积分</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />AI 智能助手（Agent）</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />Shopify 一键发布</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />批量 AI 处理</li>
@@ -299,8 +301,9 @@ export default function LandingPage() {
               <p className="text-2xl font-bold text-slate-100 mt-2">¥249<span className="text-sm font-normal text-slate-500">/月</span></p>
               <ul className="mt-4 space-y-2 text-sm text-slate-400">
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />所有 Standard 功能</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />每月 99,999 AI 积分</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />AI 商品主图生成</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />不限量品类分析报告</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />AI 商品视频生成</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />优先技术支持</li>
               </ul>
               <Button size="sm" onClick={() => navigate(isLoggedIn ? '/app/dashboard' : '/register')} className="w-full mt-6">{isLoggedIn ? '进入应用' : '选择 Professional'}</Button>

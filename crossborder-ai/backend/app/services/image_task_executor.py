@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import async_session_factory
 from app.models.image_generation_task import ImageGenerationTask
+from app.models.user import User
 from app.services import provider_config
 
 
@@ -27,6 +28,10 @@ async def run_image_generation(
     try:
         tid = task_id if isinstance(task_id, UUID) else UUID(str(task_id))
     except (ValueError, TypeError):
+        return
+
+    existing = await db.get(ImageGenerationTask, tid)
+    if existing is not None and existing.credits_charged > 0:
         return
 
     async def update(**fields) -> None:
@@ -71,6 +76,7 @@ async def run_image_generation(
                         error=None,
                         finished_at=datetime.now(timezone.utc),
                     )
+                    await _charge_completed_image_task(db, tid)
                     return
             except Exception as exc:
                 logger.warning("Aliyun 图片生成失败，降级 Replicate: %s", exc)
@@ -100,6 +106,7 @@ async def run_image_generation(
                         error=None,
                         finished_at=datetime.now(timezone.utc),
                     )
+                    await _charge_completed_image_task(db, tid)
                     return
             except Exception as exc:
                 logger.warning("Replicate 图片生成失败: %s", exc)
@@ -122,6 +129,47 @@ async def run_image_generation(
             error="图片生成失败，请稍后重试",
             finished_at=datetime.now(timezone.utc),
         )
+
+
+async def _charge_completed_image_task(db: AsyncSession, task_id: UUID) -> None:
+    """图片生成成功后才扣积分，并通过 credits_charged 保证幂等。"""
+    task = (
+        await db.execute(
+            select(ImageGenerationTask)
+            .where(ImageGenerationTask.id == task_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if (
+        task is None
+        or task.status != "completed"
+        or task.credits_charged > 0
+        or task.credits_cost <= 0
+    ):
+        return
+
+    user = (
+        await db.execute(
+            select(User)
+            .where(User.id == task.user_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if user is None or user.credits < task.credits_cost:
+        task.error = "图片已生成，但积分不足，请联系管理员"
+        await db.commit()
+        return
+
+    await user.deduct_credits(
+        db,
+        task.credits_cost,
+        feature="ai_image",
+        reference_type="image_task",
+        reference_id=str(task.id),
+        description=f"AI 图片生成 {task.num_outputs} 张",
+    )
+    task.credits_charged = task.credits_cost
+    await db.commit()
 
 
 async def execute_image_generation_task(task_id: UUID) -> None:

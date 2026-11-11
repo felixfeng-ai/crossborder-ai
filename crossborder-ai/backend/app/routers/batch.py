@@ -350,7 +350,14 @@ async def batch_process_with_ai(
                         settings.DEEPSEEK_MODEL,
                     ),
                 )
-                await current_user.deduct_credits(db, 1)
+                await current_user.deduct_credits(
+                    db,
+                    1,
+                    feature="batch_listing",
+                    reference_type="batch_job",
+                    reference_id=str(job.id),
+                    description="批量 AI 生成 Listing",
+                )
 
                 job.product_id = product.id
                 job.listing_id = draft.id

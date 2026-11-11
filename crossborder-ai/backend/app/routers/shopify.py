@@ -23,7 +23,7 @@ import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -34,6 +34,8 @@ from app.core.security import create_access_token, decode_token_safe
 from app.dependencies import get_current_user
 from app.models.product import Product
 from app.models.shopify_channel import ShopifyChannel
+from app.models.shopify_compliance_event import ShopifyComplianceEvent
+from app.models.publication import Publication
 from app.models.user import User
 from app.services.listing_service import (
     get_current_compliance_report,
@@ -138,6 +140,10 @@ class PushProductRequest(BaseModel):
     product_id: str = Field("", description="兼容旧调用的商品 ID")
     listing_id: str = Field("", description="ListingDraft ID，优先使用")
     channel_id: str = Field(..., description="Shopify 渠道 ID")
+    variant_ids: list[str] = Field(
+        default_factory=list,
+        description="可选：只发布指定 SKU 变体；为空时发布全部启用变体",
+    )
 
     @model_validator(mode="after")
     def require_product_or_listing(self):
@@ -182,6 +188,12 @@ SHOPIFY_OAUTH_SCOPES = "write_products,read_products,read_orders,write_orders"
 SHOPIFY_STATE_TTL_MINUTES = 10
 # Shopify 回调时间戳允许偏差（秒）：防重放，见 CAP-02 spec。
 SHOPIFY_HMAC_MAX_SKEW = 300
+
+SHOPIFY_COMPLIANCE_TOPICS = {
+    "customers/data_request",
+    "customers/redact",
+    "shop/redact",
+}
 
 # CAP-03 自动退款护栏常量。
 # 进程内 dict 计数：单机可用，生产多副本应换 Redis/DB 原子计数，见 specs/shopify-binding/spec.md。
@@ -311,6 +323,167 @@ def _shopify_hmac_ok(request: Request, api_secret: str, provided: str | None) ->
         api_secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256
     ).hexdigest()
     return hmac_mod.compare_digest(digest, provided)
+
+
+def _shopify_webhook_hmac_ok(raw_body: bytes, api_secret: str, provided: str | None) -> bool:
+    """校验 Webhook 原始请求体 HMAC，必须使用 body 而不是解析后的 JSON。"""
+    if not provided or not api_secret:
+        return False
+    digest = hmac_mod.new(
+        api_secret.encode("utf-8"),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac_mod.compare_digest(digest, provided)
+
+
+async def _handle_shopify_compliance_webhook(
+    request: Request,
+    expected_topic: str,
+    db: AsyncSession,
+) -> dict:
+    """验证并处理 Shopify 强制隐私 Webhook，不保存客户 PII。"""
+    raw_body = await request.body()
+    api_secret = provider_config.get(
+        "shopify",
+        "api_secret",
+        settings.SHOPIFY_API_SECRET or "",
+    )
+    if not api_secret:
+        raise HTTPException(status_code=503, detail="Shopify Webhook 密钥未配置")
+
+    signature = request.headers.get("X-Shopify-Hmac-Sha256", "")
+    if not _shopify_webhook_hmac_ok(raw_body, api_secret, signature):
+        raise HTTPException(status_code=401, detail="Shopify Webhook 签名无效")
+
+    topic = request.headers.get("X-Shopify-Topic", "")
+    if topic != expected_topic or topic not in SHOPIFY_COMPLIANCE_TOPICS:
+        raise HTTPException(status_code=400, detail="Shopify Webhook Topic 不匹配")
+
+    webhook_id = (request.headers.get("X-Shopify-Webhook-Id") or "").strip()
+    if not webhook_id:
+        raise HTTPException(status_code=400, detail="缺少 Shopify Webhook ID")
+
+    existing = (
+        await db.execute(
+            select(ShopifyComplianceEvent).where(
+                ShopifyComplianceEvent.webhook_id == webhook_id
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return {"ok": True, "duplicate": True}
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise HTTPException(status_code=400, detail="Shopify Webhook payload 无效")
+
+    shop_domain = str(
+        request.headers.get("X-Shopify-Shop-Domain")
+        or payload.get("shop_domain")
+        or ""
+    ).strip().lower()
+    event = ShopifyComplianceEvent(
+        webhook_id=webhook_id,
+        topic=topic,
+        shop_domain=shop_domain or None,
+        status="processing",
+        action_summary="{}",
+    )
+    db.add(event)
+
+    try:
+        summary: dict[str, object] = {"stored_customer_data": False}
+        if topic == "shop/redact":
+            bare = shop_domain.removesuffix(SHOPIFY_SHOP_SUFFIX)
+            channels = (
+                await db.execute(
+                    select(ShopifyChannel).where(
+                        or_(
+                            ShopifyChannel.shop_domain == shop_domain,
+                            ShopifyChannel.shop_name == bare,
+                        )
+                    )
+                )
+            ).scalars().all()
+            channel_ids = [str(channel.id) for channel in channels]
+            publications_deleted = 0
+            if channel_ids:
+                publication_result = await db.execute(
+                    delete(Publication).where(
+                        Publication.platform == "shopify",
+                        Publication.channel_id.in_(channel_ids),
+                    )
+                )
+                publications_deleted = max(publication_result.rowcount or 0, 0)
+                await db.execute(
+                    delete(ShopifyChannel).where(
+                        ShopifyChannel.id.in_([channel.id for channel in channels])
+                    )
+                )
+            summary.update(
+                {
+                    "channels_deleted": len(channels),
+                    "publications_deleted": publications_deleted,
+                }
+            )
+
+        event.status = "processed"
+        event.action_summary = json.dumps(summary, ensure_ascii=False)
+        event.processed_at = datetime.now(timezone.utc)
+        await db.commit()
+        return {"ok": True, "duplicate": False}
+    except Exception as exc:
+        await db.rollback()
+        failed = await db.get(ShopifyComplianceEvent, event.id)
+        if failed is None:
+            failed = event
+            db.add(failed)
+        failed.status = "failed"
+        failed.error = str(exc)[:1000]
+        failed.processed_at = datetime.now(timezone.utc)
+        await db.commit()
+        raise HTTPException(status_code=500, detail="Shopify Webhook 处理失败")
+
+
+@router.post("/webhooks/customers/data_request")
+async def shopify_customers_data_request_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Shopify 客户数据查看请求；平台不保存客户 PII。"""
+    return await _handle_shopify_compliance_webhook(
+        request,
+        "customers/data_request",
+        db,
+    )
+
+
+@router.post("/webhooks/customers/redact")
+async def shopify_customers_redact_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Shopify 客户数据删除请求；平台不保存客户 PII。"""
+    return await _handle_shopify_compliance_webhook(
+        request,
+        "customers/redact",
+        db,
+    )
+
+
+@router.post("/webhooks/shop/redact")
+async def shopify_shop_redact_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """店铺卸载后的数据删除请求：清除渠道 Token 与发布记录。"""
+    return await _handle_shopify_compliance_webhook(
+        request,
+        "shop/redact",
+        db,
+    )
 
 
 async def _check_daily_refund_cap(user_id: str, amount: float) -> bool:
@@ -680,6 +853,13 @@ async def push_product(
             )
 
     # 网页与 Agent 统一从这里构建完整 Payload、调用 Shopify 并落发布记录。
+    selected_variant_ids: list[UUID] | None = None
+    if payload.variant_ids:
+        try:
+            selected_variant_ids = [UUID(value) for value in payload.variant_ids]
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="无效的 SKU 变体 ID")
+
     public_app_url = (settings.APP_URL or "").strip().rstrip("/")
     if not public_app_url or "localhost" in public_app_url or "127.0.0.1" in public_app_url:
         public_app_url = str(request.base_url).rstrip("/")
@@ -692,6 +872,7 @@ async def push_product(
             channel=channel,
             idempotency_key=idempotency_key,
             app_url=public_app_url,
+            variant_ids=selected_variant_ids,
         )
     except ShopifyPublishError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

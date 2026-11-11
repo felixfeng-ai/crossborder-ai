@@ -204,7 +204,14 @@ async def generate_listing(
     # ════════════════════════════════════════════════════════════
     # deduct_credits 用了行级锁（select_for_update），防并发扣超
     # 如果只剩 1 分，但两个请求同时来，锁确保只有一个能成功
-    await current_user.deduct_credits(db, 1)
+    await current_user.deduct_credits(
+        db,
+        1,
+        feature="ai_listing",
+        reference_type="listing",
+        reference_id=str(generated.draft.id),
+        description="AI 生成 Listing",
+    )
 
     # ════════════════════════════════════════════════════════════
     # 第 7 步：返回结果
@@ -303,7 +310,14 @@ async def generate_a_plus(
     blocked = bool(violations)
     suggestions = suggest_replacements(violations) if blocked else []
 
-    await current_user.deduct_credits(db, 1)
+    await current_user.deduct_credits(
+        db,
+        1,
+        feature="ai_a_plus",
+        reference_type="product",
+        reference_id=str(product.id),
+        description="AI 生成 A+ 内容",
+    )
 
     return {
         "html": html,

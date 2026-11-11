@@ -237,7 +237,14 @@ async def generate_video(
         raise HTTPException(status_code=502, detail=task.error)
 
     try:
-        await locked_user.deduct_credits(db, credits_cost)
+        await locked_user.deduct_credits(
+            db,
+            credits_cost,
+            feature="ai_video",
+            reference_type="video_task",
+            reference_id=str(task.id),
+            description="商品图生视频",
+        )
     except Exception:
         # 供应商已经受理，任务仍可继续；本地积分异常交给调度和人工处理。
         task.error = "视频已提交，但积分扣减失败，请联系管理员"

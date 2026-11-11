@@ -364,6 +364,8 @@ async def schedule_image_task(db: AsyncSession, user_id, prompt: str, num_output
         num_outputs=num_outputs,
         status="pending",
         attempts=0,
+        credits_cost=num_outputs,
+        credits_charged=0,
         image_urls="[]",
         model_used="",
         error=None,
@@ -388,6 +390,12 @@ async def generate_image(
     """
     if not check_feature_access(current_user, "ai_image"):
         raise HTTPException(status_code=403, detail="图片生成功能仅限专业版套餐使用，请升级套餐")
+
+    if current_user.credits < payload.num_outputs:
+        raise HTTPException(
+            status_code=402,
+            detail=f"积分不足，本次图片生成需要 {payload.num_outputs} 积分",
+        )
 
     aliyun_key = provider_config.get("aliyun", "api_key", settings.ALIYUN_DASHSCOPE_API_KEY or "")
     replicate_key = provider_config.get("replicate", "api_key", settings.REPLICATE_API_KEY or "")

@@ -76,7 +76,9 @@ export default function BillingPage() {
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center">
         <h1 className="text-2xl font-bold tracking-tight">套餐与账单</h1>
-        <p className="text-muted-foreground mt-1">按需选择，随时升级</p>
+        <p className="text-muted-foreground mt-1">
+          按自然月获得积分，积分按实际功能扣减
+        </p>
       </div>
 
       {/* 当前状态 */}
@@ -88,7 +90,7 @@ export default function BillingPage() {
           </div>
           <div className="text-right">
             <p className="text-sm text-muted-foreground">剩余积分</p>
-            <p className="text-lg font-semibold mt-0.5">{user.credits_remaining ?? 0}</p>
+            <p className="text-lg font-semibold mt-0.5">{user.credits ?? 0}</p>
           </div>
         </CardContent>
       </Card>

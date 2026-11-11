@@ -27,6 +27,8 @@ class ImageGenerationTask(Base):
     # 使用的图片描述词（已含品牌调性拼接）
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     num_outputs: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    credits_cost: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    credits_charged: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # 状态: pending / processing / completed / failed
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

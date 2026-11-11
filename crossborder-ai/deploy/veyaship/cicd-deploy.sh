@@ -11,7 +11,7 @@ echo "===== VeyaShip 部署开始 $(date '+%F %T') ====="
 
 cd "$REPO_ROOT"
 for attempt in 1 2 3 4 5; do
-  if git fetch origin main; then
+  if timeout 45s git -c http.version=HTTP/1.1 fetch origin main; then
     git reset --hard origin/main
     echo "[1/5] 代码已同步到 $(git log --oneline -1)"
     break

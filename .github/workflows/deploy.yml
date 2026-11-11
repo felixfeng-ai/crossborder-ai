@@ -14,6 +14,15 @@
         - name: Checkout repository
           uses: actions/checkout@v4
 
+        - name: Prepare background removal model
+          shell: bash
+          run: |
+            mkdir -p crossborder-ai/backend/storage/rembg/models/u2netp
+            curl --fail --location --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 180 \
+              -o crossborder-ai/backend/storage/rembg/models/u2netp/u2netp.onnx \
+              https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx
+            test -s crossborder-ai/backend/storage/rembg/models/u2netp/u2netp.onnx
+
         - name: Upload application code
           uses: appleboy/scp-action@v0.1.7
           with:

@@ -287,7 +287,7 @@ async def process_image_asset(
         raise HTTPException(status_code=400, detail=str(exc))
 
     processed_id = uuid.uuid4()
-    storage_key = f"{current_user.id}/{processed_id}.jpg"
+    storage_key = f"{current_user.id}/{processed_id}.png"
     target = _asset_path(storage_key)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(output)
@@ -298,7 +298,7 @@ async def process_image_asset(
         name=f"{source_asset.name}-{preset['platform']}",
         kind="processed",
         storage_key=storage_key,
-        content_type="image/jpeg",
+        content_type="image/png",
         width=preset["width"],
         height=preset["height"],
         file_size=len(output),

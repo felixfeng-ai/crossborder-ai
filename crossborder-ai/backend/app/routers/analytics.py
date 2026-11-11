@@ -3,8 +3,6 @@
 提供卖家真正关心的业务数据，而不是冰冷的数字。
 """
 
-from datetime import datetime, timedelta, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +12,8 @@ from app.core.rate_limit import RateLimit
 from app.dependencies import get_current_user
 from app.models.product import Product
 from app.models.user import User
+from app.services.dashboard_service import build_dashboard_data
+from app.services.store_check_service import STORE_CHECK_SCOPES, run_store_check as execute_store_check
 
 router = APIRouter(prefix="/analytics", tags=["数据统计"])
 
@@ -24,65 +24,7 @@ async def get_dashboard(
     db: AsyncSession = Depends(get_db),
 ):
     """获取看板业务数据"""
-    now = datetime.now(timezone.utc)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-    # ── 本月商品数 ──────────────────────────────────────────
-    product_count = (
-        await db.execute(
-            select(func.count(Product.id)).where(Product.user_id == current_user.id)
-        )
-    ).scalar() or 0
-
-    month_products = (
-        await db.execute(
-            select(func.count(Product.id)).where(
-                Product.user_id == current_user.id,
-                Product.created_at >= month_start,
-            )
-        )
-    ).scalar() or 0
-
-    # ── 待处理：缺标题或描述的商品 ──────────────────────────
-    pending_products = (
-        await db.execute(
-            select(func.count(Product.id)).where(
-                Product.user_id == current_user.id,
-                Product.title.is_(None),
-            )
-        )
-    ).scalar() or 0
-
-    # ── 最近操作（最新 5 个商品） ──────────────────────────
-    recent_result = await db.execute(
-        select(Product)
-        .where(Product.user_id == current_user.id)
-        .order_by(Product.created_at.desc())
-        .limit(5)
-    )
-    recent_products = [
-        {
-            "id": str(p.id),
-            "title": p.title or "未命名商品",
-            "price": p.price,
-            "status": "待补充" if not p.title else "正常",
-            "created_at": str(p.created_at),
-        }
-        for p in recent_result.scalars().all()
-    ]
-
-    return {
-        "products": {
-            "total": product_count,
-            "this_month": month_products,
-            "pending": pending_products,
-        },
-        "recent": recent_products,
-        "credits": {
-            "remaining": current_user.credits,
-            "used": 100 - current_user.credits,
-        },
-    }
+    return await build_dashboard_data(db, current_user)
 
 
 @router.get("/category")
@@ -130,6 +72,7 @@ async def get_store_check_history(
                 "healthy": l.healthy,
                 "issue_count": l.issue_count,
                 "issues": json.loads(l.issues_json) if l.issues_json else [],
+                "checked_scopes": list(STORE_CHECK_SCOPES),
                 "created_at": str(l.created_at),
             }
             for l in logs
@@ -145,58 +88,12 @@ async def run_store_check(
     db: AsyncSession = Depends(get_db),
 ):
     """手动触发整店巡检：检查当前用户所有商品，记录结果"""
-    from app.models.store_check_log import StoreCheckLog
-    import json
-
     if current_user.credits < 1:
         raise HTTPException(status_code=402, detail="积分不足")
 
-    # 查询该用户所有商品
-    result = await db.execute(
-        select(Product).where(Product.user_id == current_user.id)
-    )
-    products = result.scalars().all()
-
-    issues = []
-    healthy = 0
-    for p in products:
-        product_issues = []
-        if not p.title:
-            product_issues.append("缺标题")
-        if not p.price:
-            product_issues.append("缺价格")
-        if not p.url:
-            product_issues.append("缺链接")
-        if product_issues:
-            issues.append({
-                "id": str(p.id),
-                "title": p.title or "未命名商品",
-                "issues": product_issues,
-            })
-        else:
-            healthy += 1
-
-    total = len(products)
-    issue_count = len(issues)
-
-    # 保存巡检记录（与定时巡检共用同一张表，方便看历史）
-    db.add(StoreCheckLog(
-        user_id=current_user.id,
-        total=total,
-        healthy=healthy,
-        issue_count=issue_count,
-        issues_json=json.dumps(issues, ensure_ascii=False) if issues else None,
-    ))
-
+    result = await execute_store_check(db, current_user)
     await current_user.deduct_credits(db, 1)
-
-    return {
-        "total": total,
-        "healthy": healthy,
-        "issue_count": issue_count,
-        "issues": issues,
-        "summary": f"巡检完成：共 {total} 个商品，{issue_count} 个有问题，{healthy} 个正常",
-    }
+    return result
 
 
 @router.get("/insights")

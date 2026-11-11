@@ -49,13 +49,26 @@ async def _create_listing(
         headers=headers,
     )
     assert product.status_code == 201, product.text
+    product_id = product.json()["product"]["id"]
+    variant = await client.post(
+        f"/api/v1/products/{product_id}/variants",
+        json={
+            "sku": f"PUB-{uuid.uuid4().hex[:8]}",
+            "attributes": {"Color": "Black"},
+            "price": 39.9,
+            "cost_price": 12.5,
+            "stock_quantity": 5,
+        },
+        headers=headers,
+    )
+    assert variant.status_code == 201, variant.text
     listing = await client.post(
         "/api/v1/content/generate",
-        json={"product_id": product.json()["product"]["id"], "platform": "amazon"},
+        json={"product_id": product_id, "platform": "amazon"},
         headers=headers,
     )
     assert listing.status_code == 200, listing.text
-    return product.json()["product"]["id"], listing.json()["listing_id"]
+    return product_id, listing.json()["listing_id"]
 
 
 @pytest.mark.asyncio

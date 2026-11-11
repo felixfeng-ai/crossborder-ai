@@ -61,6 +61,25 @@ async def _generate_listing(
     return response.json()
 
 
+async def _create_variant(
+    client: AsyncClient,
+    auth_headers: dict,
+    product_id: str,
+) -> None:
+    response = await client.post(
+        f"/api/v1/products/{product_id}/variants",
+        json={
+            "sku": f"PUBLISH-{uuid.uuid4().hex[:8]}",
+            "attributes": {"Color": "Black"},
+            "price": 39.9,
+            "cost_price": 12.5,
+            "stock_quantity": 6,
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 201, response.text
+
+
 async def _make_plan_standard(
     client: AsyncClient,
     auth_headers: dict,
@@ -141,6 +160,7 @@ async def test_publish_uses_listing_content(
 ):
     _mock_generate(monkeypatch, "Premium wireless earbuds with long battery life.")
     product_id = await _create_product(client, auth_headers, suffix="3")
+    await _create_variant(client, auth_headers, product_id)
     generated = await _generate_listing(client, auth_headers, product_id)
     await _make_plan_standard(client, auth_headers, db_session)
 
@@ -184,8 +204,11 @@ async def test_publish_uses_listing_content(
 
     assert response.status_code == 200, response.text
     assert captured["payload"]["product"]["title"] == generated["title"]
-    assert captured["payload"]["product"]["body_html"] == generated["description"]
+    assert generated["description"] in captured["payload"]["product"]["body_html"]
+    assert captured["payload"]["product"]["variants"][0]["price"] == "39.90"
+    assert captured["payload"]["product"]["variants"][0]["sku"].startswith("PUBLISH-")
     assert response.json()["listing_id"] == generated["listing_id"]
+    assert response.json()["variants_published"] == 1
 
 
 @pytest.mark.asyncio

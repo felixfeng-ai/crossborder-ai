@@ -33,7 +33,7 @@ WORKFLOW_TEMPLATES: dict[str, dict] = {
     "decision_and_list": {"id": "decision_and_list", "name": "判断商品 + 生成 Listing", "desc": "分析能不能做 → 生成 Listing → 合规修复", "cost": 2},
     "store_check": {"id": "store_check", "name": "整店巡检", "desc": "检查所有商品状态，找出待处理问题", "cost": 1},
     "1688_to_shopify": {"id": "1688_to_shopify", "name": "1688 → Shopify 上架", "desc": "抓取商品 → AI 生成 Listing → 发布到 Shopify", "cost": 2},
-    "1688_to_amazon": {"id": "1688_to_amazon", "name": "1688 → Amazon 上架", "desc": "抓取商品 → AI 生成 Amazon Listing", "cost": 2},
+    "1688_to_amazon": {"id": "1688_to_amazon", "name": "1688 → Amazon Listing", "desc": "抓取商品 → AI 生成 Amazon Listing 与合规结果", "cost": 2},
     "scrape_and_list": {"id": "scrape_and_list", "name": "抓取 + 生成 Listing", "desc": "抓取 1688 商品 → AI 生成 Listing", "cost": 1},
 }
 

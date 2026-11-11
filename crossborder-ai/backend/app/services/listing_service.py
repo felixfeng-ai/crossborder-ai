@@ -1,20 +1,47 @@
-"""Listing 主链路持久化与校验服务。
+"""Listing 主链路生成、持久化与校验服务。
 
 统一负责 AI 生成落库、人工编辑版本递增、合规报告绑定和发布前状态读取。
 Web、Agent 与批量任务都必须通过这里操作 Listing，避免出现多套状态语义。
 """
 
+import asyncio
 import hashlib
 import json
+from dataclasses import dataclass
 from typing import Iterable, Optional
 from uuid import UUID
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.listing_draft import ListingComplianceReport, ListingDraft
 from app.models.product import Product
 from app.models.user import User
+from app.services import provider_config
+from app.services.ai.compliance import check_text, merge_banned_words, suggest_replacements
+from app.services.ai.deepseek import DeepSeekService
+from app.services.ai.persona_kit import (
+    build_persona_kit,
+    fetch_persona,
+    format_persona_block,
+)
+
+
+@dataclass
+class GeneratedListingResult:
+    """统一承载网页与 Agent 共用的一次 Listing 生成结果。"""
+
+    draft: ListingDraft
+    title: str
+    description: str
+    bullet_points: list[str]
+    seo_title: str
+    seo_description: str
+    violations: list[str]
+    suggestions: list[dict]
+    blocked: bool
+    model_used: str
 
 
 def _content_hash(
@@ -105,6 +132,199 @@ def _parse_string_list(raw: Optional[str]) -> list[str]:
         return parsed if isinstance(parsed, list) else []
     except (json.JSONDecodeError, TypeError):
         return []
+
+
+def build_product_fact_block(product: Product) -> str:
+    """构建 Listing Prompt 的完整商品事实块。
+
+    标题只能描述商品名称，不能替代描述、店铺、销量和价格等事实。
+    所有 Listing 生成入口必须复用该函数，避免 Agent 与网页生成质量分叉。
+    """
+    lines: list[str] = []
+    if product.description:
+        lines.append(f"Description: {product.description[:1500]}")
+    if product.price is not None:
+        lines.append(f"Supply reference price: {product.price}")
+    if product.shop_name:
+        lines.append(f"Shop: {product.shop_name}")
+    if product.sales_count is not None:
+        lines.append(f"Sales: {product.sales_count}")
+    if product.main_image_url:
+        lines.append("Primary product image: available for downstream asset workflow")
+    return "\n".join(lines) or "No additional product facts provided."
+
+
+async def generate_listing_title(
+    llm: DeepSeekService,
+    product: Product,
+    *,
+    platform: str,
+    language: str,
+    tone: str,
+    persona_block: str = "",
+) -> str:
+    """生成平台标题，DeepSeek 限流时最多重试三次。"""
+    language_instruction = (
+        "用中文写标题。"
+        if language == "zh"
+        else f"Write the title in {language.upper()}."
+    )
+    prompt = (
+        f"Generate an optimized {platform} product title "
+        f"(max 200 chars, {tone} tone). {language_instruction}\n"
+        f"Product: {product.title}\n"
+        f"{build_product_fact_block(product)}"
+    )
+    for _ in range(3):
+        result = await llm.generate(
+            system_prompt=f"You are a professional {platform} listing copywriter.",
+            user_prompt=prompt,
+            max_tokens=300,
+            persona_block=persona_block,
+        )
+        if result and result.strip():
+            return result.strip()
+        await asyncio.sleep(1)
+    return ""
+
+
+async def generate_listing_description(
+    llm: DeepSeekService,
+    product: Product,
+    *,
+    platform: str,
+    language: str,
+    tone: str,
+    persona_block: str = "",
+) -> str:
+    """生成包含完整商品事实的描述。"""
+    return await llm.generate_product_description(
+        product_title=product.title or "",
+        product_features=build_product_fact_block(product),
+        platform=platform,
+        tone=tone,
+        target_language=language if language != "en" else None,
+        persona_block=persona_block,
+    )
+
+
+async def generate_listing_bullets(
+    llm: DeepSeekService,
+    product: Product,
+    *,
+    platform: str,
+    persona_block: str = "",
+) -> list[str]:
+    """生成包含描述、店铺、销量与价格事实的五点卖点。"""
+    return await llm.generate_bullet_points(
+        product_title=product.title or "",
+        features=build_product_fact_block(product),
+        platform=platform,
+        persona_block=persona_block,
+    )
+
+
+async def generate_and_persist_listing(
+    db: AsyncSession,
+    *,
+    user: User,
+    product: Product,
+    platform: str,
+    language: str,
+    tone: str = "professional",
+    llm: Optional[DeepSeekService] = None,
+) -> GeneratedListingResult:
+    """生成完整 Listing、执行合规检查并落库。
+
+    这是网页、Agent 与后续批量任务共用的唯一生成入口。调用方只负责权限、
+    商品归属和积分扣减，内容事实、品牌注入、SEO 与版本化合规全部在此完成。
+    """
+    if not product.title:
+        raise ValueError("商品缺少标题，请先补充商品信息")
+
+    text_generator = llm or DeepSeekService()
+    persona = await fetch_persona(db, user.id)
+    persona_kit = build_persona_kit(persona) if persona else None
+    persona_block = format_persona_block(persona_kit) if persona_kit else ""
+    brand_banned_words = (persona_kit or {}).get("banned_words") or []
+
+    title_task = generate_listing_title(
+        text_generator,
+        product,
+        platform=platform,
+        language=language,
+        tone=tone,
+        persona_block=persona_block,
+    )
+    description_task = generate_listing_description(
+        text_generator,
+        product,
+        platform=platform,
+        language=language,
+        tone=tone,
+        persona_block=persona_block,
+    )
+    bullets_task = generate_listing_bullets(
+        text_generator,
+        product,
+        platform=platform,
+        persona_block=persona_block,
+    )
+    title, description, bullet_points = await asyncio.gather(
+        title_task,
+        description_task,
+        bullets_task,
+    )
+    seo = await text_generator.optimize_seo(
+        title=title,
+        description=description,
+        platform=platform,
+        persona_block=persona_block,
+    )
+    seo_title = str(seo.get("seo_title") or "")
+    seo_description = str(seo.get("seo_description") or "")
+
+    violations: list[str] = []
+    word_list = merge_banned_words(brand_banned_words)
+    for text in (title, description, *bullet_points, seo_title, seo_description):
+        for word in check_text(text or "", word_list):
+            if word not in violations:
+                violations.append(word)
+    blocked = bool(violations)
+    suggestions = suggest_replacements(violations) if blocked else []
+    model_used = provider_config.get(
+        "deepseek",
+        "model",
+        settings.DEEPSEEK_MODEL,
+    )
+    draft = await persist_generated_listing(
+        db,
+        user=user,
+        product=product,
+        platform=platform,
+        language=language,
+        tone=tone,
+        title=title,
+        description=description,
+        bullet_points=bullet_points,
+        seo_title=seo_title,
+        seo_description=seo_description,
+        violations=violations,
+        blocked=blocked,
+        ai_model_used=model_used,
+    )
+    return GeneratedListingResult(
+        draft=draft,
+        title=title,
+        description=description,
+        bullet_points=bullet_points,
+        seo_title=seo_title,
+        seo_description=seo_description,
+        violations=violations,
+        suggestions=suggestions,
+        blocked=blocked,
+        model_used=model_used,
+    )
 
 
 def serialize_listing(draft: ListingDraft) -> dict:

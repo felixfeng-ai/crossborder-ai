@@ -154,10 +154,9 @@ class SchedulerService:
 
     async def _run_store_checks(self):
         """定时整店巡检：检查所有用户的商品，记录结果"""
-        import json
-
         from app.models.product import Product
-        from app.models.store_check_log import StoreCheckLog
+        from app.models.user import User
+        from app.services.store_check_service import run_store_check
 
         async with async_session_factory() as db:
             # 找出有商品的用户
@@ -167,39 +166,9 @@ class SchedulerService:
             user_ids = result.scalars().all()
 
             for user_id in user_ids:
-                # 检查该用户所有商品
-                products_result = await db.execute(
-                    select(Product).where(Product.user_id == user_id)
-                )
-                products = products_result.scalars().all()
-
-                issues = []
-                healthy = 0
-                for p in products:
-                    product_issues = []
-                    if not p.title:
-                        product_issues.append("缺标题")
-                    if not p.price:
-                        product_issues.append("缺价格")
-                    if not p.url:
-                        product_issues.append("缺链接")
-                    if product_issues:
-                        issues.append({
-                            "id": str(p.id),
-                            "title": p.title or "未命名商品",
-                            "issues": product_issues,
-                        })
-                    else:
-                        healthy += 1
-
-                # 保存巡检记录
-                db.add(StoreCheckLog(
-                    user_id=user_id,
-                    total=len(products),
-                    healthy=healthy,
-                    issue_count=len(issues),
-                    issues_json=json.dumps(issues, ensure_ascii=False) if issues else None,
-                ))
+                user = await db.get(User, user_id)
+                if user is not None:
+                    await run_store_check(db, user)
 
             await db.flush()
             await db.commit()

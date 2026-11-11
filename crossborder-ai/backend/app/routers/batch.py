@@ -302,7 +302,7 @@ async def batch_process_with_ai(
                     (
                         f"Generate an optimized {platform} product title "
                         f"(max 200 chars) in {language}.\n"
-                        f"Product: {product.title}\nPrice: {product.price}"
+                        f"Product: {product.title}\nSupply reference price: {product.price}"
                     ),
                     max_tokens=300,
                     persona_block=persona_block,
@@ -315,7 +315,11 @@ async def batch_process_with_ai(
                 )
                 bullets = await llm.generate_bullet_points(
                     product_title=product.title or "",
-                    features=f"Price: {product.price}" if product.price else "",
+                    features=(
+                        f"Supply reference price: {product.price}"
+                        if product.price
+                        else ""
+                    ),
                     platform=platform,
                     persona_block=persona_block,
                 )

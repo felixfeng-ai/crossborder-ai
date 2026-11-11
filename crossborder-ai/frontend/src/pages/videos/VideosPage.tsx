@@ -202,7 +202,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
           <div>
             <h1 className="page-title flex items-center gap-2">
               <Film className="h-6 w-6 text-primary" />
-              AI 商品视频
+              商品图生视频
             </h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
               用商品首帧生成 9:16 短视频，锁定商品外观，只改变镜头、光影与背景。

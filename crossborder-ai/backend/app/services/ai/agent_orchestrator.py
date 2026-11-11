@@ -14,6 +14,10 @@
 - scrape_1688(url) → 抓取商品
 - create_product(data) → 创建商品
 - generate_listing(product_id, platform) → AI 生成 Listing
+- get_listing / edit_listing(listing_id) → 回查与编辑 Listing
+- generate_product_image / generate_product_video → 提交异步素材任务
+- create_marketing_video_plan → 生成营销方案与分镜
+- list_materials → 查询用户素材
 - check_compliance(text) → 合规审查
 - calculate_profit(params) → 净利计算
 """
@@ -28,12 +32,24 @@ from app.core.config import settings
 from app.models.user import User
 from app.services.ai.deepseek import DeepSeekService
 from app.services.listing_service import (
+    generate_and_persist_listing,
     get_current_compliance_report,
     get_owned_listing,
-    persist_generated_listing,
+    serialize_listing,
+    update_listing_content,
 )
-from app.services import provider_config
+from app.services import agent_capability_service, provider_config
 from app.services.scraper import scrape_1688
+from app.services.shopify_publish_service import (
+    ShopifyPublishError,
+    publish_shopify_product,
+    serialize_shopify_publish_result,
+)
+from app.services.shopify_operations_sync import (
+    ShopifyOperationsSyncError,
+    sync_shopify_operations as run_shopify_operations_sync,
+)
+from app.services.store_check_service import run_store_check as execute_store_check
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -232,7 +248,10 @@ class AgentOrchestrator:
                         "url": {"type": "string", "description": "商品链接"},
                         "title": {"type": "string"},
                         "main_image_url": {"type": "string"},
-                        "price": {"type": "number"},
+                        "price": {
+                            "type": "number",
+                            "description": "1688 供货参考价，不是平台销售价",
+                        },
                         "sales_count": {"type": "integer"},
                         "shop_name": {"type": "string"},
                     },
@@ -244,7 +263,10 @@ class AgentOrchestrator:
             "type": "function",
             "function": {
                 "name": "generate_listing",
-                "description": "为商品生成 AI Listing 文案",
+                "description": (
+                    "为当前用户的商品生成完整 Listing，包含标题、描述、卖点、SEO 和合规结果。"
+                    "当用户要求写 Listing、生成文案或准备上架内容时使用；返回 listing_id 和编辑链接。"
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -253,6 +275,152 @@ class AgentOrchestrator:
                         "language": {"type": "string", "description": "目标语言"},
                     },
                     "required": ["product_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_listing",
+                "description": (
+                    "读取当前用户的一条 Listing 详情，包含内容、版本和合规状态。"
+                    "当用户询问 Listing 内容、版本或为什么不能发布时使用。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "listing_id": {"type": "string", "description": "ListingDraft ID"}
+                    },
+                    "required": ["listing_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "edit_listing",
+                "description": (
+                    "修改当前用户拥有的 Listing 内容并递增版本，修改后合规状态会重置。"
+                    "当用户明确要求调整标题、描述、五点或 SEO 时使用；返回新版本和编辑链接。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "listing_id": {"type": "string", "description": "ListingDraft ID"},
+                        "title": {"type": "string"},
+                        "description": {"type": "string"},
+                        "bullet_points": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "seo_title": {"type": "string"},
+                        "seo_description": {"type": "string"},
+                    },
+                    "required": ["listing_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "list_materials",
+                "description": (
+                    "查询当前用户的图片、商品图生视频和营销视频项目。"
+                    "当用户询问有哪些素材、最近生成结果或素材在哪里时使用；返回计数、最近摘要和素材中心链接。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "integer",
+                            "description": "返回最近素材数量，1-50",
+                        }
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_product_image",
+                "description": (
+                    "创建商品图片生成任务。只有用户明确要求生成图片或确认后 confirmed=true 才使用。"
+                    "任务是异步的，返回 task_id、状态和图片工作台链接，不会伪造生成结果。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": {
+                            "type": "string",
+                            "description": "商品图片画面、场景、构图和光线描述",
+                        },
+                        "num_outputs": {
+                            "type": "integer",
+                            "description": "生成数量，1-4",
+                        },
+                        "confirmed": {
+                            "type": "boolean",
+                            "description": "用户是否已明确要求生成图片",
+                        },
+                    },
+                    "required": ["prompt"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_product_video",
+                "description": (
+                    "基于已上传商品首帧提交 MiniMax 商品图生视频任务，会产生积分费用。"
+                    "只有用户明确要求生成视频、且明确接受费用后才能 confirmed=true；"
+                    "未确认时只返回积分估算和确认提示。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source_asset_id": {
+                            "type": "string",
+                            "description": "素材中心中的商品首帧 ImageAsset ID",
+                        },
+                        "prompt": {"type": "string", "description": "镜头、场景和动作描述"},
+                        "template_id": {
+                            "type": "string",
+                            "description": "视频模板，默认 clean_product",
+                        },
+                        "model": {"type": "string"},
+                        "resolution": {"type": "string"},
+                        "duration": {"type": "integer"},
+                        "confirmed": {
+                            "type": "boolean",
+                            "description": "用户是否明确确认提交并接受积分消耗",
+                        },
+                    },
+                    "required": ["source_asset_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_marketing_video_plan",
+                "description": (
+                    "根据商品首帧、商品名和营销想法生成营销视频项目与分镜方案。"
+                    "只创建 brief_ready 方案，不自动渲染、不扣视频积分；返回项目链接供用户确认渲染。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source_asset_id": {"type": "string"},
+                        "product_name": {"type": "string"},
+                        "idea": {"type": "string"},
+                        "platform": {"type": "string"},
+                        "market": {"type": "string"},
+                        "language": {"type": "string"},
+                        "duration": {"type": "integer"},
+                        "template_id": {"type": "string"},
+                    },
+                    "required": ["source_asset_id", "product_name", "idea"],
                 },
             },
         },
@@ -268,6 +436,31 @@ class AgentOrchestrator:
                         "channel_id": {"type": "string", "description": "可选，指定 Shopify 渠道"},
                     },
                     "required": ["listing_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "sync_shopify_operations",
+                "description": (
+                    "同步已绑定 Shopify 店铺最近订单销量和本平台已发布商品库存。"
+                    "当用户询问最新销量、库存或补货数据时使用；返回扫描订单数、"
+                    "销量更新数、库存更新数和未匹配 SKU。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "channel_id": {
+                            "type": "string",
+                            "description": "已绑定的 Shopify 渠道 ID",
+                        },
+                        "days": {
+                            "type": "integer",
+                            "description": "同步最近天数，默认 30",
+                        },
+                    },
+                    "required": ["channel_id"],
                 },
             },
         },
@@ -317,7 +510,10 @@ class AgentOrchestrator:
             "type": "function",
             "function": {
                 "name": "store_check",
-                "description": "巡检店铺所有商品，找出问题",
+                "description": (
+                    "巡检店铺所有商品的资料、Listing、素材、SKU、发布和运营预警。"
+                    "当用户要求检查店铺健康状态或找出待处理商品时使用。"
+                ),
                 "parameters": {"type": "object", "properties": {}},
             },
         },
@@ -377,7 +573,7 @@ class AgentOrchestrator:
         if self.on_step:
             await self.on_step(self.steps)
 
-    async def run_react(self, instruction: str, max_rounds: int = 6) -> dict:
+    async def run_react(self, instruction: str, max_rounds: int = 8) -> dict:
         """ReAct 推理循环：思考 → 调用工具 → 观察 → 再思考
 
         直到模型认为任务完成（不再调用工具），或达到最大轮数。
@@ -390,7 +586,10 @@ class AgentOrchestrator:
             "2. 每次调用工具后，根据结果决定下一步\n"
             "3. 任务完成后，用自然语言总结结果给用户\n"
             "4. 不要编造工具没返回的数据\n"
-            "5. 任务完成后，用简短中文总结关键结论，不要重复完整报告内容"
+            "5. 任务完成后，用简短中文总结关键结论，不要重复完整报告内容\n"
+            "6. 生成视频会扣积分；只有用户明确要求并确认后才能把 confirmed 设为 true\n"
+            "7. 生成图片或视频后只报告任务状态，不要声称素材已经生成完成\n"
+            "8. 需要用户继续处理时，保留工具返回的链接，不要自行拼造业务地址"
         )
 
         # 对话历史
@@ -502,12 +701,11 @@ class AgentOrchestrator:
             ],
         },
         "1688_to_amazon": {
-            "name": "1688 → Amazon 上架",
+            "name": "1688 → Amazon Listing 生成",
             "steps": [
                 {"action": "scrape_1688", "critical": True},
                 {"action": "create_product", "critical": True},
                 {"action": "generate_listing", "critical": False, "params": {"platform": "amazon"}},
-                {"action": "compliance_check", "critical": False},
             ],
         },
         "scrape_and_list": {
@@ -538,7 +736,6 @@ class AgentOrchestrator:
                 {"action": "create_product", "critical": True},
                 {"action": "generate_listing", "critical": False, "description": "AI 生成 Listing"},
                 {"action": "self_reflect", "critical": False, "description": "内容质量自检"},
-                {"action": "compliance_fix", "critical": False, "description": "合规自动修复"},
             ],
         },
     }
@@ -570,6 +767,9 @@ class AgentOrchestrator:
                 step_params["url"] = context["url"]
             if "title" not in step_params and context.get("title"):
                 step_params["title"] = context["title"]
+            if action in ("self_reflect", "compliance_check", "compliance_fix"):
+                if not step_params.get("content") and context.get("listing_content"):
+                    step_params["content"] = context["listing_content"]
 
             # 执行
             step_result = await self._execute_step(action, step_params)
@@ -583,6 +783,14 @@ class AgentOrchestrator:
             if data.get("title"): context["title"] = data["title"]
             if data.get("product_id"): context["product_id"] = data["product_id"]
             if data.get("listing_id"): context["listing_id"] = data["listing_id"]
+            if data.get("description"):
+                context["listing_content"] = "\n\n".join(
+                    [
+                        str(data.get("title") or ""),
+                        str(data.get("description") or ""),
+                        *[str(item) for item in data.get("bullet_points") or []],
+                    ]
+                ).strip()
             if data.get("image_url"): context["image_url"] = data["image_url"]
             if step_result.get("summary"): context["last_summary"] = step_result["summary"]
 
@@ -609,6 +817,12 @@ class AgentOrchestrator:
 - 用户提到商品链接 + 能不能做/值不值得 → 用 analyze_product_decision
 - 用户提到商品链接 → 用 scrape_1688
 - 用户提到生成/发布/上架 → 用 generate_listing
+- 用户提到查看或修改已有 Listing → 用 get_listing / edit_listing
+- 用户提到图片、主图、场景图 → 用 generate_product_image
+- 用户明确要求生成商品视频并接受积分 → 用 generate_product_video
+- 用户提到营销视频想法、分镜或方案 → 用 create_marketing_video_plan
+- 用户提到素材、最近图片/视频 → 用 list_materials
+- 用户提到同步 Shopify 销量/库存 → 用 sync_shopify_operations
 - 用户提到利润/成本/计算 → 用 calculate_profit
 - 用户提到检查/审核 → 用 compliance_check
 - 不要使用 "answer" 工具，永远用具体工具
@@ -656,7 +870,30 @@ class AgentOrchestrator:
    参数: {"content": "要审查的内容", "platform": "目标平台"}
    输出: 质量评分、问题、改进建议
 
-6. answer — 【仅当其他工具都不适用时】回答用户问题
+12. get_listing — 读取 Listing
+   参数: {"listing_id": "ListingDraft ID"}
+
+13. edit_listing — 修改 Listing 并重置合规状态
+   参数: {"listing_id": "...", "title": "...", "description": "...", "bullet_points": [...]}
+
+14. list_materials — 查询素材
+   参数: {"limit": 20}
+
+15. generate_product_image — 创建异步商品图片任务
+   参数: {"prompt": "...", "num_outputs": 1, "confirmed": true}
+
+16. generate_product_video — 提交商品图生视频，会扣积分
+   参数: {"source_asset_id": "...", "prompt": "...", "confirmed": true}
+   注意: 用户未明确确认时 confirmed 必须为 false
+
+17. create_marketing_video_plan — 创建营销视频 Brief 和分镜
+   参数: {"source_asset_id": "...", "product_name": "...", "idea": "...", "duration": 15}
+   注意: 只生成方案，不自动渲染
+
+18. sync_shopify_operations — 同步 Shopify 订单销量和库存
+   参数: {"channel_id": "Shopify 渠道 ID", "days": 30}
+
+19. answer — 【仅当其他工具都不适用时】回答用户问题
    参数: {"message": "回答内容"}
    注意: 这是最后选项，优先用上面的工具
 
@@ -699,12 +936,26 @@ class AgentOrchestrator:
                 return await self._do_create_product(params)
             elif action == "generate_listing":
                 return await self._do_generate_listing(params)
+            elif action == "get_listing":
+                return await self._do_get_listing(params)
+            elif action == "edit_listing":
+                return await self._do_edit_listing(params)
+            elif action == "list_materials":
+                return await self._do_list_materials(params)
+            elif action == "generate_product_image":
+                return await self._do_generate_product_image(params)
+            elif action == "generate_product_video":
+                return await self._do_generate_product_video(params)
+            elif action == "create_marketing_video_plan":
+                return await self._do_create_marketing_video_plan(params)
             elif action == "compliance_check":
                 return await self._do_compliance(params)
             elif action == "compliance_fix":
                 return await self._do_compliance_fix(params)
             elif action == "push_to_shopify":
                 return await self._do_push_to_shopify(params)
+            elif action == "sync_shopify_operations":
+                return await self._do_sync_shopify_operations(params)
             elif action == "calculate_profit":
                 return await self._do_calculate_profit(params)
             elif action == "analyze_category":
@@ -790,14 +1041,13 @@ class AgentOrchestrator:
         }
 
     async def _do_generate_listing(self, params: dict) -> dict:
-        """AI 生成 Listing"""
-        from app.services.ai.deepseek import DeepSeekService
+        """AI 生成 Listing，复用网页主链路的完整事实、SEO 与合规逻辑。"""
         from app.models.product import Product
-        from uuid import UUID
 
         product_id = params.get("product_id", "")
         platform = params.get("platform", "amazon")
         language = params.get("language", "en")
+        tone = params.get("tone", "professional")
 
         try:
             result = await self.db.execute(
@@ -813,65 +1063,16 @@ class AgentOrchestrator:
         if not product:
             return {"action": "generate_listing", "status": "failed", "error": "商品不存在"}
 
-        # 统一品牌档案注入（CAP-04）：编排器生成 Listing 时把用户 Persona 拼入 system prompt
-        from app.services.ai.persona_kit import fetch_persona, build_persona_kit, format_persona_block
-        persona = await fetch_persona(self.db, self.user.id)
-        persona_kit = build_persona_kit(persona) if persona else None
-        persona_block = format_persona_block(persona_kit) if persona_kit else ""
-
-        llm = DeepSeekService()
-        title = await llm.generate(
-            f"You are an expert {platform} listing copywriter.",
-            f"Generate a compelling product title for {platform} (max 200 chars):\nProduct: {product.title}",
-            max_tokens=300,
-            persona_block=persona_block,
-        )
-        description = await llm.generate_product_description(
-            product_title=product.title or "",
-            platform=platform,
-            persona_block=persona_block,
-        )
-        bullets = await llm.generate_bullet_points(
-            product_title=product.title or "",
-            features=f"Price: {product.price}" if product.price else "",
-            platform=platform,
-            persona_block=persona_block,
-        )
-
-        from app.services.ai.compliance import (
-            check_text,
-            merge_banned_words,
-        )
-
-        banned_words = (persona_kit or {}).get("banned_words") or []
-        texts = [title, description, *bullets]
-        violations: list[str] = []
-        word_list = merge_banned_words(banned_words)
-        for text in texts:
-            for word in check_text(text or "", word_list):
-                if word not in violations:
-                    violations.append(word)
-        blocked = bool(violations)
-        draft = await persist_generated_listing(
+        generated = await generate_and_persist_listing(
             self.db,
             user=self.user,
             product=product,
             platform=platform,
             language=language,
-            tone="professional",
-            title=title,
-            description=description,
-            bullet_points=bullets,
-            seo_title="",
-            seo_description="",
-            violations=violations,
-            blocked=blocked,
-            ai_model_used=provider_config.get(
-                "deepseek",
-                "model",
-                settings.DEEPSEEK_MODEL,
-            ),
+            tone=tone,
         )
+        draft = generated.draft
+        listing_href = f"/app/products/{product.id}?listing={draft.id}"
 
         return {
             "action": "generate_listing",
@@ -881,12 +1082,258 @@ class AgentOrchestrator:
                 "product_id": str(product.id),
                 "listing_status": draft.status,
                 "compliance_status": draft.compliance_status,
-                "title": title,
-                "description": description,
-                "bullet_points": bullets,
-                "violations": violations,
+                "title": generated.title,
+                "description": generated.description,
+                "bullet_points": generated.bullet_points,
+                "seo_title": generated.seo_title,
+                "seo_description": generated.seo_description,
+                "violations": generated.violations,
             },
-            "summary": f"已为 {platform} 生成 Listing：{title[:50]}...",
+            "links": [{"label": "查看 Listing", "href": listing_href}],
+            "summary": f"已为 {platform} 生成 Listing：{generated.title[:50]}...",
+        }
+
+    async def _do_get_listing(self, params: dict) -> dict:
+        """读取当前用户 Listing，供 Agent 回答内容、版本与发布状态。"""
+        listing_id = params.get("listing_id", "")
+        if not listing_id:
+            return {"action": "get_listing", "status": "failed", "error": "缺少 Listing ID"}
+        listing = await get_owned_listing(self.db, listing_id, self.user.id)
+        if listing is None:
+            return {"action": "get_listing", "status": "failed", "error": "Listing 不存在"}
+        data = serialize_listing(listing)
+        return {
+            "action": "get_listing",
+            "status": "success",
+            "data": data,
+            "links": [
+                {
+                    "label": "编辑 Listing",
+                    "href": f"/app/products/{listing.product_id}?listing={listing.id}",
+                }
+            ],
+            "summary": f"已读取 Listing v{listing.version}，合规状态：{listing.compliance_status}",
+        }
+
+    async def _do_edit_listing(self, params: dict) -> dict:
+        """修改 Listing 内容，版本递增后旧合规报告自动失效。"""
+        listing_id = params.get("listing_id", "")
+        if not listing_id:
+            return {"action": "edit_listing", "status": "failed", "error": "缺少 Listing ID"}
+        listing = await get_owned_listing(self.db, listing_id, self.user.id)
+        if listing is None:
+            return {"action": "edit_listing", "status": "failed", "error": "Listing 不存在"}
+
+        editable_fields = {
+            "title",
+            "description",
+            "bullet_points",
+            "seo_title",
+            "seo_description",
+        }
+        updates = {
+            key: value
+            for key, value in params.items()
+            if key in editable_fields and value is not None
+        }
+        if not updates:
+            return {"action": "edit_listing", "status": "failed", "error": "没有可修改的 Listing 字段"}
+        if "title" in updates and not str(updates["title"]).strip():
+            return {"action": "edit_listing", "status": "failed", "error": "Listing 标题不能为空"}
+
+        update_listing_content(listing, **updates)
+        await self.db.flush()
+        await self.db.refresh(listing)
+        data = serialize_listing(listing)
+        return {
+            "action": "edit_listing",
+            "status": "success",
+            "data": data,
+            "links": [
+                {
+                    "label": "查看 Listing",
+                    "href": f"/app/products/{listing.product_id}?listing={listing.id}",
+                }
+            ],
+            "summary": f"Listing 已更新到 v{listing.version}，请重新执行合规审查",
+        }
+
+    async def _do_list_materials(self, params: dict) -> dict:
+        """汇总当前用户图片、商品视频与营销项目。"""
+        data = await agent_capability_service.list_user_materials(
+            self.db,
+            self.user,
+            limit=int(params.get("limit") or 20),
+        )
+        counts = data["counts"]
+        return {
+            "action": "list_materials",
+            "status": "success",
+            "data": data,
+            "links": [{"label": "打开素材中心", "href": "/app/assets"}],
+            "summary": (
+                f"素材中心现有 {counts['images']} 个图片来源、"
+                f"{counts['product_videos']} 个商品视频、"
+                f"{counts['marketing_projects']} 个营销视频项目"
+            ),
+        }
+
+    async def _do_generate_product_image(self, params: dict) -> dict:
+        """创建商品图片任务；未确认时只返回下一步提示。"""
+        prompt = str(params.get("prompt") or "").strip()
+        if len(prompt) < 5:
+            return {
+                "action": "generate_product_image",
+                "status": "failed",
+                "error": "图片描述至少需要 5 个字符",
+            }
+        if not params.get("confirmed", False):
+            return {
+                "action": "generate_product_image",
+                "status": "success",
+                "data": {"requires_confirmation": True},
+                "summary": "已准备图片生成方案，请确认后开始生成",
+            }
+        try:
+            task = await agent_capability_service.schedule_product_image_task(
+                self.db,
+                self.user,
+                prompt=prompt,
+                num_outputs=int(params.get("num_outputs") or 1),
+            )
+        except PermissionError as exc:
+            return {
+                "action": "generate_product_image",
+                "status": "failed",
+                "error": str(exc),
+            }
+        return {
+            "action": "generate_product_image",
+            "status": "success",
+            "data": {
+                "task_id": str(task.id),
+                "status": task.status,
+                "num_outputs": task.num_outputs,
+            },
+            "links": [{"label": "查看图片任务", "href": "/app/images"}],
+            "summary": "图片生成任务已进入队列，完成后可在图片工作台查看",
+        }
+
+    async def _do_generate_product_video(self, params: dict) -> dict:
+        """提交商品图生视频；未显式确认时不得扣积分。"""
+        source_asset_id = str(params.get("source_asset_id") or "").strip()
+        if not source_asset_id:
+            return {
+                "action": "generate_product_video",
+                "status": "failed",
+                "error": "缺少商品首帧素材 ID",
+            }
+        model = str(params.get("model") or "MiniMax-H3-Lite")
+        resolution = str(params.get("resolution") or "480P")
+        duration = int(params.get("duration") or 4)
+        if not params.get("confirmed", False):
+            from app.services.minimax_video import estimate_video_credits
+
+            try:
+                estimated_credits = estimate_video_credits(
+                    model,
+                    resolution,
+                    duration,
+                )
+            except ValueError as exc:
+                return {
+                    "action": "generate_product_video",
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            return {
+                "action": "generate_product_video",
+                "status": "success",
+                "data": {
+                    "requires_confirmation": True,
+                    "estimated_credits": estimated_credits,
+                    "source_asset_id": source_asset_id,
+                },
+                "summary": f"预计消耗 {estimated_credits} 积分，请明确确认后生成视频",
+            }
+
+        try:
+            task = await agent_capability_service.create_product_video_task(
+                self.db,
+                self.user,
+                source_asset_id=source_asset_id,
+                prompt=str(params.get("prompt") or ""),
+                template_id=str(params.get("template_id") or "clean_product"),
+                model=model,
+                resolution=resolution,
+                duration=duration,
+                ratio=str(params.get("ratio") or "9:16"),
+                reserve_credits=1,
+            )
+        except (PermissionError, ValueError) as exc:
+            return {
+                "action": "generate_product_video",
+                "status": "failed",
+                "error": str(exc),
+            }
+        return {
+            "action": "generate_product_video",
+            "status": "success",
+            "data": {
+                "task_id": str(task.id),
+                "status": task.status,
+                "credits_cost": task.credits_cost,
+                "model": task.model,
+                "duration": task.duration,
+            },
+            "links": [
+                {
+                    "label": "查看商品视频",
+                    "href": "/app/videos?tab=single",
+                }
+            ],
+            "summary": f"商品图生视频任务已提交，消耗 {task.credits_cost} 积分",
+        }
+
+    async def _do_create_marketing_video_plan(self, params: dict) -> dict:
+        """创建营销视频 Brief 与分镜，明确不启动供应商渲染。"""
+        try:
+            project, credits = await agent_capability_service.create_marketing_plan_project(
+                self.db,
+                self.user,
+                source_asset_id=str(params.get("source_asset_id") or ""),
+                product_name=str(params.get("product_name") or "").strip(),
+                idea=str(params.get("idea") or "").strip(),
+                platform=str(params.get("platform") or "tiktok"),
+                market=str(params.get("market") or "US"),
+                language=str(params.get("language") or "en"),
+                duration=int(params.get("duration") or 15),
+                template_id=str(params.get("template_id") or "presenter_demo"),
+            )
+        except (PermissionError, ValueError) as exc:
+            return {
+                "action": "create_marketing_video_plan",
+                "status": "failed",
+                "error": str(exc),
+            }
+        return {
+            "action": "create_marketing_video_plan",
+            "status": "success",
+            "data": {
+                "project_id": str(project.id),
+                "status": project.status,
+                "title": project.title,
+                "duration": project.duration,
+                "estimated_credits": credits,
+                "render_started": False,
+            },
+            "links": [
+                {
+                    "label": "查看营销方案",
+                    "href": f"/app/videos?tab=marketing&project={project.id}",
+                }
+            ],
+            "summary": f"营销方案已生成，预计渲染消耗 {credits} 积分，尚未开始渲染",
         }
 
     async def _do_select_products(self, params: dict) -> dict:
@@ -1096,54 +1543,14 @@ class AgentOrchestrator:
         }
 
     async def _do_store_check(self, params: dict) -> dict:
-        """整店巡检：检查用户所有商品，找出问题"""
-        from app.models.product import Product
-        from app.routers.shopify import compliance_check
-
-        # 获取用户所有商品
-        result = await self.db.execute(
-            select(Product).where(Product.user_id == self.user.id).order_by(Product.created_at.desc())
-        )
-        products = result.scalars().all()
-
-        if not products:
-            return {"action": "store_check", "status": "success", "data": {"total": 0, "issues": []}, "summary": "暂无商品，先去添加商品吧"}
-
-        issues = []
-        ok_count = 0
-
-        for p in products:
-            product_issues = []
-            if not p.title:
-                product_issues.append("缺标题")
-            if not p.price:
-                product_issues.append("缺价格")
-            if not p.url:
-                product_issues.append("缺链接")
-            if p.title and p.price:
-                ok_count += 1
-
-            if product_issues:
-                issues.append({
-                    "id": str(p.id),
-                    "title": p.title or "未命名商品",
-                    "price": p.price,
-                    "issues": product_issues,
-                })
-
-        total = len(products)
-        issue_count = len(issues)
-        healthy = total - issue_count
-
-        summary = f"巡检完成：共 {total} 个商品，{issue_count} 个有问题，{healthy} 个正常"
-        if issues:
-            summary += f"。待处理：{issue_count} 个"
-
+        """整店巡检：复用页面与定时任务共用的完整检查服务。"""
+        result = await execute_store_check(self.db, self.user)
         return {
             "action": "store_check",
             "status": "success",
-            "data": {"total": total, "healthy": healthy, "issues": issues},
-            "summary": summary,
+            "data": result,
+            "links": [{"label": "查看巡检详情", "href": "/app/dashboard"}],
+            "summary": result["summary"],
         }
 
     async def _do_monitor_products(self, params: dict) -> dict:
@@ -1339,10 +1746,6 @@ class AgentOrchestrator:
         if not channels:
             return {"action": "push_to_shopify", "status": "failed", "error": "未绑定 Shopify 店铺，请先在 Shopify 页面绑定"}
 
-        import httpx
-        from app.core.config import settings
-        from app.core.crypto import decrypt_value
-        from app.routers.shopify import _channel_domain
         from app.models.product import Product
 
         prod_result = await self.db.execute(
@@ -1356,40 +1759,100 @@ class AgentOrchestrator:
             return {"action": "push_to_shopify", "status": "failed", "error": "商品不存在"}
 
         channel = channels[0]
-        shop_url = f"https://{_channel_domain(channel)}/admin/api/2024-10"
-        headers = {
-            "X-Shopify-Access-Token": decrypt_value(channel.access_token),
-            "Content-Type": "application/json",
-        }
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(f"{shop_url}/products.json", json={
-                "product": {
-                    "title": listing.title or "Untitled",
-                    "body_html": listing.description or "",
-                    "status": "draft",
-                    "variants": [{"price": str(product.price)}] if product.price else [],
-                }
-            }, headers=headers)
-
-            if resp.status_code not in (200, 201):
-                return {"action": "push_to_shopify", "status": "failed", "error": f"Shopify 发布失败：{resp.text[:150]}"}
-
-            shopify_product = resp.json().get("product", {})
-            listing.status = "published"
-            from datetime import datetime, timezone
-            listing.published_at = datetime.now(timezone.utc)
-            shopify_url = f"https://{_channel_domain(channel)}/admin/products/{shopify_product.get('id')}"
+        try:
+            publish_result = await publish_shopify_product(
+                self.db,
+                user=self.user,
+                product=product,
+                listing=listing,
+                channel=channel,
+                idempotency_key=str(params.get("idempotency_key") or ""),
+            )
+        except ShopifyPublishError as exc:
             return {
                 "action": "push_to_shopify",
-                "status": "success",
-                "data": {
-                    "listing_id": str(listing.id),
-                    "shopify_product_id": shopify_product.get("id"),
-                    "shopify_url": shopify_url,
-                },
-                "summary": f"已发布到 {channel.shop_name}（草稿状态）",
+                "status": "failed",
+                "error": str(exc),
             }
+        data = serialize_shopify_publish_result(publish_result)
+        data["listing_id"] = str(listing.id)
+        return {
+            "action": "push_to_shopify",
+            "status": "success",
+            "data": data,
+            "links": [
+                {
+                    "label": "打开 Shopify 商品",
+                    "href": data.get("shopify_url") or "https://admin.shopify.com",
+                }
+            ],
+            "summary": f"已完整发布到 {channel.shop_name}（草稿状态）",
+        }
+
+    async def _do_sync_shopify_operations(self, params: dict) -> dict:
+        """把 Shopify 最新销量和库存同步到本地 SKU 运营模型。"""
+        channel_id = str(params.get("channel_id") or "").strip()
+        if not channel_id:
+            return {
+                "action": "sync_shopify_operations",
+                "status": "failed",
+                "error": "缺少 Shopify 渠道 ID",
+            }
+        try:
+            parsed_channel_id = UUID(channel_id)
+        except ValueError:
+            return {
+                "action": "sync_shopify_operations",
+                "status": "failed",
+                "error": "无效的 Shopify 渠道 ID",
+            }
+
+        from app.models.shopify_channel import ShopifyChannel
+
+        channel = (
+            await self.db.execute(
+                select(ShopifyChannel).where(
+                    ShopifyChannel.id == parsed_channel_id,
+                    ShopifyChannel.user_id == self.user.id,
+                    ShopifyChannel.is_active.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+        if channel is None:
+            return {
+                "action": "sync_shopify_operations",
+                "status": "failed",
+                "error": "Shopify 渠道不存在或未启用",
+            }
+        try:
+            data = await run_shopify_operations_sync(
+                self.db,
+                user=self.user,
+                channel=channel,
+                days=int(params.get("days") or 30),
+            )
+        except ShopifyOperationsSyncError as exc:
+            return {
+                "action": "sync_shopify_operations",
+                "status": "failed",
+                "error": str(exc),
+            }
+        return {
+            "action": "sync_shopify_operations",
+            "status": "success",
+            "data": data,
+            "links": [
+                {
+                    "label": "查看运营监控",
+                    "href": "/app/operations",
+                }
+            ],
+            "summary": (
+                f"Shopify 同步完成：{data['orders_scanned']} 个订单，"
+                f"{data['sales_rate_updates']} 个销量更新，"
+                f"{data['stock_updates']} 个库存更新"
+            ),
+        }
 
     async def _do_calculate_profit(self, params: dict) -> dict:
         """净利计算"""

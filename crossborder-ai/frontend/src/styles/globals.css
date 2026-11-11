@@ -28,6 +28,7 @@
       "HarmonyOS Sans SC", "MiSans", "Hiragino Sans GB", sans-serif;
     --font-latin: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
     --font-ui: var(--font-cjk), var(--font-latin), sans-serif;
+    --font-data: var(--font-latin);
     --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
       monospace;
 
@@ -41,6 +42,9 @@
     --factory-muted: #b4b0a8;
     --factory-faint: #8f8c85;
     --factory-accent: #d8b56d;
+    --factory-warning: #d8b56d;
+    --factory-success: #8ebba7;
+    --factory-danger: #d98b70;
     --factory-mint: #9dbbad;
     --factory-coral: #d98b70;
 
@@ -179,6 +183,11 @@
   }
 
   .metric-number {
+    font-family: var(--font-data), var(--font-latin), sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .code-number {
     font-family: var(--font-mono), ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
   }
@@ -190,9 +199,9 @@
   }
 
   .page-title {
-    font-size: clamp(26px, 2.2vw, 32px);
+    font-size: clamp(27px, 2vw, 30px);
     font-weight: 600;
-    line-height: 1.4;
+    line-height: 1.25;
   }
 
   .section-title {

@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import apiClient from '@/api/client'
 import { toErrorMessage } from '@/utils/errorMessage'
+import { variantSaveErrorMessage } from '@/lib/productVariantError'
 
 const PLATFORMS = [
   { id: 'amazon', label: 'Amazon', color: 'bg-amber-500/10 text-amber-600' },
@@ -294,7 +295,10 @@ export default function ProductDetailPage() {
               <h1 className="font-semibold leading-snug">{product.title || '无标题'}</h1>
               <div className="flex items-center justify-between">
                 {product.price != null && (
-                  <span className="text-2xl font-bold text-primary">¥{product.price.toFixed(2)}</span>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">采购/供货参考价</p>
+                    <span className="text-2xl font-bold text-primary">¥{product.price.toFixed(2)}</span>
+                  </div>
                 )}
                 {product.sales_count != null && (
                   <Badge variant="secondary">已售 {product.sales_count}</Badge>
@@ -449,7 +453,11 @@ export default function ProductDetailPage() {
                   </Button>
                   {editingVariantId && <Button size="sm" variant="outline" onClick={resetVariantForm}>取消编辑</Button>}
                 </div>
-                {saveVariantMutation.isError && <p className="text-xs text-destructive">保存失败，请检查 SKU 是否重复。</p>}
+                {saveVariantMutation.isError && (
+                  <p className="text-xs text-destructive">
+                    {variantSaveErrorMessage(saveVariantMutation.error)}
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>

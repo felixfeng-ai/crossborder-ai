@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
+import { useSearchParams } from 'react-router-dom'
 import {
   Check,
   CircleAlert,
@@ -60,6 +61,8 @@ const LANGUAGE_OPTIONS = [
 
 export default function MarketingVideosPage({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const projectFromQuery = searchParams.get('project') || ''
   const [selectedAssetId, setSelectedAssetId] = useState('')
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [activeProject, setActiveProject] = useState<MarketingVideoProject | null>(null)
@@ -130,6 +133,12 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
   const assets = assetsQuery.data || []
   const history = historyQuery.data || []
   const project = activeProject || projectQuery.data || null
+
+  useEffect(() => {
+    if (projectFromQuery && projectFromQuery !== selectedProjectId) {
+      setSelectedProjectId(projectFromQuery)
+    }
+  }, [projectFromQuery, selectedProjectId])
 
   useEffect(() => {
     if (!capabilities) return

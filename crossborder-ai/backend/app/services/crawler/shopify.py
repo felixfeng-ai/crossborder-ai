@@ -10,6 +10,8 @@ import httpx
 
 from app.core.config import settings
 
+from app.core.config import settings
+
 
 class ShopifyService:
     """Service for Shopify REST API integration.
@@ -21,7 +23,7 @@ class ShopifyService:
     def __init__(self, shop_name: str, access_token: str):
         self.shop_name = shop_name
         self.access_token = access_token
-        self.api_version = "2024-10"
+        self.api_version = settings.SHOPIFY_API_VERSION
         self.base_url = f"https://{shop_name}.myshopify.com/admin/api/{self.api_version}"
 
     def _headers(self) -> Dict[str, str]:

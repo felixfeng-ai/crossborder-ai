@@ -1,20 +1,22 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Bot,
   Send,
   UserRound,
   Loader2,
   Sparkles,
-  Link as LinkIcon,
   ShoppingCart,
-  Globe,
-  DollarSign,
   CheckCircle2,
   AlertCircle,
   ExternalLink,
   ChevronDown,
+  FileText,
+  Image as ImageIcon,
+  Clapperboard,
+  FolderOpen,
 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -46,10 +48,11 @@ interface Message {
 
 // ── 快捷指令 ──────────────────────────────────────────────────
 const QUICK_ACTIONS = [
-  { icon: LinkIcon, label: '抓取 1688', prompt: '帮我抓取这个1688商品：https://detail.1688.com/offer/' },
-  { icon: Sparkles, label: '生成 Listing', prompt: '帮我为商品生成 Amazon Listing，英文' },
-  { icon: DollarSign, label: '计算利润', prompt: '售价$19.99，成本¥30，运费¥15，帮我算净利' },
-  { icon: Globe, label: '合规检查', prompt: '检查这段文本有没有违禁词：' },
+  { icon: ShoppingCart, label: 'AI 选品', prompt: '帮我分析一个适合美国市场的跨境品类，并推荐值得做的方向' },
+  { icon: FileText, label: '生成 Listing', prompt: '帮我基于商品库中的商品生成 Amazon Listing，英文' },
+  { icon: ImageIcon, label: '商品图片', prompt: '帮我基于商品信息生成一张高质量商品主图' },
+  { icon: Clapperboard, label: '商品图生视频', prompt: '帮我基于素材中心中的商品首帧生成商品视频，先告诉我预计积分' },
+  { icon: FolderOpen, label: '查看素材', prompt: '查看我最新的图片、商品视频和营销视频项目' },
 ]
 
 // ── 任务进度：SSE 实时推流（替代 2s 轮询），连接失败自动回退轮询 ──
@@ -111,14 +114,16 @@ async function streamTaskStatus(
 
 export default function AgentPage() {
   const user = useAuthStore((state) => state.user)
+  const [searchParams] = useSearchParams()
+  const promptFromQuery = searchParams.get('prompt') || ''
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: '你好！我是你的跨境电商 AI 决策助手。\n\n你可以：\n📊 **说"蓝牙耳机能不能做"** → AI 分析品类市场\n💰 **说"算利润"** → 自动计算净利\n✍️ **说"生成 Listing"** → AI 写标题描述\n\n需要我做什么？直接告诉我就好。',
+      content: '你好，我是 VeyaShip 跨境电商 AI 决策助手。\n\n你可以直接告诉我经营目标，我会调用真实业务工具：\n- **选品与利润**：分析品类、测算净利\n- **Listing**：生成、回查、修改文案\n- **商品素材**：生成图片、查询素材、提交商品视频\n- **营销成片**：先生成分镜方案，确认后再渲染\n\n需要我做什么？',
       timestamp: new Date(),
     },
   ])
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState(promptFromQuery)
   const [conversationId, setConversationId] = useState<string>('')
   const [liveSteps, setLiveSteps] = useState<AgentStep[]>([]) // SSE 实时推进度
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -166,6 +171,10 @@ export default function AgentPage() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    if (promptFromQuery) setInput(promptFromQuery)
+  }, [promptFromQuery])
 
   // Agent 执行：POST 提交异步任务（带幂等键防重复扣积分）→ SSE 实时推进度，
   // 连接失败自动回退轮询到 succeeded/failed
@@ -288,6 +297,7 @@ export default function AgentPage() {
                     <span className="font-medium text-xs">{getActionLabel(step.action)}</span>
                     {step.summary && <p className="text-xs text-muted-foreground">{step.summary}</p>}
                     {step.error && <p className="text-xs text-destructive">{step.error}</p>}
+                    <StepLinks step={step} />
                   </div>
                 </div>
               ))}
@@ -336,6 +346,7 @@ export default function AgentPage() {
                         <span className="font-medium text-xs">{getActionLabel(step.action)}</span>
                         {step.summary && <p className="text-xs text-muted-foreground">{step.summary}</p>}
                         {step.error && <p className="text-xs text-destructive">{step.error}</p>}
+                        <StepLinks step={step} />
                       </div>
                     </div>
                   ))}
@@ -389,7 +400,7 @@ export default function AgentPage() {
           </Button>
         </div>
         <p className="text-[11px] text-muted-foreground mt-1.5 text-center">
-          AI 会自动识别你要做什么：抓商品、写 Listing、算利润
+          AI 会自动识别任务：选品、Listing、商品素材与营销视频方案
         </p>
       </div>
     </div>
@@ -430,6 +441,44 @@ function UserAvatar({
       <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-[var(--factory-ground)] bg-[var(--factory-accent)] text-[7px] font-bold text-[var(--factory-ground)]">
         {initial}
       </span>
+    </div>
+  )
+}
+
+function StepLinks({ step }: { step: AgentStep }) {
+  const links = (step.links || []).filter((link) => link.href)
+  if (!links.length) return null
+
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {links.map((link) => {
+        const className = "inline-flex items-center gap-1 rounded-md border border-primary/20 bg-primary/5 px-2 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
+        const content = (
+          <>
+            {link.label}
+            <ExternalLink className="h-3 w-3" />
+          </>
+        )
+        return link.href.startsWith('http') ? (
+          <a
+            key={`${link.href}-${link.label}`}
+            href={link.href}
+            target="_blank"
+            rel="noreferrer"
+            className={className}
+          >
+            {content}
+          </a>
+        ) : (
+          <Link
+            key={`${link.href}-${link.label}`}
+            to={link.href}
+            className={className}
+          >
+            {content}
+          </Link>
+        )
+      })}
     </div>
   )
 }

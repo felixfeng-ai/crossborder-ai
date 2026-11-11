@@ -3,6 +3,7 @@ import {
   NAVIGATION_GROUPS,
   getHeaderContext,
   videoTabFromSearch,
+  VIDEO_WORKSPACE_TABS,
 } from './navigation'
 
 
@@ -43,5 +44,12 @@ describe('navigation architecture', () => {
     expect(videoTabFromSearch('?tab=marketing')).toBe('marketing')
     expect(videoTabFromSearch('?tab=unknown')).toBe('marketing')
     expect(videoTabFromSearch('')).toBe('marketing')
+  })
+
+  it('视频工作台使用清晰的商品图生视频命名', () => {
+    expect(VIDEO_WORKSPACE_TABS).toEqual([
+      { id: 'marketing', label: '营销成片' },
+      { id: 'single', label: '商品图生视频' },
+    ])
   })
 })

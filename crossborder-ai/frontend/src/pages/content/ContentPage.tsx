@@ -44,6 +44,13 @@ interface PlatformCapability {
   reason: string
 }
 
+interface PublishVariant {
+  id: string
+  sku: string
+  price: number | null
+  is_active: boolean
+}
+
 const PLATFORMS = [
   { id: 'amazon', label: 'Amazon' },
   { id: 'ebay', label: 'eBay' },
@@ -126,6 +133,19 @@ export default function ContentPage() {
     },
   })
 
+  const { data: publishVariants, isLoading: publishVariantsLoading } = useQuery({
+    queryKey: ['publish-variants', selectedProduct],
+    queryFn: async () => {
+      const response = await apiClient.get(`/products/${selectedProduct}/variants`)
+      return (response.data.items || []) as PublishVariant[]
+    },
+    enabled: Boolean(selectedProduct) && platform === 'shopify',
+  })
+  const sellableVariants = (publishVariants || []).filter(
+    (variant) => variant.is_active && variant.price != null && variant.price > 0,
+  )
+  const hasPublishableVariant = sellableVariants.length > 0
+
   // 发布到 Shopify
   const publishMutation = useMutation({
     mutationFn: async () => {
@@ -143,7 +163,8 @@ export default function ContentPage() {
     if (
       !generateMutation.data?.listing_id ||
       generateMutation.data.compliance_status !== 'pass' ||
-      !selectedChannel
+      !selectedChannel ||
+      !hasPublishableVariant
     ) return
     publishMutation.mutate()
   }
@@ -238,7 +259,7 @@ export default function ContentPage() {
                       )}
                     </div>
                     <div className="min-w-0 text-xs text-muted-foreground">
-                      <p>价格: {selected.price != null ? `¥${selected.price}` : '-'}</p>
+                      <p>供货参考价: {selected.price != null ? `¥${selected.price}` : '-'}</p>
                       <p>店铺: {selected.shop_name || '-'}</p>
                       <p className="mt-1 truncate">
                         {selected.main_image_url ? '真实商品主图已关联' : '尚未补充真实主图'}
@@ -429,7 +450,7 @@ export default function ContentPage() {
                         <p className="text-xs font-medium text-muted-foreground">原文（中文）</p>
                         <div className="rounded-lg border bg-background p-3 space-y-1">
                           <p className="text-sm font-medium">{selected.title || '-'}</p>
-                          {selected.price != null && <p className="text-xs text-muted-foreground">价格：¥{selected.price}</p>}
+                          {selected.price != null && <p className="text-xs text-muted-foreground">供货参考价：¥{selected.price}</p>}
                           {selected.shop_name && <p className="text-xs text-muted-foreground">店铺：{selected.shop_name}</p>}
                         </div>
                       </div>
@@ -462,7 +483,7 @@ export default function ContentPage() {
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Globe className="h-4 w-4 text-emerald-500" />
-                  发布到 Shopify
+                  发布 Shopify 草稿
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -476,13 +497,25 @@ export default function ContentPage() {
                     <option key={c.id} value={c.id}>{c.shop_name}</option>
                   ))}
                 </select>
+                {!publishVariantsLoading && !hasPublishableVariant && (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      发布前需要至少一个启用且填写了售价的 SKU。
+                      <a href="/app/catalog" className="ml-1 font-medium underline underline-offset-2">
+                        前往 SKU 中心配置
+                      </a>
+                    </span>
+                  </div>
+                )}
                 <Button
                   className="w-full"
                   disabled={
                     !selectedChannel ||
                     publishMutation.isPending ||
                     generateMutation.data.compliance_status !== 'pass' ||
-                    !generateMutation.data.listing_id
+                    !generateMutation.data.listing_id ||
+                    !hasPublishableVariant
                   }
                   onClick={handlePublish}
                 >
@@ -490,8 +523,10 @@ export default function ContentPage() {
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" />发布中...</>
                   ) : generateMutation.data.compliance_status !== 'pass' ? (
                     <><AlertTriangle className="mr-2 h-4 w-4" />合规未通过，禁止发布</>
+                  ) : !hasPublishableVariant ? (
+                    <><AlertTriangle className="mr-2 h-4 w-4" />请先配置 SKU 售价</>
                   ) : (
-                    <><ShoppingBag className="mr-2 h-4 w-4" />发布到 Shopify</>
+                    <><ShoppingBag className="mr-2 h-4 w-4" />发布 Shopify 草稿</>
                   )}
                 </Button>
                 {publishMutation.data && (

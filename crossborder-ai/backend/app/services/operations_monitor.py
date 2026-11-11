@@ -178,6 +178,7 @@ async def run_monitor_scan(db: AsyncSession, user: User) -> dict[str, Any]:
 
     for variant, product in rows:
         variants_by_product.setdefault(product.id, []).append(variant)
+        # Product.price 是 1688 供货参考价，仅在 SKU 未维护成本时兜底。
         cost_price = variant.cost_price if variant.cost_price is not None else product.price
         margin = calculate_margin(
             variant.price,

@@ -23,7 +23,7 @@ const FEATURES = [
   { icon: TrendingUp, title: 'AI 选品决策', desc: '告诉 AI 你想做的品类，自动分析 Amazon 市场容量、竞争格局、利润空间，判断这个品到底能不能做。' },
   { icon: DollarSign, title: '利润自动计算', desc: 'AI 自动获取 1688 供货价，结合平台费率、运费、广告成本，算出真实净利润和利润率。' },
   { icon: Zap, title: 'AI 生成 Listing', desc: '确定商品后自动生成 Amazon / Shopify 的标题、描述、卖点、SEO，多语言翻译对照可查验。' },
-  { icon: ShieldCheck, title: '整店巡检', desc: '每天凌晨自动检查店铺所有商品，标记缺标题、缺价格、缺链接的问题，自动生成待办清单。' },
+  { icon: ShieldCheck, title: '整店巡检', desc: '每天自动检查商品资料、Listing、素材、SKU、发布和运营风险，并生成可追溯待办。' },
   { icon: ShoppingBag, title: 'Shopify 一键发布', desc: 'AI 生成内容并合规通过后，可直接发布到绑定的 Shopify 店铺；Amazon、Temu、SHEIN 当前支持文案生成。' },
 ]
 
@@ -167,7 +167,7 @@ export default function LandingPage() {
               { icon: Bot, step: '01', title: 'AI 选品分析', desc: '输入品类，AI 分析市场机会' },
               { icon: DollarSign, step: '02', title: '利润测算', desc: '自动算净利和利润率' },
               { icon: Sparkles, step: '03', title: 'AI 生成 Listing', desc: '自动写标题描述卖点' },
-              { icon: ShoppingBag, step: '04', title: '一键上架', desc: '发布到 Shopify 店铺' },
+              { icon: ShoppingBag, step: '04', title: '发布 Shopify 草稿', desc: '完整同步内容、SKU 与素材' },
             ].map((s, i) => (
               <motion.div key={i} initial={false}
                 className="text-center p-4 rounded-xl bg-white/5 border border-white/10 shadow-sm">

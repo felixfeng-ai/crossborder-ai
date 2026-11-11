@@ -59,8 +59,9 @@ class Product(Base):
     # 主图链接，后续 AI 生成 Listing 时可以直接引用
     main_image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
-    # ── 价格/销量/店铺 ────────────────────────────────────────
-    # Float 适合价格，但要注意精度问题（生产环境建议用 Decimal）
+    # ── 供货价/销量/店铺 ──────────────────────────────────────
+    # price 是 1688 来源供货参考价，不是 Shopify/Amazon 的销售价。
+    # 可发布售价统一从 ProductVariant.price 读取。
     price: Mapped[float | None] = mapped_column(Float, nullable=True)
     sales_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     shop_name: Mapped[str | None] = mapped_column(String(255), nullable=True)

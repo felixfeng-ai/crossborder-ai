@@ -62,6 +62,13 @@ interface Overview {
   last_scanned_at: string | null
 }
 
+interface ShopifySyncChannel {
+  id: string
+  shop_name: string
+  shop_domain: string
+  is_active: boolean
+}
+
 const EMPTY_SETTINGS: MonitorSettingsForm = {
   target_margin_rate: '25',
   low_stock_days: '7',
@@ -81,6 +88,7 @@ export default function OperationsPage() {
   const [actionError, setActionError] = useState('')
   const [syncMessage, setSyncMessage] = useState('')
   const [savedRateId, setSavedRateId] = useState('')
+  const [syncChannelId, setSyncChannelId] = useState('')
 
   const overviewQuery = useQuery<Overview>({
     queryKey: ['operations-overview'],
@@ -99,6 +107,20 @@ export default function OperationsPage() {
       return response.data
     },
   })
+
+  const shopifyChannelsQuery = useQuery<ShopifySyncChannel[]>({
+    queryKey: ['operations-shopify-channels'],
+    queryFn: async () => {
+      const response = await apiClient.get('/shopify/channels')
+      return response.data || []
+    },
+  })
+
+  useEffect(() => {
+    if (!syncChannelId && shopifyChannelsQuery.data?.length) {
+      setSyncChannelId(shopifyChannelsQuery.data[0].id)
+    }
+  }, [shopifyChannelsQuery.data, syncChannelId])
 
   useEffect(() => {
     const settings = overviewQuery.data?.settings
@@ -144,6 +166,37 @@ export default function OperationsPage() {
       scanMutation.mutate()
     },
     onError: (error) => setActionError(toErrorMessage(error, '供货价同步失败')),
+  })
+
+  const syncShopifyMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.post('/shopify/sync-operations', null, {
+        params: { channel_id: syncChannelId, days: 30 },
+      })
+      return response.data as {
+        orders_scanned: number
+        products_scanned: number
+        sales_rate_updates: number
+        stock_updates: number
+        unmatched_skus: string[]
+      }
+    },
+    onMutate: () => {
+      setActionError('')
+      setSyncMessage('')
+    },
+    onSuccess: (data) => {
+      const unmatched = data.unmatched_skus.length
+        ? `，${data.unmatched_skus.length} 个 SKU 未匹配`
+        : ''
+      setSyncMessage(
+        `Shopify 同步完成：${data.orders_scanned} 个订单，`
+        + `${data.sales_rate_updates} 个销量更新，`
+        + `${data.stock_updates} 个库存更新${unmatched}`,
+      )
+      scanMutation.mutate()
+    },
+    onError: (error) => setActionError(toErrorMessage(error, 'Shopify 数据同步失败')),
   })
 
   const saveSettingsMutation = useMutation({
@@ -211,6 +264,31 @@ export default function OperationsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <select
+            value={syncChannelId}
+            onChange={(event) => setSyncChannelId(event.target.value)}
+            className="h-10 min-w-40 rounded-md border border-input bg-background px-3 text-sm"
+            aria-label="选择 Shopify 同步店铺"
+          >
+            <option value="">选择 Shopify 店铺</option>
+            {(shopifyChannelsQuery.data || []).map((channel) => (
+              <option key={channel.id} value={channel.id}>
+                {channel.shop_name}
+              </option>
+            ))}
+          </select>
+          <Button
+            variant="outline"
+            onClick={() => syncShopifyMutation.mutate()}
+            disabled={!syncChannelId || syncShopifyMutation.isPending}
+          >
+            {syncShopifyMutation.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            {syncShopifyMutation.isPending ? '同步中...' : '同步 Shopify 数据'}
+          </Button>
           <Button
             variant="outline"
             onClick={() => refreshCostsMutation.mutate()}

@@ -154,6 +154,7 @@ class Settings(BaseSettings):
     SHOPIFY_API_KEY: Optional[str] = None
     SHOPIFY_API_SECRET: Optional[str] = None
     SHOPIFY_REDIRECT_URI: Optional[str] = None
+    SHOPIFY_API_VERSION: str = "2026-10"
 
     # --- Amazon SP-API ---
     AMAZON_APP_ID: Optional[str] = None

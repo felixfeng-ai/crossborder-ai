@@ -46,7 +46,11 @@ class ManualProductRequest(BaseModel):
     url: str = Field(..., description="商品链接")
     title: Optional[str] = None
     main_image_url: Optional[str] = None
-    price: Optional[float] = Field(None, ge=0)
+    price: Optional[float] = Field(
+        None,
+        ge=0,
+        description="1688 供货参考价，不是平台销售价",
+    )
     sales_count: Optional[int] = Field(None, ge=0)
     shop_name: Optional[str] = None
 
@@ -57,7 +61,10 @@ class ProductResponse(BaseModel):
     url: str
     title: Optional[str] = None
     main_image_url: Optional[str] = None
-    price: Optional[float] = None
+    price: Optional[float] = Field(
+        None,
+        description="1688 供货参考价，不是平台销售价",
+    )
     sales_count: Optional[int] = None
     shop_name: Optional[str] = None
     created_at: datetime

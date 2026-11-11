@@ -27,6 +27,9 @@ describe('石墨决策台设计契约', () => {
 
     expect(globals).toContain('--factory-ground: #0d0e0e')
     expect(globals).toContain('--factory-accent: #d8b56d')
+    expect(globals).toContain('--factory-success: #8ebba7')
+    expect(globals).toContain('--factory-danger: #d98b70')
+    expect(globals).toContain('--font-data: var(--font-latin)')
     expect(globals).not.toContain('--aurora-a')
     expect(globals).not.toContain('--gradient-from')
     expect(themes).toContain("name: 'graphite'")
@@ -50,7 +53,11 @@ describe('石墨决策台设计契约', () => {
     const dashboard = readSource('src/pages/dashboard/DashboardPage.tsx')
 
     expect(dashboard).toContain('data-dashboard-protagonist="product-pipeline"')
-    expect(dashboard).toContain('经营决策')
+    expect(dashboard).toContain('经营总览')
+    expect(dashboard).toContain('pipeline?.stages')
+    expect(dashboard).toContain('recent_operations')
+    expect(dashboard).toContain('巡检详情')
+    expect(dashboard).toContain('aria-expanded')
     expect(dashboard).not.toContain('👋')
     expect(dashboard).not.toContain('grid grid-cols-4 gap-3')
   })

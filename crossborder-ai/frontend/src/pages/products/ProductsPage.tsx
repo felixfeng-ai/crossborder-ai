@@ -275,7 +275,7 @@ export default function ProductsPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2"><Label>商品链接 *</Label><Input value={manualForm.url} onChange={(e) => setManualForm({ ...manualForm, url: e.target.value })} /></div>
                 <div className="space-y-2"><Label>标题</Label><Input value={manualForm.title} onChange={(e) => setManualForm({ ...manualForm, title: e.target.value })} /></div>
-                <div className="space-y-2"><Label>价格</Label><Input value={manualForm.price} onChange={(e) => setManualForm({ ...manualForm, price: e.target.value })} /></div>
+                <div className="space-y-2"><Label>采购/供货价</Label><Input value={manualForm.price} onChange={(e) => setManualForm({ ...manualForm, price: e.target.value })} /></div>
                 <div className="space-y-2"><Label>店铺</Label><Input value={manualForm.shop_name} onChange={(e) => setManualForm({ ...manualForm, shop_name: e.target.value })} /></div>
                 <div className="space-y-2"><Label>销量</Label><Input value={manualForm.sales_count} onChange={(e) => setManualForm({ ...manualForm, sales_count: e.target.value })} /></div>
               </div>
@@ -373,7 +373,7 @@ export default function ProductsPage() {
                     <div className="mt-1.5 flex items-center gap-3">
                       {product.price != null && (
                         <span className="metric-number text-sm font-medium">
-                          ¥{product.price.toFixed(2)}
+                          供货 ¥{product.price.toFixed(2)}
                         </span>
                       )}
                     </div>

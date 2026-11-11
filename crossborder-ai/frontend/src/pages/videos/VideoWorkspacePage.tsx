@@ -2,7 +2,11 @@ import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Clapperboard } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { videoTabFromSearch, type VideoWorkspaceTab } from '@/lib/navigation'
+import {
+  VIDEO_WORKSPACE_TABS,
+  videoTabFromSearch,
+  type VideoWorkspaceTab,
+} from '@/lib/navigation'
 import MarketingVideosPage from './MarketingVideosPage'
 import VideosPage from './VideosPage'
 
@@ -35,12 +39,11 @@ export default function VideoWorkspacePage() {
 
       <Tabs value={tab} onValueChange={switchTab}>
         <TabsList className="w-full justify-start sm:w-auto">
-          <TabsTrigger value="marketing" className="min-w-28">
-            营销成片
-          </TabsTrigger>
-          <TabsTrigger value="single" className="min-w-28">
-            单镜头生成
-          </TabsTrigger>
+          {VIDEO_WORKSPACE_TABS.map((item) => (
+            <TabsTrigger key={item.id} value={item.id} className="min-w-28">
+              {item.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
         <TabsContent value="marketing" className="mt-4">
           <MarketingVideosPage embedded />

@@ -41,9 +41,17 @@ from app.services.listing_service import (
 )
 from app.services import provider_config
 from app.services.publication_service import (
-    create_publication,
     find_publication_by_idempotency,
     publication_response,
+)
+from app.services.shopify_publish_service import (
+    ShopifyPublishError,
+    publish_shopify_product,
+    serialize_shopify_publish_result,
+)
+from app.services.shopify_operations_sync import (
+    ShopifyOperationsSyncError,
+    sync_shopify_operations,
 )
 router = APIRouter(prefix="/shopify", tags=["Shopify"])
 
@@ -546,6 +554,7 @@ async def check_compliance(
 @router.post("/push")
 async def push_product(
     payload: PushProductRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     idempotency_key: str = Header(default="", alias="Idempotency-Key"),
@@ -640,15 +649,6 @@ async def push_product(
     # 查 Shopify 渠道
     channel = await get_channel(payload.channel_id, current_user.id, db)
 
-    publication = await create_publication(
-        db,
-        user_id=current_user.id,
-        listing_id=listing.id if listing is not None else None,
-        platform="shopify",
-        channel_id=str(channel.id),
-        idempotency_key=idempotency_key,
-    )
-
     # 合规审查（双重：正则 + AI 复查）
     content_title = listing.title if listing is not None else product.title
     content_description = (
@@ -679,43 +679,48 @@ async def push_product(
                 },
             )
 
-    # 调用 Shopify API 创建商品（F8 Publisher）
-    # root cause：shop_name 现在只存裸子域，拼域统一走 _channel_domain，杜绝双重域名；
-    # access_token 库内为密文（enc: 前缀），调 API 前必须先 decrypt。
-    shop_url = f"https://{_channel_domain(channel)}/admin/api/2024-10"
-    headers = {
-        "X-Shopify-Access-Token": decrypt_value(channel.access_token),
-        "Content-Type": "application/json",
-    }
-
-    product_data = {
-        "product": {
-            "title": content_title or "Untitled",
-            "body_html": content_description or "",
-            "status": "draft",
-            "variants": [{"price": str(product.price)}] if product.price else [],
-        }
-    }
-
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(f"{shop_url}/products.json", json=product_data, headers=headers)
-        if resp.status_code not in (200, 201):
-            publication.status = "failed"
-            publication.error = resp.text[:500]
-            await db.commit()
-            raise HTTPException(status_code=502, detail=f"Shopify 发布失败：{resp.text[:200]}")
-
-        shopify_product = resp.json().get("product", {})
-        if listing is not None:
-            listing.status = "published"
-            listing.published_at = datetime.now(timezone.utc)
-        publication.status = "completed"
-        publication.external_product_id = str(shopify_product.get("id") or "")
-        publication.external_url = (
-            f"https://{_channel_domain(channel)}/admin/products/{shopify_product.get('id')}"
+    # 网页与 Agent 统一从这里构建完整 Payload、调用 Shopify 并落发布记录。
+    public_app_url = (settings.APP_URL or "").strip().rstrip("/")
+    if not public_app_url or "localhost" in public_app_url or "127.0.0.1" in public_app_url:
+        public_app_url = str(request.base_url).rstrip("/")
+    try:
+        result = await publish_shopify_product(
+            db,
+            user=current_user,
+            product=product,
+            listing=listing,
+            channel=channel,
+            idempotency_key=idempotency_key,
+            app_url=public_app_url,
         )
-        await db.commit()
-        return publication_response(publication)
+    except ShopifyPublishError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return serialize_shopify_publish_result(result)
+
+
+@router.post("/sync-operations")
+async def sync_operations(
+    channel_id: str = Query(..., description="Shopify 渠道 ID"),
+    days: int = Query(30, ge=1, le=365),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """同步 Shopify 最近订单销量与本平台已发布商品库存。"""
+    if not check_feature_access(current_user, "shopify_publish"):
+        raise HTTPException(
+            status_code=403,
+            detail="Shopify 运营同步仅限 Standard 及以上套餐使用",
+        )
+    channel = await get_channel(channel_id, current_user.id, db)
+    try:
+        return await sync_shopify_operations(
+            db,
+            user=current_user,
+            channel=channel,
+            days=days,
+        )
+    except ShopifyOperationsSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 # ════════════════════════════════════════════════════════════════
@@ -737,7 +742,10 @@ async def list_shopify_orders(
     channel = await get_channel(channel_id, current_user.id, db)
     # root cause：旧实现用 channel.shop_name 拼域，而 shop_name 曾存全域名 → 双重域名打错地址。
     # 统一走 _channel_domain；token 是密文，调 API 前解密。
-    shop_url = f"https://{_channel_domain(channel)}/admin/api/2024-10"
+    shop_url = (
+        f"https://{_channel_domain(channel)}"
+        f"/admin/api/{settings.SHOPIFY_API_VERSION}"
+    )
     headers = {"X-Shopify-Access-Token": decrypt_value(channel.access_token)}
 
     async with httpx.AsyncClient() as client:
@@ -791,7 +799,10 @@ async def auto_refund(
         raise HTTPException(status_code=400, detail="请确认后再发起退款")
 
     # root cause：shop_name 存裸子域，拼域走 _channel_domain；token 密文先解密再用。
-    shop_url = f"https://{_channel_domain(channel)}/admin/api/2024-10"
+    shop_url = (
+        f"https://{_channel_domain(channel)}"
+        f"/admin/api/{settings.SHOPIFY_API_VERSION}"
+    )
     headers = {"X-Shopify-Access-Token": decrypt_value(channel.access_token)}
 
     # ③ 拉取已付款订单

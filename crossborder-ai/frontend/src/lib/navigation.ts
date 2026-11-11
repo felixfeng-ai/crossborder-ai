@@ -1,5 +1,13 @@
 export type VideoWorkspaceTab = 'marketing' | 'single'
 
+export const VIDEO_WORKSPACE_TABS: Array<{
+  id: VideoWorkspaceTab
+  label: string
+}> = [
+  { id: 'marketing', label: '营销成片' },
+  { id: 'single', label: '商品图生视频' },
+]
+
 export interface NavigationItem {
   label: string
   path: string

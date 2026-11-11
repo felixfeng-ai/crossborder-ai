@@ -23,13 +23,10 @@
 7. 返回结果 → GenerateResponse
 """
 
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import RateLimit
 from app.dependencies import get_current_user
@@ -42,8 +39,13 @@ from app.services.ai.persona_kit import (
     format_persona_block,
 )
 from app.services.ai.compliance import merge_banned_words, check_text, suggest_replacements
-from app.services.listing_service import persist_generated_listing
-from app.services import provider_config
+from app.services.listing_service import (
+    build_product_fact_block,
+    generate_and_persist_listing,
+    generate_listing_bullets,
+    generate_listing_description,
+    generate_listing_title,
+)
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/content", tags=["AI 内容生成"])
@@ -174,32 +176,17 @@ async def generate_listing(
             detail="商品缺少标题，请先补充商品信息",
         )
 
-    # ════════════════════════════════════════════════════════════
-    # 第 3 步：加载品牌调性（F5 Persona → Brand Kit，CAP-04）
-    # ════════════════════════════════════════════════════════════
-    # 统一经 services/ai/persona_kit.py 读取并渲染成中文「品牌档案」块，
-    # 缺失字段跳过；无配置则 block 为空（AI 不感知品牌）。
-    # 同一 kit 同时驱动文案注入（block）与图片风格（image_style_phrase）。
-    persona_block = ""
-    brand_banned_words: list[str] = []
-    persona = await fetch_persona(db, current_user.id)
-    if persona:
-        kit = build_persona_kit(persona)
-        persona_block = format_persona_block(kit)
-        brand_banned_words = kit.get("banned_words") or []
-
-    # ════════════════════════════════════════════════════════════
-    # 第 4 步：调用 AI 生成内容
-    # ════════════════════════════════════════════════════════════
-    # Listing 文案链路固定走可观测的分步生成，不再同步运行专家 Agent。
+    # 第 3-5 步统一由 Listing 服务完成：品牌注入、分步生成、SEO、
+    # 合规检查与版本化落库。网页与 Agent 不能各自维护一套生成逻辑。
     try:
-        llm = DeepSeekService()
-        # 标题、描述、卖点互不依赖，并发执行
-        t1 = _generate_title(llm, product, payload, persona_block)
-        t2 = _generate_description(llm, product, payload, persona_block)
-        t3 = _generate_bullets(llm, product, payload, persona_block)
-        title, description, bullets = await asyncio.gather(t1, t2, t3)
-        seo = await _optimize_seo(llm, title, description, payload, persona_block)
+        generated = await generate_and_persist_listing(
+            db,
+            user=current_user,
+            product=product,
+            platform=payload.platform,
+            language=payload.language,
+            tone=payload.tone,
+        )
     except Exception as e:
         # 捕获所有 AI 调用异常，返回统一的中文错误提示
         # 不暴露具体的 API 错误信息，因为终端用户看不懂
@@ -208,52 +195,9 @@ async def generate_listing(
             detail="AI 生成服务暂不可用，请稍后重试",
         )
 
-    # ════════════════════════════════════════════════════════════
-    # 第 4.5 步：合规后置校验（CAP-05）
-    # ════════════════════════════════════════════════════════════
-    # 回写/发布前扫描：用户品牌禁词 + 平台极限词库；命中任一 → blocked=True，
-    # 返回 violations 与修正建议 suggestions，由前端拦截保存并引导一键替换。
-    violations: list[str] = []
-    texts_to_check = {
-        "title": title,
-        "description": description,
-        "bullet_points": "\n".join(bullets),
-        "seo_title": seo.get("seo_title", ""),
-        "seo_description": seo.get("seo_description", ""),
-    }
-    word_list = merge_banned_words(brand_banned_words)
-    for v in texts_to_check.values():
-        if v:
-            for w in check_text(v, word_list):
-                if w not in violations:
-                    violations.append(w)
-    blocked = bool(violations)
-    suggestions = suggest_replacements(violations) if blocked else []
-
     # Listing 只处理文案；图片由图片工作台独立管理。
     image_url = ""
     image_task_id = ""
-
-    # ════════════════════════════════════════════════════════════
-    # 第 5.5 步：持久化 ListingDraft + 版本化合规报告
-    # ════════════════════════════════════════════════════════════
-    draft = await persist_generated_listing(
-        db,
-        user=current_user,
-        product=product,
-        platform=payload.platform,
-        language=payload.language,
-        tone=payload.tone,
-        title=title,
-        description=description,
-        bullet_points=bullets,
-        seo_title=seo.get("seo_title", ""),
-        seo_description=seo.get("seo_description", ""),
-        violations=violations,
-        blocked=blocked,
-        ai_model_used=provider_config.get("deepseek", "model", settings.DEEPSEEK_MODEL),
-        image_task_id=image_task_id,
-    )
 
     # ════════════════════════════════════════════════════════════
     # 第 6 步：扣减积分
@@ -268,20 +212,20 @@ async def generate_listing(
     # FastAPI 自动把 GenerateResponse 序列化为 JSON
     # response_model=GenerateResponse 也起到了文档作用（自动生成 API 文档）
     return GenerateResponse(
-        title=title,
-        description=description,
-        bullet_points=bullets,
-        seo_title=seo.get("seo_title", ""),
-        seo_description=seo.get("seo_description", ""),
+        title=generated.title,
+        description=generated.description,
+        bullet_points=generated.bullet_points,
+        seo_title=generated.seo_title,
+        seo_description=generated.seo_description,
         image_url=image_url,
         image_task_id=image_task_id,
-        model_used=provider_config.get("deepseek", "model", settings.DEEPSEEK_MODEL),
-        listing_id=str(draft.id),
-        listing_status=draft.status,
-        compliance_status=draft.compliance_status,
-        blocked=blocked,
-        violations=violations,
-        suggestions=suggestions,
+        model_used=generated.model_used,
+        listing_id=str(generated.draft.id),
+        listing_status=generated.draft.status,
+        compliance_status=generated.draft.compliance_status,
+        blocked=generated.blocked,
+        violations=generated.violations,
+        suggestions=generated.suggestions,
     )
 
 
@@ -333,7 +277,7 @@ async def generate_a_plus(
         user_prompt=(
             f"Create an A+ Content product description for {payload.platform} in {payload.language.upper()}.\n"
             f"Product: {product.title}\n"
-            f"Price: {product.price}\n\n"
+            f"Supply reference price: {product.price}\n\n"
             f"Structure:\n"
             f"1. Hero section with product name and tagline\n"
             f"2. Key features grid (4 items, each with emoji icon)\n"
@@ -385,26 +329,14 @@ async def _generate_title(
     把所有上下文拼成一个 prompt，传给 DeepSeek。
     品牌档案（persona_block）放到 system prompt 顶部统一注入（CAP-04）。
     """
-    lang_instruction = f"Write the title in {payload.language.upper()}." if payload.language != "zh" else "用中文写标题。"
-    facts = _product_fact_block(product)
-    prompt = (
-        f"Generate an optimized {payload.platform} product title (max 200 chars, {payload.tone} tone)."
-        f"{lang_instruction}\n"
-        f"Product: {product.title}\n"
-        f"{facts}"
+    return await generate_listing_title(
+        llm,
+        product,
+        platform=payload.platform,
+        language=payload.language,
+        tone=payload.tone,
+        persona_block=persona_block,
     )
-    # 重试最多3次，应对 DeepSeek API 限流导致的空响应
-    for attempt in range(3):
-        result = await llm.generate(
-            system_prompt=f"You are a professional {payload.platform} listing copywriter.",
-            user_prompt=prompt,
-            max_tokens=300,
-            persona_block=persona_block,
-        )
-        if result and result.strip():
-            return result
-        await asyncio.sleep(1)
-    return ""
 
 
 async def _generate_description(
@@ -414,12 +346,12 @@ async def _generate_description(
     persona_block: str = "",
 ) -> str:
     """调用 AI 生成商品描述"""
-    return await llm.generate_product_description(
-        product_title=product.title,
-        product_features=_product_fact_block(product),
+    return await generate_listing_description(
+        llm,
+        product,
         platform=payload.platform,
+        language=payload.language,
         tone=payload.tone,
-        target_language=payload.language if payload.language != "en" else None,
         persona_block=persona_block,
     )
 
@@ -431,9 +363,9 @@ async def _generate_bullets(
     persona_block: str = "",
 ) -> list[str]:
     """调用 AI 生成卖点列表（Bullet Points）"""
-    return await llm.generate_bullet_points(
-        product_title=product.title,
-        features=_product_fact_block(product),
+    return await generate_listing_bullets(
+        llm,
+        product,
         platform=payload.platform,
         persona_block=persona_block,
     )
@@ -441,18 +373,7 @@ async def _generate_bullets(
 
 def _product_fact_block(product: Product) -> str:
     """构建 Listing Prompt 的商品事实块，避免模型只凭标题猜测卖点。"""
-    lines = []
-    if product.description:
-        lines.append(f"Description: {product.description[:1500]}")
-    if product.price is not None:
-        lines.append(f"Price: {product.price}")
-    if product.shop_name:
-        lines.append(f"Shop: {product.shop_name}")
-    if product.sales_count is not None:
-        lines.append(f"Sales: {product.sales_count}")
-    if product.main_image_url:
-        lines.append("Primary product image: available for downstream asset workflow")
-    return "\n".join(lines) or "No additional product facts provided."
+    return build_product_fact_block(product)
 
 
 async def _optimize_seo(

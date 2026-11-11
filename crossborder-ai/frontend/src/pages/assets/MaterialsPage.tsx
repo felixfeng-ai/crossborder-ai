@@ -118,7 +118,7 @@ export default function MaterialsPage() {
             素材中心
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            集中查找和复用商品原图、白底图、AI 图片、单镜头视频与营销成片。
+            集中查找和复用商品原图、白底图、AI 图片、商品图生视频与营销成片。
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -188,7 +188,7 @@ export default function MaterialsPage() {
                     active={videoFilter === 'single'}
                     onClick={() => setVideoFilter('single')}
                   >
-                    单镜头 {videos.filter((item) => item.source === 'single').length}
+                    商品图生视频 {videos.filter((item) => item.source === 'single').length}
                   </FilterButton>
                 </div>
                 <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -301,7 +301,7 @@ function VideoRow({
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{item.name}</span>
         <span className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-          <span>{item.source === 'marketing' ? '营销成片' : '单镜头'}</span>
+          <span>{item.source === 'marketing' ? '营销成片' : '商品图生视频'}</span>
           <span>·</span>
           <span className="metric-number">{item.duration}s</span>
           <span>·</span>

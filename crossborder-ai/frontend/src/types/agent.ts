@@ -47,14 +47,26 @@ export interface SelectionReport {
 }
 
 /** Agent 执行步骤 —— 对应 /agent/run 返回的 steps[] */
+export interface AgentStepLink {
+  label: string
+  href: string
+}
+
 export interface AgentStep {
   action: string
   status: 'success' | 'failed' | 'partial'
   summary?: string
   error?: string
+  links?: AgentStepLink[]
   data?: {
     keyword?: string
     report?: string
     structured?: SelectionReport | null
+    listing_id?: string
+    product_id?: string
+    task_id?: string
+    project_id?: string
+    requires_confirmation?: boolean
+    [key: string]: unknown
   }
 }

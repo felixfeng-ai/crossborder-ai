@@ -8,6 +8,7 @@ import {
   ArrowRight, CheckCircle2, Zap,
 } from 'lucide-react'
 import { BrandMark } from '@/components/brand/BrandMark'
+import PublicLegalFooter from '@/components/legal/PublicLegalFooter'
 
 const container = {
   hidden: { opacity: 0 },
@@ -337,9 +338,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className="relative z-10 space-y-1 border-t border-border py-6 text-center text-xs text-muted-foreground">
-        <p>© 2026 VeyaShip AI. All rights reserved.</p>
-      </footer>
+      <PublicLegalFooter />
     </div>
   )
 }

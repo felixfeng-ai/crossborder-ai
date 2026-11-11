@@ -8,6 +8,7 @@ import { AuthLayout } from '@/components/auth/AuthLayout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import LegalConsent from '@/components/legal/LegalConsent'
 import { useAuthStore } from '@/stores/authStore'
 
 const loginSchema = z.object({
@@ -114,6 +115,8 @@ export default function LoginPage() {
           {isLoading ? '登录中…' : '登录'}
         </Button>
       </form>
+
+      <LegalConsent mode="login" />
 
       <div className="mt-4 flex items-center justify-between gap-4 text-[11px] text-muted-foreground">
         <Link to="/" className="hover:text-foreground">

@@ -20,6 +20,8 @@ import VideoWorkspacePage from '@/pages/videos/VideoWorkspacePage'
 import MaterialsPage from '@/pages/assets/MaterialsPage'
 import CatalogPage from '@/pages/catalog/CatalogPage'
 import OperationsPage from '@/pages/operations/OperationsPage'
+import LegalDocumentPage from '@/pages/legal/LegalPage'
+import { LEGAL_DOCUMENTS } from '@/lib/legal'
 import { useAuthStore } from '@/stores/authStore'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -35,6 +37,13 @@ export default function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      {LEGAL_DOCUMENTS.map((document) => (
+        <Route
+          key={document.path}
+          path={document.path}
+          element={<LegalDocumentPage document={document} />}
+        />
+      ))}
 
       {/* 应用页面（需登录） */}
       <Route

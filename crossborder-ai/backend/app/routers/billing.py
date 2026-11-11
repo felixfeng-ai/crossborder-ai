@@ -42,6 +42,7 @@ PLANS = [
         "name": config["name"],
         "price": config["price"],
         "price_label": "免费" if config["price"] == 0 else f"¥{config['price']}/月",
+        "monthly_credits": config["monthly_credits"],
         "description": (
             "试试基本功能"
             if plan == "free"
@@ -50,10 +51,37 @@ PLANS = [
             else "适合工作室与专业卖家"
         ),
         "features": [
-            f"每月 {config['monthly_credits']} AI 积分",
-            *( ["1688 商品抓取", "利润计算器", "合规审查"] if plan == "free" else []),
-            *( ["AI 智能助手", "批量生成与 Shopify 发布", "全部 11 个平台"] if plan == "standard" else []),
-            *( ["所有 Standard 功能", "AI 图片与视频生成", "优先技术支持"] if plan == "professional" else []),
+            f"每月 {config['monthly_credits']:,} AI 积分",
+            *(
+                [
+                    "1688 商品抓取与利润测算",
+                    "Listing、合规与 VOC 评论洞察",
+                    "品类分析与 AI Insights 各 10 次/月",
+                ]
+                if plan == "free"
+                else []
+            ),
+            *(
+                [
+                    "AI Agent、批量处理与自动巡检",
+                    "Shopify 草稿发布与运营同步",
+                    "11 个平台 Listing 文案生成",
+                    "每月 10 次手动整店巡检",
+                ]
+                if plan == "standard"
+                else []
+            ),
+            *(
+                [
+                    "所有 Standard 功能",
+                    "AI 图片、商品视频与营销成片",
+                    "字幕、AI 配音与素材中心",
+                    "每月 20 次手动整店巡检",
+                    "优先技术支持",
+                ]
+                if plan == "professional"
+                else []
+            ),
         ],
         "validity_days": config["valid_days"],
         "recommended": plan == "standard",

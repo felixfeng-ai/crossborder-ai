@@ -324,6 +324,14 @@ class AgentOrchestrator:
         {
             "type": "function",
             "function": {
+                "name": "monitor_products",
+                "description": "扫描 SKU 毛利、库存覆盖、补货点和未处理预警",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "self_reflect",
                 "description": "审查生成内容的质量，评分并给出改进建议",
                 "parameters": {
@@ -597,6 +605,7 @@ class AgentOrchestrator:
 - 用户提到分析/市场/能不能做/品类 → 用 analyze_category
 - 用户提到选品/推荐/做点什么/想做XX → 用 select_products
 - 用户提到检查店铺/巡检/看看我的商品 → 用 store_check
+- 用户提到库存/补货/毛利/预警/哪些商品要处理 → 用 monitor_products
 - 用户提到商品链接 + 能不能做/值不值得 → 用 analyze_product_decision
 - 用户提到商品链接 → 用 scrape_1688
 - 用户提到生成/发布/上架 → 用 generate_listing
@@ -639,7 +648,11 @@ class AgentOrchestrator:
    参数: 无（检查当前用户所有商品）
    输出: 有问题的商品列表（缺标题/价格等）
 
-10. self_reflect — 内容质量自检
+10. monitor_products — 运营监控
+   参数: 无
+   输出: SKU 毛利、库存覆盖天数、补货点和未处理预警
+
+11. self_reflect — 内容质量自检
    参数: {"content": "要审查的内容", "platform": "目标平台"}
    输出: 质量评分、问题、改进建议
 
@@ -678,6 +691,8 @@ class AgentOrchestrator:
                 return await self._do_select_products(params)
             elif action == "store_check":
                 return await self._do_store_check(params)
+            elif action == "monitor_products":
+                return await self._do_monitor_products(params)
             elif action == "self_reflect":
                 return await self._do_self_reflect(params)
             elif action == "create_product":
@@ -1128,6 +1143,23 @@ class AgentOrchestrator:
             "action": "store_check",
             "status": "success",
             "data": {"total": total, "healthy": healthy, "issues": issues},
+            "summary": summary,
+        }
+
+    async def _do_monitor_products(self, params: dict) -> dict:
+        """执行 SKU 运营扫描，返回补货计划和预警摘要。"""
+        from app.services.operations_monitor import run_monitor_scan
+
+        result = await run_monitor_scan(self.db, self.user)
+        summary = (
+            f"运营扫描完成：{result['sku_count']} 个 SKU，"
+            f"{result['reorder_count']} 个需补货，"
+            f"{result['open_alerts']} 个待处理预警"
+        )
+        return {
+            "action": "monitor_products",
+            "status": "success",
+            "data": result,
             "summary": summary,
         }
 

@@ -70,6 +70,7 @@ def _serialize_variant(variant: ProductVariant) -> dict:
         "price": variant.price,
         "cost_price": variant.cost_price,
         "stock_quantity": variant.stock_quantity,
+        "daily_sales_rate": variant.daily_sales_rate,
         "barcode": variant.barcode,
         "image_url": variant.image_url,
         "is_active": variant.is_active,

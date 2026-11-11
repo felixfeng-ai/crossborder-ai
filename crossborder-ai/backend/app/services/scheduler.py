@@ -51,6 +51,13 @@ class SchedulerService:
             replace_existing=True,
         )
 
+        self.scheduler.add_job(
+            self._run_operations_monitor_locked,
+            CronTrigger(hour=2, minute=45),
+            id="operations_monitor_daily",
+            replace_existing=True,
+        )
+
         # Every 5 seconds: 分发 Agent 异步任务（任务队列核心）
         # 在跨进程锁内抢占 pending 任务，锁外并发执行，多 worker 不重复消费
         self.scheduler.add_job(
@@ -112,6 +119,22 @@ class SchedulerService:
     async def _run_store_checks_locked(self):
         """带跨进程锁的定时整店巡检（防 4 worker 重复写巡检记录）。"""
         await self._run_with_lock("store_check_daily", self._run_store_checks)
+
+    async def _run_operations_monitor_locked(self):
+        """带跨进程锁的每日运营监控。"""
+        await self._run_with_lock(
+            "operations_monitor_daily",
+            self._run_operations_monitor,
+        )
+
+    async def _run_operations_monitor(self):
+        """扫描所有拥有 SKU 的用户并生成快照与预警。"""
+        from app.services.operations_monitor import scan_all_users
+
+        async with async_session_factory() as db:
+            count = await scan_all_users(db)
+            await db.commit()
+            print(f"[Scheduler] 运营监控完成：{count} 个用户")
 
     async def _run_store_checks(self):
         """定时整店巡检：检查所有用户的商品，记录结果"""

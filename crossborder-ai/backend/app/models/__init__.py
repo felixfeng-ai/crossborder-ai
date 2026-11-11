@@ -23,6 +23,9 @@ from app.models.publication import Publication
 from app.models.platform_connection import PlatformConnection
 from app.models.product_variant import ProductVariant
 from app.models.image_asset import ImageAsset
+from app.models.monitor_setting import MonitorSetting
+from app.models.variant_snapshot import VariantSnapshot
+from app.models.operation_alert import OperationAlert
 
 __all__ = [
     "User",
@@ -44,4 +47,7 @@ __all__ = [
     "PlatformConnection",
     "ProductVariant",
     "ImageAsset",
+    "MonitorSetting",
+    "VariantSnapshot",
+    "OperationAlert",
 ]

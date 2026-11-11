@@ -40,6 +40,8 @@ class ProductVariant(Base):
     price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     cost_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     stock_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # 用户提供或平台同步的日均销量；0 表示暂无可靠销量数据。
+    daily_sales_rate: Mapped[float] = mapped_column(Float, default=0, nullable=False)
     barcode: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

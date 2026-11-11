@@ -9,6 +9,7 @@ const ACTION_LABELS: Record<string, string> = {
   select_products: 'AI 选品',
   analyze_category: '品类市场分析',
   store_check: '店铺巡检',
+  monitor_products: '运营监控',
   self_reflect: '内容质量检查',
   push_to_shopify: '发布到 Shopify',
   answer: '回复',

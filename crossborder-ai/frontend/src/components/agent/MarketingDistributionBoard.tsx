@@ -4,6 +4,7 @@ import {
   BarChart3,
   ExternalLink,
   Loader2,
+  RefreshCw,
   Send,
   Store,
   TriangleAlert,
@@ -46,6 +47,16 @@ interface PerformanceResponse {
     roas: number
   }
   currency: string
+}
+
+interface OptimizationResponse {
+  recommendations: Array<{
+    code: string
+    severity: string
+    title: string
+    detail: string
+    action: string
+  }>
 }
 
 export function MarketingDistributionBoard({
@@ -98,6 +109,15 @@ export function MarketingDistributionBoard({
     queryFn: async () => {
       const response = await apiClient.get(
         `/marketing-campaigns/${campaignId}/performance`,
+      )
+      return response.data
+    },
+  })
+  const optimizationQuery = useQuery<OptimizationResponse>({
+    queryKey: ['campaign-optimization', campaignId],
+    queryFn: async () => {
+      const response = await apiClient.get(
+        `/marketing-campaigns/${campaignId}/optimization`,
       )
       return response.data
     },
@@ -175,6 +195,26 @@ export function MarketingDistributionBoard({
       setError(toErrorMessage(mutationError, '效果数据保存失败'))
     },
   })
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.post('/shopify/sync-operations', null, {
+        params: { channel_id: channelId, days: 30 },
+      })
+      return response.data
+    },
+    onMutate: () => setError(''),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-performance', campaignId],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-optimization', campaignId],
+      })
+    },
+    onError: (mutationError) => {
+      setError(toErrorMessage(mutationError, 'Shopify 订单效果同步失败'))
+    },
+  })
 
   const totals = performanceQuery.data?.totals
   return (
@@ -234,6 +274,20 @@ export function MarketingDistributionBoard({
                 <Send className="mr-1 h-3.5 w-3.5" />
               )}
               发布 Shopify
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8"
+              disabled={!channelId || syncMutation.isPending}
+              onClick={() => syncMutation.mutate()}
+            >
+              {syncMutation.isPending ? (
+                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1 h-3.5 w-3.5" />
+              )}
+              同步订单效果
             </Button>
           </div>
         </div>
@@ -314,6 +368,35 @@ export function MarketingDistributionBoard({
                 </div>
               </div>
             ))}
+          </div>
+          <div className="mt-4 border-t border-border pt-3">
+            <p className="text-xs font-medium">营销优化建议</p>
+            <div className="mt-2 space-y-2">
+              {(optimizationQuery.data?.recommendations || []).slice(0, 4).map((item) => (
+                <div key={item.code} className="border border-border px-2.5 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-medium">{item.title}</p>
+                    <Badge
+                      variant={
+                        item.severity === 'danger'
+                          ? 'destructive'
+                          : item.severity === 'warning'
+                            ? 'outline'
+                            : 'secondary'
+                      }
+                    >
+                      {item.severity}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                    {item.detail}
+                  </p>
+                  <p className="mt-1 text-[10px] leading-4 text-foreground">
+                    {item.action}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 

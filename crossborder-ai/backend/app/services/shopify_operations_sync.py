@@ -1,5 +1,6 @@
 """Shopify 订单销量与已发布商品库存同步。"""
 
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 from urllib.parse import parse_qs, urlparse
@@ -11,6 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.crypto import decrypt_value
 from app.core.config import settings
 from app.models.product_variant import ProductVariant
+from app.models.marketing_distribution import (
+    MarketingCampaignPublication,
+    MarketingPerformanceSnapshot,
+)
 from app.models.publication import Publication
 from app.models.shopify_channel import ShopifyChannel
 from app.models.user import User
@@ -50,6 +55,51 @@ def aggregate_order_sales(orders: Iterable[dict], *, days: int) -> dict[str, flo
         sku: round(quantity / safe_days, 4)
         for sku, quantity in quantities.items()
     }
+
+
+def aggregate_campaign_order_metrics(
+    orders: Iterable[dict],
+    campaign_by_external_product: dict[str, list],
+) -> dict:
+    """按 Shopify 商品 ID 汇总活动订单数和销售额。"""
+    metrics: dict = {}
+    for order in orders:
+        if order.get("cancelled_at"):
+            continue
+        if order.get("financial_status") in {"refunded", "voided"}:
+            continue
+        matched_campaigns: set = set()
+        for item in order.get("line_items") or []:
+            external_product_id = str(item.get("product_id") or "").strip()
+            campaign_ids = campaign_by_external_product.get(external_product_id) or []
+            if not campaign_ids:
+                continue
+            try:
+                quantity = max(0, int(item.get("quantity") or 0))
+                price = max(0.0, float(item.get("price") or 0))
+            except (TypeError, ValueError):
+                continue
+            if quantity <= 0:
+                continue
+            for campaign_id in campaign_ids:
+                bucket = metrics.setdefault(
+                    campaign_id,
+                    {
+                        "orders": 0,
+                        "revenue": 0.0,
+                        "currency": str(order.get("currency") or "USD"),
+                        "line_units": 0,
+                    },
+                )
+                bucket["revenue"] = round(
+                    float(bucket["revenue"]) + price * quantity,
+                    2,
+                )
+                bucket["line_units"] += quantity
+                matched_campaigns.add(campaign_id)
+        for campaign_id in matched_campaigns:
+            metrics[campaign_id]["orders"] += 1
+    return metrics
 
 
 def _next_page_info(link_header: str | None) -> str:
@@ -118,6 +168,23 @@ async def sync_shopify_operations(
         for item in publications
         if item.external_product_id
     ]
+    campaign_publications = (
+        await db.execute(
+            select(MarketingCampaignPublication).where(
+                MarketingCampaignPublication.user_id == user.id,
+                MarketingCampaignPublication.platform == "shopify",
+                MarketingCampaignPublication.channel_id == str(channel.id),
+                MarketingCampaignPublication.status == "completed",
+                MarketingCampaignPublication.external_product_id.is_not(None),
+            )
+        )
+    ).scalars().all()
+    campaign_by_external_product: dict[str, list] = {}
+    for item in campaign_publications:
+        key = str(item.external_product_id or "").strip()
+        if not key:
+            continue
+        campaign_by_external_product.setdefault(key, []).append(item.campaign_id)
 
     try:
         async with httpx.AsyncClient() as client:
@@ -128,14 +195,14 @@ async def sync_shopify_operations(
                     {
                         "limit": 250,
                         "page_info": page_info,
-                        "fields": "id,created_at,line_items,financial_status,cancelled_at",
+                        "fields": "id,created_at,line_items,financial_status,cancelled_at,currency",
                     }
                     if page_info
                     else {
                         "status": "any",
                         "limit": 250,
                         "created_at_min": created_at_min,
-                        "fields": "id,created_at,line_items,financial_status,cancelled_at",
+                        "fields": "id,created_at,line_items,financial_status,cancelled_at,currency",
                     }
                 )
                 orders_response = await client.get(
@@ -202,6 +269,54 @@ async def sync_shopify_operations(
             variant.stock_quantity = stock
             stock_updates += 1
 
+    campaign_metrics = aggregate_campaign_order_metrics(
+        orders,
+        campaign_by_external_product,
+    )
+    now = datetime.now(timezone.utc)
+    period_end = now.replace(hour=23, minute=59, second=59, microsecond=0)
+    period_start = (
+        period_end.replace(hour=0, minute=0, second=0)
+        - timedelta(days=safe_days - 1)
+    )
+    for campaign_id, values in campaign_metrics.items():
+        snapshot = (
+            await db.execute(
+                select(MarketingPerformanceSnapshot).where(
+                    MarketingPerformanceSnapshot.user_id == user.id,
+                    MarketingPerformanceSnapshot.campaign_id == campaign_id,
+                    MarketingPerformanceSnapshot.platform == "shopify",
+                    MarketingPerformanceSnapshot.source == "shopify_orders",
+                    MarketingPerformanceSnapshot.period_start == period_start,
+                    MarketingPerformanceSnapshot.period_end == period_end,
+                )
+            )
+        ).scalar_one_or_none()
+        if snapshot is None:
+            snapshot = MarketingPerformanceSnapshot(
+                user_id=user.id,
+                campaign_id=campaign_id,
+                platform="shopify",
+                source="shopify_orders",
+                period_start=period_start,
+                period_end=period_end,
+            )
+        snapshot.impressions = 0
+        snapshot.clicks = 0
+        snapshot.orders = int(values["orders"])
+        snapshot.conversions = int(values["orders"])
+        snapshot.spend = 0
+        snapshot.revenue = float(values["revenue"])
+        snapshot.currency = str(values["currency"] or "USD")
+        snapshot.metadata_json = json.dumps(
+            {
+                "shopify_orders_scanned": len(orders),
+                "matched_line_units": values["line_units"],
+            },
+            ensure_ascii=False,
+        )
+        db.add(snapshot)
+
     await db.commit()
     unmatched = sorted(sync_skus - set(variant_by_sku))
     return {
@@ -212,6 +327,7 @@ async def sync_shopify_operations(
         "products_scanned": len(products),
         "sales_rate_updates": sales_rate_updates,
         "stock_updates": stock_updates,
+        "campaign_performance_updates": len(campaign_metrics),
         "unmatched_skus": unmatched[:100],
         "synced_at": datetime.now(timezone.utc).isoformat(),
     }

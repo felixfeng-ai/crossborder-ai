@@ -99,6 +99,16 @@ async def test_campaign_metrics_import_and_aggregate(
     assert totals["clicks"] == 500
     assert totals["ctr"] == 5.0
     assert totals["roas"] == 6.0
+    optimization = await client.get(
+        f"/api/v1/marketing-campaigns/{campaign.id}/optimization",
+        headers=auth_headers,
+    )
+    assert optimization.status_code == 200, optimization.text
+    codes = {
+        item["code"] for item in optimization.json()["recommendations"]
+    }
+    assert "scale_winner" in codes
+    assert "connect_variant_metrics" in codes
 
     other = await client.post(
         "/api/v1/auth/register",

@@ -103,6 +103,33 @@ def _serialize_snapshot(snapshot: MarketingPerformanceSnapshot) -> dict:
     }
 
 
+def _aggregate_performance(snapshots: list[MarketingPerformanceSnapshot]) -> dict:
+    totals = {
+        "impressions": sum(item.impressions for item in snapshots),
+        "clicks": sum(item.clicks for item in snapshots),
+        "orders": sum(item.orders for item in snapshots),
+        "conversions": sum(item.conversions for item in snapshots),
+        "spend": round(sum(item.spend for item in snapshots), 2),
+        "revenue": round(sum(item.revenue for item in snapshots), 2),
+    }
+    totals["ctr"] = (
+        round(totals["clicks"] / totals["impressions"] * 100, 2)
+        if totals["impressions"]
+        else 0
+    )
+    totals["cvr"] = (
+        round(totals["orders"] / totals["clicks"] * 100, 2)
+        if totals["clicks"]
+        else 0
+    )
+    totals["roas"] = (
+        round(totals["revenue"] / totals["spend"], 2)
+        if totals["spend"]
+        else 0
+    )
+    return totals
+
+
 async def _owned_copy(
     db: AsyncSession,
     campaign_id: uuid.UUID,
@@ -373,29 +400,7 @@ async def get_campaign_performance(
             .limit(365)
         )
     ).scalars().all()
-    totals = {
-        "impressions": sum(item.impressions for item in snapshots),
-        "clicks": sum(item.clicks for item in snapshots),
-        "orders": sum(item.orders for item in snapshots),
-        "conversions": sum(item.conversions for item in snapshots),
-        "spend": round(sum(item.spend for item in snapshots), 2),
-        "revenue": round(sum(item.revenue for item in snapshots), 2),
-    }
-    totals["ctr"] = (
-        round(totals["clicks"] / totals["impressions"] * 100, 2)
-        if totals["impressions"]
-        else 0
-    )
-    totals["cvr"] = (
-        round(totals["orders"] / totals["clicks"] * 100, 2)
-        if totals["clicks"]
-        else 0
-    )
-    totals["roas"] = (
-        round(totals["revenue"] / totals["spend"], 2)
-        if totals["spend"]
-        else 0
-    )
+    totals = _aggregate_performance(snapshots)
     return {
         "totals": totals,
         "currency": next(
@@ -403,4 +408,95 @@ async def get_campaign_performance(
             "USD",
         ),
         "items": [_serialize_snapshot(item) for item in snapshots],
+    }
+
+
+@router.get("/{campaign_id}/optimization")
+async def get_campaign_optimization(
+    campaign_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """根据活动汇总数据生成不编造事实的优化建议。"""
+    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="营销活动不存在")
+    snapshots = (
+        await db.execute(
+            select(MarketingPerformanceSnapshot).where(
+                MarketingPerformanceSnapshot.user_id == current_user.id,
+                MarketingPerformanceSnapshot.campaign_id == campaign.id,
+            )
+        )
+    ).scalars().all()
+    copies = (
+        await db.execute(
+            select(MarketingCopyAsset).where(
+                MarketingCopyAsset.user_id == current_user.id,
+                MarketingCopyAsset.campaign_id == campaign.id,
+            )
+        )
+    ).scalars().all()
+    totals = _aggregate_performance(list(snapshots))
+    recommendations: list[dict] = []
+    if not snapshots:
+        recommendations.append({
+            "code": "collect_performance",
+            "severity": "info",
+            "title": "先积累效果数据",
+            "detail": "当前活动还没有曝光、点击或订单数据。",
+            "action": "同步 Shopify 订单，或导入广告平台效果快照。",
+        })
+    else:
+        if totals["impressions"] and totals["ctr"] < 1:
+            recommendations.append({
+                "code": "improve_hook",
+                "severity": "warning",
+                "title": "优先优化前 3 秒钩子",
+                "detail": f"当前 CTR 为 {totals['ctr']}%，低于 1% 的冷启动参考线。",
+                "action": "测试更直接的利益点、问题场景或强对比封面。",
+            })
+        if totals["clicks"] and totals["cvr"] < 2:
+            recommendations.append({
+                "code": "improve_conversion",
+                "severity": "warning",
+                "title": "检查点击后的转化承接",
+                "detail": f"当前 CVR 为 {totals['cvr']}%，点击后下单率偏低。",
+                "action": "检查商品页价格、折扣、配送承诺与文案是否一致。",
+            })
+        if totals["spend"] and totals["roas"] < 1.5:
+            recommendations.append({
+                "code": "reduce_spend",
+                "severity": "danger",
+                "title": "收紧低回报投放",
+                "detail": f"当前 ROAS 为 {totals['roas']}，低于 1.5 的止损参考线。",
+                "action": "暂停低转化素材并缩小受众，不要直接扩大预算。",
+            })
+        elif totals["roas"] >= 3:
+            recommendations.append({
+                "code": "scale_winner",
+                "severity": "success",
+                "title": "放大高回报组合",
+                "detail": f"当前 ROAS 为 {totals['roas']}，具备继续放量基础。",
+                "action": "逐步提高预算，并复用当前高表现素材和文案结构。",
+            })
+    blocked_copies = [item for item in copies if item.compliance_status == "block"]
+    if blocked_copies:
+        recommendations.append({
+            "code": "fix_compliance",
+            "severity": "danger",
+            "title": "先修复未通过合规的文案",
+            "detail": f"当前有 {len(blocked_copies)} 条文案存在合规问题。",
+            "action": "前往文案素材板修改后重新执行合规检查。",
+        })
+    recommendations.append({
+        "code": "connect_variant_metrics",
+        "severity": "info",
+        "title": "补齐 A/B 版本级数据",
+        "detail": "当前效果快照没有绑定具体 A/B 文案，不能据此宣布任一变体获胜。",
+        "action": "后续广告数据导入时携带 copy_id，再判断暂停或放量版本。",
+    })
+    return {
+        "metrics": totals,
+        "recommendations": recommendations,
     }

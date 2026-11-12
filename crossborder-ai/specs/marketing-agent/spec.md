@@ -259,6 +259,22 @@ A/B 两个版本。每条文案保存平台约束、标题、正文、CTA、标�
 - Then 数据保存为活动效果快照
 - And 活动页面计算 CTR、CVR、ROAS 和累计收入
 
+### Scenario: Shopify 订单自动回流
+
+- Given 活动发布记录包含 Shopify 外部商品 ID
+- When 用户同步 Shopify 运营数据
+- Then 订单商品按外部商品 ID 匹配到活动
+- And 订单数、销售额和来源元数据写入 `shopify_orders` 效果快照
+- And 重复同步更新同一周期快照，不重复累加
+
+### Scenario: 营销优化建议
+
+- Given 活动已有曝光、点击、订单、花费或收入数据
+- When 请求活动优化建议
+- Then 根据 CTR、CVR 和 ROAS 返回有依据的建议
+- And 没有文案变体级指标时明确提示不能判断 A/B 胜负
+- And 不伪造变体暂停或放量结论
+
 ### Scenario: 用户隔离
 
 - Given 其他用户的活动或效果数据

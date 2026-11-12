@@ -7,6 +7,11 @@ import pytest
 from sqlalchemy import select
 
 from app.core.crypto import encrypt_value
+from app.models.marketing_campaign import MarketingCampaign
+from app.models.marketing_distribution import (
+    MarketingCampaignPublication,
+    MarketingPerformanceSnapshot,
+)
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.publication import Publication
@@ -151,6 +156,29 @@ async def test_sync_endpoint_updates_sales_and_stock_without_overwriting_price(
             external_product_id="99001",
         )
     )
+    campaign = MarketingCampaign(
+        user_id=user.id,
+        product_id=product.id,
+        title="Shopify automatic performance",
+        objective="conversion",
+        platform="tiktok",
+        market="US",
+        language="en",
+        budget_credits=100,
+        brief_json="{}",
+    )
+    db_session.add(campaign)
+    await db_session.flush()
+    db_session.add(
+        MarketingCampaignPublication(
+            user_id=user.id,
+            campaign_id=campaign.id,
+            platform="shopify",
+            channel_id=str(channel.id),
+            status="completed",
+            external_product_id="99001",
+        )
+    )
     await db_session.flush()
 
     requested_urls: list[str] = []
@@ -174,9 +202,21 @@ async def test_sync_endpoint_updates_sales_and_stock_without_overwriting_price(
                     json={
                         "orders": [
                             {
+                                "id": 7001,
+                                "currency": "USD",
                                 "line_items": [
-                                    {"sku": "SYNC-BLACK", "quantity": 30},
-                                    {"sku": "SYNC-WHITE", "quantity": 6},
+                                    {
+                                        "sku": "SYNC-BLACK",
+                                        "product_id": 99001,
+                                        "quantity": 30,
+                                        "price": "39.90",
+                                    },
+                                    {
+                                        "sku": "SYNC-WHITE",
+                                        "product_id": 99001,
+                                        "quantity": 6,
+                                        "price": "42.90",
+                                    },
                                 ]
                             }
                         ]
@@ -219,6 +259,7 @@ async def test_sync_endpoint_updates_sales_and_stock_without_overwriting_price(
     assert response.status_code == 200, response.text
     assert response.json()["sales_rate_updates"] == 2
     assert response.json()["stock_updates"] == 2
+    assert response.json()["campaign_performance_updates"] == 1
     assert all("/admin/api/2026-10/" in url for url in requested_urls)
     await db_session.refresh(black)
     await db_session.refresh(white)
@@ -228,6 +269,17 @@ async def test_sync_endpoint_updates_sales_and_stock_without_overwriting_price(
     assert white.stock_quantity == 4
     assert black.price == 39.9
     assert white.price == 42.9
+    snapshots = (
+        await db_session.execute(
+            select(MarketingPerformanceSnapshot).where(
+                MarketingPerformanceSnapshot.campaign_id == campaign.id,
+                MarketingPerformanceSnapshot.source == "shopify_orders",
+            )
+        )
+    ).scalars().all()
+    assert len(snapshots) == 1
+    assert snapshots[0].orders == 1
+    assert snapshots[0].revenue == 1454.4
 
 
 @pytest.mark.asyncio

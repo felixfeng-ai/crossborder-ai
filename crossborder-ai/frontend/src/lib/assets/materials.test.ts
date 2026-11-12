@@ -125,4 +125,36 @@ describe('material center normalization', () => {
   it('展示到分钟的生成时间', () => {
     expect(formatMaterialDateTime('2026-11-11T10:05:00')).toBe('2026-11-11 10:05')
   })
+
+  it('已入库生成图不会和生成历史重复', () => {
+    const items = buildImageMaterials(
+      [
+        {
+          id: 'generated-asset',
+          name: 'AI 生成 · product photo',
+          kind: 'generated',
+          image_url: '/api/v1/images/assets/generated-asset/file',
+          width: 1024,
+          height: 1024,
+          file_size: 180000,
+          generation_task_id: 'task-1',
+          variant_index: 0,
+          created_at: '2026-11-11T12:00:00Z',
+        },
+      ],
+      [
+        {
+          task_id: 'task-1',
+          prompt: 'studio product photo',
+          image_urls: ['https://cdn.example.com/ai.webp'],
+          model_used: 'wanx',
+          status: 'completed',
+          created_at: '2026-11-11T12:00:00Z',
+        },
+      ],
+    )
+
+    expect(items).toHaveLength(1)
+    expect(items[0].id).toBe('generated-asset')
+  })
 })

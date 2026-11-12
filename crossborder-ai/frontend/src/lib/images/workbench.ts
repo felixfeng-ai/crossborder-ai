@@ -1,7 +1,7 @@
 export interface WorkbenchAsset {
   id: string
   name: string
-  kind: 'upload' | 'processed'
+  kind: 'upload' | 'processed' | 'generated'
   image_url: string
   width: number
   height: number
@@ -9,6 +9,8 @@ export interface WorkbenchAsset {
   preset_id?: string | null
   platform?: string | null
   background_mode?: string | null
+  generation_task_id?: string | null
+  variant_index?: number | null
   created_at: string
 }
 
@@ -30,6 +32,7 @@ export interface WorkbenchLibraryItem {
   height: number | null
   file_size: number | null
   platform?: string | null
+  assetId?: string
   taskId?: string
   prompt?: string
   model?: string
@@ -49,24 +52,33 @@ export function buildLibraryItems(
     height: asset.height,
     file_size: asset.file_size,
     platform: asset.platform,
+    assetId: asset.id,
     created_at: asset.created_at,
   }))
 
+  const materializedVariants = new Set(
+    assets
+      .filter((asset) => asset.generation_task_id && asset.variant_index != null)
+      .map((asset) => `${asset.generation_task_id}-${asset.variant_index}`),
+  )
   const generatedItems: WorkbenchLibraryItem[] = history.flatMap((task) =>
-    (task.image_urls || []).map((url, index) => ({
-      id: `${task.task_id}-${index}`,
-      name: `AI 生成 · ${task.prompt}`,
-      kind: 'generated' as const,
-      image_url: url,
-      width: null,
-      height: null,
-      file_size: null,
-      platform: 'AI',
-      taskId: task.task_id,
-      prompt: task.prompt,
-      model: task.model_used,
-      created_at: task.created_at,
-    })),
+    (task.image_urls || []).flatMap((url, index) => {
+      if (materializedVariants.has(`${task.task_id}-${index}`)) return []
+      return [{
+        id: `${task.task_id}-${index}`,
+        name: `AI 生成 · ${task.prompt}`,
+        kind: 'generated' as const,
+        image_url: url,
+        width: null,
+        height: null,
+        file_size: null,
+        platform: 'AI',
+        taskId: task.task_id,
+        prompt: task.prompt,
+        model: task.model_used,
+        created_at: task.created_at,
+      }]
+    }),
   )
 
   return [...localItems, ...generatedItems].sort(

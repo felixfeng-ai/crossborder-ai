@@ -155,8 +155,7 @@ export default function ImagesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (item: WorkbenchLibraryItem) => {
-      if (item.kind === 'generated') {
-        if (!item.taskId) throw new Error('AI 图片记录缺少任务 ID')
+      if (item.taskId && !item.assetId) {
         await apiClient.delete(`/images/history/${item.taskId}`)
         return
       }
@@ -524,7 +523,7 @@ export default function ImagesPage() {
                 {processMutation.isPending ? '处理中...' : '生成白底图'}
               </Button>
               {!selectedAsset && selected?.kind === 'generated' && (
-                <p className="text-xs text-muted-foreground">AI 生成图需先下载并重新上传后才能做白底适配。</p>
+                <p className="text-xs text-muted-foreground">该历史图片尚未入库，请先在素材库中选用已生成的图片素材。</p>
               )}
             </CardContent>
           </Card>
@@ -585,9 +584,9 @@ export default function ImagesPage() {
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title={deleteTarget?.kind === 'generated' ? '删除 AI 图片记录？' : '删除这张图片？'}
+        title={deleteTarget?.taskId && !deleteTarget.assetId ? '删除 AI 图片记录？' : '删除这张图片？'}
         description={
-          deleteTarget?.kind === 'generated'
+          deleteTarget?.taskId && !deleteTarget.assetId
             ? `将删除“${deleteTarget.prompt || deleteTarget.name}”对应的整条生成记录和全部结果，此操作不可恢复。`
             : `将删除“${deleteTarget?.name || '当前素材'}”及其存储文件，引用该素材的视频任务会失去首帧关联。`
         }

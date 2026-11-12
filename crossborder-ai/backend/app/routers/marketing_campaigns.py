@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.dependencies import get_current_user
+from app.models.image_asset import ImageAsset
 from app.models.marketing_campaign import MarketingCampaign
 from app.models.marketing_video import MarketingVideoProject
 from app.models.product import Product
@@ -175,6 +176,23 @@ async def list_campaign_assets(
             .limit(50)
         )
     ).scalars().all()
+    generated_assets = (
+        await db.execute(
+            select(ImageAsset)
+            .where(
+                ImageAsset.user_id == current_user.id,
+                ImageAsset.kind == "generated",
+                ImageAsset.generation_task_id.in_(
+                    [task.id for task in image_tasks]
+                ),
+            )
+            .order_by(ImageAsset.variant_index)
+        )
+    ).scalars().all() if image_tasks else []
+    generated_by_task: dict = {}
+    for asset in generated_assets:
+        if asset.generation_task_id is not None:
+            generated_by_task.setdefault(asset.generation_task_id, asset)
     video_tasks = (
         await db.execute(
             select(VideoGenerationTask)
@@ -204,13 +222,22 @@ async def list_campaign_assets(
             urls = json.loads(task.image_urls or "[]")
         except (json.JSONDecodeError, TypeError):
             urls = []
+        generated_asset = generated_by_task.get(task.id)
+        thumbnail_url = (
+            f"{settings.API_V1_PREFIX}/images/assets/{generated_asset.id}/file"
+            if generated_asset is not None
+            else urls[0] if isinstance(urls, list) and urls else None
+        )
         items.append({
             "id": str(task.id),
             "kind": "image",
             "status": task.status,
             "prompt": task.prompt,
             "urls": urls if isinstance(urls, list) else [],
-            "thumbnail_url": urls[0] if isinstance(urls, list) and urls else None,
+            "thumbnail_url": thumbnail_url,
+            "image_asset_id": (
+                str(generated_asset.id) if generated_asset is not None else None
+            ),
             "credits": task.credits_charged or task.credits_cost,
             "created_at": str(task.created_at),
         })

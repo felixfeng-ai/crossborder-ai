@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
+import { useSearchParams } from 'react-router-dom'
 import {
   CircleAlert,
   Clock3,
@@ -50,6 +51,8 @@ const DURATION_OPTIONS = [4, 6, 8, 10, 15, 20, 25, 30]
 
 export default function VideosPage({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const requestedSourceAssetId = searchParams.get('source_asset') || ''
   const [sourceAssetId, setSourceAssetId] = useState('')
   const [selectedTaskId, setSelectedTaskId] = useState('')
   const [templateId, setTemplateId] = useState('clean_product')
@@ -132,6 +135,15 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
       setSourceAssetId(assets[0].id)
     }
   }, [assets, sourceAssetId])
+
+  useEffect(() => {
+    if (
+      requestedSourceAssetId
+      && assets.some((asset) => asset.id === requestedSourceAssetId)
+    ) {
+      setSourceAssetId(requestedSourceAssetId)
+    }
+  }, [assets, requestedSourceAssetId])
 
   useEffect(() => {
     if (!history.length) {
@@ -381,7 +393,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
               )}
               {assets.length > 0 && (
                 <p className="text-[10px] leading-4 text-muted-foreground">
-                  首帧来自图片工作台的上传图和白底图。点击缩略图即可更换。
+                  首帧来自图片工作台的上传图、白底图和 AI 生成图。点击缩略图即可更换。
                 </p>
               )}
             </div>

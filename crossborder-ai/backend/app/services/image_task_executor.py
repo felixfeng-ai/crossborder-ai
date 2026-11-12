@@ -13,6 +13,7 @@ from app.core.database import async_session_factory
 from app.models.image_generation_task import ImageGenerationTask
 from app.models.user import User
 from app.services import provider_config
+from app.services.generated_image_assets import materialize_image_task_assets
 
 
 logger = logging.getLogger("veyaship")
@@ -76,6 +77,17 @@ async def run_image_generation(
                         error=None,
                         finished_at=datetime.now(timezone.utc),
                     )
+                    try:
+                        await materialize_image_task_assets(
+                            db,
+                            user_id=existing.user_id,
+                            task_id=tid,
+                            prompt=prompt,
+                            image_urls=list(urls),
+                        )
+                    except Exception as exc:
+                        # 生成成功优先；素材入库异常不能把任务改成失败。
+                        logger.warning("生成图片自动入库异常 task=%s: %s", tid, exc)
                     await _charge_completed_image_task(db, tid)
                     return
             except Exception as exc:
@@ -106,6 +118,16 @@ async def run_image_generation(
                         error=None,
                         finished_at=datetime.now(timezone.utc),
                     )
+                    try:
+                        await materialize_image_task_assets(
+                            db,
+                            user_id=existing.user_id,
+                            task_id=tid,
+                            prompt=prompt,
+                            image_urls=list(urls),
+                        )
+                    except Exception as exc:
+                        logger.warning("生成图片自动入库异常 task=%s: %s", tid, exc)
                     await _charge_completed_image_task(db, tid)
                     return
             except Exception as exc:

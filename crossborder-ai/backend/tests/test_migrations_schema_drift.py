@@ -43,6 +43,17 @@ def test_repair_migration_restores_stamped_schema_drift(
         conn.execute(sa.text("CREATE TABLE listing_drafts (id VARCHAR(36) PRIMARY KEY)"))
         conn.execute(sa.text("CREATE TABLE batch_jobs (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL)"))
         conn.execute(sa.text("CREATE TABLE image_generation_tasks (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL)"))
+        conn.execute(sa.text(
+            "CREATE TABLE image_assets ("
+            "id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL, "
+            "name VARCHAR(255) NOT NULL, kind VARCHAR(20) NOT NULL, "
+            "storage_key VARCHAR(500) NOT NULL UNIQUE, "
+            "content_type VARCHAR(100) NOT NULL, width INTEGER NOT NULL, "
+            "height INTEGER NOT NULL, file_size INTEGER NOT NULL, "
+            "preset_id VARCHAR(50), platform VARCHAR(50), "
+            "background_mode VARCHAR(20), source_asset_id VARCHAR(36), "
+            "created_at DATETIME, updated_at DATETIME)"
+        ))
         conn.execute(sa.text("CREATE TABLE product_variants (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL, sku VARCHAR(100) NOT NULL)"))
         conn.execute(sa.text("CREATE TABLE video_generation_tasks (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL)"))
         conn.execute(sa.text("CREATE TABLE marketing_video_projects (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL)"))
@@ -112,7 +123,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "038_campaign_assets"
+    assert version == "039_generated_image_assets"
     assert "provider" in _column_names(engine, "marketing_video_projects")
     assert "workspace" in _column_names(engine, "conversations")
     assert "campaign_id" in _column_names(engine, "conversations")
@@ -120,6 +131,10 @@ def test_repair_migration_restores_stamped_schema_drift(
     assert "campaign_id" in _column_names(engine, "image_generation_tasks")
     assert "campaign_id" in _column_names(engine, "video_generation_tasks")
     assert "campaign_id" in _column_names(engine, "marketing_video_projects")
+    assert {
+        "generation_task_id",
+        "variant_index",
+    } <= _column_names(engine, "image_assets")
 
 
 def test_full_sqlite_upgrade_from_empty_database(
@@ -168,7 +183,7 @@ def test_full_sqlite_upgrade_from_empty_database(
     } <= _column_names(engine, "products")
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "038_campaign_assets"
+    assert version == "039_generated_image_assets"
     assert "provider" in _column_names(engine, "marketing_video_projects")
     assert "workspace" in _column_names(engine, "conversations")
     assert "campaign_id" in _column_names(engine, "conversations")
@@ -176,6 +191,10 @@ def test_full_sqlite_upgrade_from_empty_database(
     assert "campaign_id" in _column_names(engine, "image_generation_tasks")
     assert "campaign_id" in _column_names(engine, "video_generation_tasks")
     assert "campaign_id" in _column_names(engine, "marketing_video_projects")
+    assert {
+        "generation_task_id",
+        "variant_index",
+    } <= _column_names(engine, "image_assets")
     assert "credit_transactions" in inspector.get_table_names()
     assert {
         "credit_wallets",

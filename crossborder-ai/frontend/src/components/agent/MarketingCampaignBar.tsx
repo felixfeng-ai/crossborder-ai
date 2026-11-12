@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, Film, Plus, Target } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import apiClient from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,6 +37,7 @@ interface CampaignAsset {
   prompt: string
   urls: string[]
   thumbnail_url: string | null
+  image_asset_id?: string | null
   credits: number
   created_at: string
 }
@@ -259,6 +261,18 @@ export function MarketingCampaignBar({
                   <span className="absolute bottom-0.5 right-0.5 bg-background/85 p-0.5 text-foreground">
                     <Film className="h-2.5 w-2.5" />
                   </span>
+                )}
+                {!isVideo && asset.image_asset_id && (
+                  <Link
+                    to={`/app/videos?tab=single&source_asset=${asset.image_asset_id}`}
+                    title="用此图生成视频"
+                    aria-label={`用图片“${asset.prompt}”生成视频`}
+                    className="absolute inset-0 flex items-end justify-end p-0.5 text-white transition-colors hover:bg-background/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <span className="bg-background/85 p-0.5 text-foreground">
+                      <Film className="h-2.5 w-2.5" />
+                    </span>
+                  </Link>
                 )}
               </div>
             )

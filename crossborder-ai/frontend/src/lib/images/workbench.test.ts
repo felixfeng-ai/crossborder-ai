@@ -60,4 +60,36 @@ describe('image workbench helpers', () => {
     expect(formatFileSize(1536)).toBe('1.5 KB')
     expect(formatFileSize(2 * 1024 * 1024)).toBe('2.0 MB')
   })
+
+  it('已入库的生成图不再重复展示远端历史结果', () => {
+    const items = buildLibraryItems(
+      [
+        {
+          id: 'generated-asset',
+          name: 'AI 生成 · product photo',
+          kind: 'generated',
+          image_url: '/api/v1/images/assets/generated-asset/file',
+          width: 1024,
+          height: 1024,
+          file_size: 180000,
+          generation_task_id: 'task-1',
+          variant_index: 0,
+          created_at: '2026-11-11T03:00:00Z',
+        },
+      ],
+      [
+        {
+          task_id: 'task-1',
+          prompt: 'product photo',
+          image_urls: ['https://example.com/generated.jpg'],
+          model_used: 'wanx',
+          status: 'completed',
+          created_at: '2026-11-11T03:00:00Z',
+        },
+      ],
+    )
+
+    expect(items).toHaveLength(1)
+    expect(items[0].id).toBe('generated-asset')
+  })
 })

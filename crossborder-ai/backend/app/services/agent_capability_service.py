@@ -102,6 +102,20 @@ async def list_user_materials(
             )
         )
     ).scalar_one()
+    materialized_task_ids = select(ImageAsset.generation_task_id).where(
+        ImageAsset.user_id == user.id,
+        ImageAsset.kind == "generated",
+        ImageAsset.generation_task_id.is_not(None),
+    )
+    legacy_image_task_total = (
+        await db.execute(
+            select(func.count()).select_from(ImageGenerationTask).where(
+                ImageGenerationTask.user_id == user.id,
+                ImageGenerationTask.status == "completed",
+                ImageGenerationTask.id.not_in(materialized_task_ids),
+            )
+        )
+    ).scalar_one()
     product_video_total = (
         await db.execute(
             select(func.count()).select_from(VideoGenerationTask).where(
@@ -132,6 +146,7 @@ async def list_user_materials(
             .where(
                 ImageGenerationTask.user_id == user.id,
                 ImageGenerationTask.status == "completed",
+                ImageGenerationTask.id.not_in(materialized_task_ids),
             )
             .order_by(
                 desc(ImageGenerationTask.created_at),
@@ -213,9 +228,11 @@ async def list_user_materials(
 
     return {
         "counts": {
-            "images": int(asset_total or 0) + int(image_task_total or 0),
+            "images": int(asset_total or 0) + int(legacy_image_task_total or 0),
             "image_assets": int(asset_total or 0),
             "generated_images": int(image_task_total or 0),
+            "materialized_generated_images": int(image_task_total or 0)
+            - int(legacy_image_task_total or 0),
             "product_videos": int(product_video_total or 0),
             "marketing_projects": int(marketing_total or 0),
         },

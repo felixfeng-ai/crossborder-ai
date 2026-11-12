@@ -33,6 +33,7 @@ from app.services.image_task_executor import (
     execute_image_generation_task,
     run_image_generation,
 )
+from app.services.generated_image_assets import materialize_image_task_assets
 from app.services import provider_config
 from app.services.ai.persona_kit import (
     fetch_persona,
@@ -93,6 +94,8 @@ class ImageAssetItem(BaseModel):
     platform: Optional[str] = None
     background_mode: Optional[str] = None
     source_asset_id: Optional[str] = None
+    generation_task_id: Optional[str] = None
+    variant_index: Optional[int] = None
     created_at: str
 
 
@@ -142,6 +145,10 @@ def _serialize_asset(asset: ImageAsset) -> ImageAssetItem:
         platform=asset.platform,
         background_mode=asset.background_mode,
         source_asset_id=str(asset.source_asset_id) if asset.source_asset_id else None,
+        generation_task_id=(
+            str(asset.generation_task_id) if asset.generation_task_id else None
+        ),
+        variant_index=asset.variant_index,
         created_at=str(asset.created_at),
     )
 
@@ -222,11 +229,11 @@ async def upload_image_asset(
 
 @router.get("/assets", response_model=ImageAssetListResponse)
 async def list_image_assets(
-    kind: Optional[str] = Query(None, pattern="^(upload|processed)$"),
+    kind: Optional[str] = Query(None, pattern="^(upload|processed|generated)$"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """列出当前用户的上传素材和处理结果。"""
+    """列出当前用户的上传、白底处理和 AI 生成素材。"""
     query = select(ImageAsset).where(ImageAsset.user_id == current_user.id)
     if kind:
         query = query.where(ImageAsset.kind == kind)
@@ -486,6 +493,49 @@ async def list_history(
     ]
 
 
+@router.post(
+    "/history/{task_id}/materialize",
+    response_model=ImageAssetListResponse,
+)
+async def materialize_history_images(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """把已完成的历史生成图补入库，供视频首帧和素材中心复用。"""
+    try:
+        parsed_id = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="图片任务不存在")
+    task = (
+        await db.execute(
+            select(ImageGenerationTask).where(
+                ImageGenerationTask.id == parsed_id,
+                ImageGenerationTask.user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="图片任务不存在")
+    if task.status != "completed":
+        raise HTTPException(status_code=409, detail="图片任务尚未完成")
+    urls = _parse_urls(task.image_urls)
+    if not urls:
+        raise HTTPException(status_code=409, detail="图片任务暂无可入库结果")
+
+    assets = await materialize_image_task_assets(
+        db,
+        user_id=current_user.id,
+        task_id=task.id,
+        prompt=task.prompt,
+        image_urls=urls,
+    )
+    return ImageAssetListResponse(
+        items=[_serialize_asset(asset) for asset in assets],
+        total=len(assets),
+    )
+
+
 @router.delete("/history/{task_id}", status_code=204)
 async def delete_history_task(
     task_id: str,
@@ -509,6 +559,15 @@ async def delete_history_task(
         raise HTTPException(status_code=404, detail="图片任务不存在")
     if task.status in {"pending", "processing"}:
         raise HTTPException(status_code=409, detail="图片任务仍在运行，暂时不能删除")
+    generated_assets = (
+        await db.execute(
+            select(ImageAsset).where(ImageAsset.generation_task_id == task.id)
+        )
+    ).scalars().all()
+    generated_paths = [_asset_path(asset.storage_key) for asset in generated_assets]
     await db.delete(task)
     await db.flush()
+    for path in generated_paths:
+        if path.is_file():
+            path.unlink(missing_ok=True)
     return None

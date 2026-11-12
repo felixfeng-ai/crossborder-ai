@@ -1,12 +1,14 @@
 export interface ImageAssetInput {
   id: string
   name: string
-  kind: 'upload' | 'processed'
+  kind: 'upload' | 'processed' | 'generated'
   image_url: string
   width: number
   height: number
   file_size: number
   platform?: string | null
+  generation_task_id?: string | null
+  variant_index?: number | null
   created_at: string
 }
 
@@ -101,18 +103,26 @@ export function buildImageMaterials(
     platform: asset.platform,
     deleteEndpoint: `/images/assets/${asset.id}`,
   }))
+  const materializedVariants = new Set(
+    assets
+      .filter((asset) => asset.generation_task_id && asset.variant_index != null)
+      .map((asset) => `${asset.generation_task_id}-${asset.variant_index}`),
+  )
   const generated: ImageMaterial[] = history.flatMap((task) =>
-    (task.image_urls || []).map((url, index) => ({
-      id: `${task.task_id}-${index}`,
-      type: 'image' as const,
-      source: 'generated' as const,
-      name: 'AI 生成图',
-      url,
-      createdAt: task.created_at,
-      prompt: task.prompt,
-      model: task.model_used,
-      deleteEndpoint: `/images/history/${task.task_id}`,
-    })),
+    (task.image_urls || []).flatMap((url, index) => {
+      if (materializedVariants.has(`${task.task_id}-${index}`)) return []
+      return [{
+        id: `${task.task_id}-${index}`,
+        type: 'image' as const,
+        source: 'generated' as const,
+        name: 'AI 生成图',
+        url,
+        createdAt: task.created_at,
+        prompt: task.prompt,
+        model: task.model_used,
+        deleteEndpoint: `/images/history/${task.task_id}`,
+      }]
+    }),
   )
   return [...local, ...generated].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),

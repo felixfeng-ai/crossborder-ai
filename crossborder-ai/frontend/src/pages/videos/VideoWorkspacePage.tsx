@@ -8,6 +8,7 @@ import {
   type VideoWorkspaceTab,
 } from '@/lib/navigation'
 import MarketingVideosPage from './MarketingVideosPage'
+import ProfessionalStoryboardPage from './ProfessionalStoryboardPage'
 import VideosPage from './VideosPage'
 
 
@@ -33,12 +34,12 @@ export default function VideoWorkspacePage() {
           视频工作台
         </h1>
         <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-          在营销成片和单镜头生成之间切换，两个模式共用商品素材与服务状态。
+          在营销成片、专业分镜和商品图生视频之间切换，所有模式共用商品素材与服务状态。
         </p>
       </div>
 
       <Tabs value={tab} onValueChange={switchTab}>
-        <TabsList className="w-full justify-start sm:w-auto">
+        <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
           {VIDEO_WORKSPACE_TABS.map((item) => (
             <TabsTrigger key={item.id} value={item.id} className="min-w-28">
               {item.label}
@@ -47,6 +48,9 @@ export default function VideoWorkspacePage() {
         </TabsList>
         <TabsContent value="marketing" className="mt-4">
           <MarketingVideosPage embedded />
+        </TabsContent>
+        <TabsContent value="storyboard" className="mt-4">
+          <ProfessionalStoryboardPage />
         </TabsContent>
         <TabsContent value="single" className="mt-4">
           <VideosPage embedded />

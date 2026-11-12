@@ -41,6 +41,7 @@ describe('navigation architecture', () => {
 
   it('解析视频 Tab 查询参数', () => {
     expect(videoTabFromSearch('?tab=single')).toBe('single')
+    expect(videoTabFromSearch('?tab=storyboard')).toBe('storyboard')
     expect(videoTabFromSearch('?tab=marketing')).toBe('marketing')
     expect(videoTabFromSearch('?tab=unknown')).toBe('marketing')
     expect(videoTabFromSearch('')).toBe('marketing')
@@ -49,6 +50,7 @@ describe('navigation architecture', () => {
   it('视频工作台使用清晰的商品图生视频命名', () => {
     expect(VIDEO_WORKSPACE_TABS).toEqual([
       { id: 'marketing', label: '营销成片' },
+      { id: 'storyboard', label: '专业分镜' },
       { id: 'single', label: '商品图生视频' },
     ])
   })

@@ -13,6 +13,9 @@ export interface MarketingVideoShot {
   title: string
   purpose: string
   prompt: string
+  source_text?: string | null
+  start_seconds?: number
+  end_seconds?: number
   duration: number
   status: string
   video_url?: string | null
@@ -29,6 +32,9 @@ export interface MarketingVideoProject {
   language: string
   duration: number
   template_id: string
+  mode?: 'creative' | 'script' | string
+  script_text?: string | null
+  continuity?: Record<string, unknown>
   model: string
   resolution: string
   status: string
@@ -109,6 +115,7 @@ const TEMPLATE_NAMES: Record<string, string> = {
   problem_solution: '痛点解决',
   unboxing: '开箱展示',
   feature_focus: '卖点聚焦',
+  professional_script: '专业脚本分镜',
 }
 
 export function projectStatusLabel(status: string): string {
@@ -138,29 +145,30 @@ export function buildMarketingPipeline(
   project: MarketingVideoProject,
 ): MarketingPipelineStep[] {
   const failed = project.status === 'failed' || project.status === 'canceled'
+  const briefLabel = project.mode === 'script' ? '脚本文案' : '营销方案'
   if (project.status === 'brief_ready') {
     return [
-      { id: 'brief', label: '营销方案', state: 'current' },
+      { id: 'brief', label: briefLabel, state: 'current' },
       { id: 'shots', label: '分镜生成', state: 'pending' },
       { id: 'assembly', label: '成片合成', state: 'pending' },
     ]
   }
   if (project.status === 'rendering') {
     return [
-      { id: 'brief', label: '营销方案', state: 'complete' },
+      { id: 'brief', label: briefLabel, state: 'complete' },
       { id: 'shots', label: '分镜生成', state: 'current' },
       { id: 'assembly', label: '成片合成', state: 'pending' },
     ]
   }
   if (project.status === 'succeeded') {
     return [
-      { id: 'brief', label: '营销方案', state: 'complete' },
+      { id: 'brief', label: briefLabel, state: 'complete' },
       { id: 'shots', label: '分镜生成', state: 'complete' },
       { id: 'assembly', label: '成片合成', state: 'complete' },
     ]
   }
   return [
-    { id: 'brief', label: '营销方案', state: 'complete' },
+    { id: 'brief', label: briefLabel, state: 'complete' },
     { id: 'shots', label: '分镜生成', state: failed ? 'failed' : 'current' },
     { id: 'assembly', label: '成片合成', state: failed ? 'pending' : 'current' },
   ]

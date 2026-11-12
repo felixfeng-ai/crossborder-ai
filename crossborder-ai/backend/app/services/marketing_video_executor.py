@@ -18,6 +18,7 @@ from app.models.user import InsufficientCreditsError, User
 from app.models.video_generation_task import VideoGenerationTask
 from app.services.credit_service import add_credits
 from app.services.marketing_subtitles import build_marketing_srt
+from app.services.professional_storyboard import provider_render_duration
 from app.services.video_task_executor import cancel_video_task, submit_video_task
 
 
@@ -59,6 +60,43 @@ def _subtitle_filter_path(path: Path) -> str:
     """转义 FFmpeg subtitles 滤镜路径，兼容 Windows 盘符。"""
     value = str(path.resolve()).replace("\\", "/")
     return value.replace(":", "\\:").replace("'", "\\'")
+
+
+def trim_video_segment(source_path: Path, output_path: Path, duration: int) -> None:
+    """把供应商生成视频精确裁切为脚本目标时长。"""
+    if not source_path.is_file():
+        raise ValueError("待裁切镜头文件不存在")
+    if duration <= 0:
+        raise ValueError("镜头裁切时长必须大于 0 秒")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        _ffmpeg_executable(),
+        "-y",
+        "-i",
+        str(source_path),
+        "-t",
+        str(int(duration)),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    if result.returncode != 0 or not output_path.is_file():
+        raise ValueError(f"镜头 {source_path.name} 裁切失败")
 
 
 def assemble_marketing_video(
@@ -226,7 +264,7 @@ async def start_marketing_project(
                 provider="minimax",
                 model=project.model,
                 resolution=project.resolution,
-                duration=shot.duration,
+                duration=provider_render_duration(project.model, shot.duration),
                 ratio="9:16",
                 prompt=shot.prompt,
                 status="queued",
@@ -381,6 +419,8 @@ async def sync_marketing_video_projects(
                 shot.status = task_by_id[shot.video_task_id].status
             continue
 
+        temporary_segments: list[Path] = []
+        subtitle_path: Path | None = None
         try:
             segment_paths = []
             for shot in shots:
@@ -391,6 +431,19 @@ async def sync_marketing_video_projects(
 
             relative_key = f"{project.user_id}/marketing-{project.id}.mp4"
             output_path = _video_path(relative_key)
+            render_paths: list[Path] = []
+            for shot, segment_path in zip(shots, segment_paths, strict=True):
+                task = task_by_id[shot.video_task_id]
+                if int(task.duration or 0) != int(shot.duration):
+                    trimmed_path = output_path.with_name(
+                        f"{output_path.stem}-shot-{shot.position}-trim.mp4"
+                    )
+                    trim_video_segment(segment_path, trimmed_path, shot.duration)
+                    render_paths.append(trimmed_path)
+                    temporary_segments.append(trimmed_path)
+                else:
+                    render_paths.append(segment_path)
+
             brief = json.loads(project.brief_json or "{}")
             shots_payload = [
                 {
@@ -400,19 +453,23 @@ async def sync_marketing_video_projects(
                 }
                 for shot in shots
             ]
-            subtitle_text = build_marketing_srt(brief, shots_payload)
-            subtitle_path = output_path.with_name(
-                f"{output_path.stem}.subtitle{output_path.suffix}.srt"
-            )
-            subtitle_path.write_text(subtitle_text, encoding="utf-8")
+            if project.mode != "script" and not brief.get("no_subtitles"):
+                subtitle_text = build_marketing_srt(brief, shots_payload)
+                subtitle_path = output_path.with_name(
+                    f"{output_path.stem}.subtitle{output_path.suffix}.srt"
+                )
+                subtitle_path.write_text(subtitle_text, encoding="utf-8")
             try:
                 project.subtitles_burned_in = assemble_marketing_video(
-                    segment_paths,
+                    render_paths,
                     output_path,
                     subtitle_path=subtitle_path,
                 )
             finally:
-                subtitle_path.unlink(missing_ok=True)
+                if subtitle_path is not None:
+                    subtitle_path.unlink(missing_ok=True)
+                for temporary_path in temporary_segments:
+                    temporary_path.unlink(missing_ok=True)
             data_size = output_path.stat().st_size
             project.final_storage_key = relative_key
             project.mime = "video/mp4"
@@ -425,6 +482,10 @@ async def sync_marketing_video_projects(
                 shot.status = "succeeded"
             processed += 1
         except Exception as exc:
+            for temporary_path in temporary_segments:
+                temporary_path.unlink(missing_ok=True)
+            if subtitle_path is not None:
+                subtitle_path.unlink(missing_ok=True)
             logger.warning("营销视频项目 %s 合成失败：%s", project.id, exc)
             project.status = "failed"
             project.error = str(exc) or "营销视频合成失败"

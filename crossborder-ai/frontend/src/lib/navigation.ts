@@ -1,10 +1,11 @@
-export type VideoWorkspaceTab = 'marketing' | 'single'
+export type VideoWorkspaceTab = 'marketing' | 'storyboard' | 'single'
 
 export const VIDEO_WORKSPACE_TABS: Array<{
   id: VideoWorkspaceTab
   label: string
 }> = [
   { id: 'marketing', label: '营销成片' },
+  { id: 'storyboard', label: '专业分镜' },
   { id: 'single', label: '商品图生视频' },
 ]
 
@@ -142,12 +143,13 @@ export function getHeaderContext(pathname: string): HeaderContext {
   }
   return {
     group: 'VeyaShip',
-    title: 'AI 跨境运营台',
-    description: '商品、内容与渠道',
+    title: '一体化 AI 运营台',
+    description: '从选品判断到合规上架',
   }
 }
 
 export function videoTabFromSearch(search: string): VideoWorkspaceTab {
   const tab = new URLSearchParams(search).get('tab')
+  if (tab === 'storyboard') return 'storyboard'
   return tab === 'single' ? 'single' : 'marketing'
 }

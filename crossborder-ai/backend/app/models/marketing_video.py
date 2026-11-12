@@ -55,6 +55,20 @@ class MarketingVideoProject(Base):
     language: Mapped[str] = mapped_column(String(30), nullable=False, default="en")
     duration: Mapped[int] = mapped_column(Integer, nullable=False)
     template_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    mode: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="creative",
+        server_default="creative",
+        index=True,
+    )
+    script_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    continuity_json: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="{}",
+        server_default="{}",
+    )
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     resolution: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(
@@ -115,6 +129,7 @@ class MarketingVideoShot(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     purpose: Mapped[str] = mapped_column(String(100), nullable=False)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    source_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="planned", index=True

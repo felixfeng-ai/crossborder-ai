@@ -46,6 +46,14 @@ def test_repair_migration_restores_stamped_schema_drift(
         conn.execute(sa.text("CREATE TABLE product_variants (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL, sku VARCHAR(100) NOT NULL)"))
         conn.execute(sa.text("CREATE TABLE video_generation_tasks (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL)"))
         conn.execute(sa.text("CREATE TABLE marketing_video_projects (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36) NOT NULL)"))
+        conn.execute(sa.text(
+            "CREATE TABLE marketing_video_shots ("
+            "id VARCHAR(36) PRIMARY KEY, project_id VARCHAR(36) NOT NULL, "
+            "position INTEGER NOT NULL, title VARCHAR(255) NOT NULL, "
+            "purpose VARCHAR(100) NOT NULL, prompt TEXT NOT NULL, "
+            "duration INTEGER NOT NULL, status VARCHAR(20) NOT NULL DEFAULT 'planned', "
+            "video_task_id VARCHAR(36), error TEXT, created_at DATETIME)"
+        ))
         conn.execute(sa.text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"))
         conn.execute(sa.text("INSERT INTO alembic_version (version_num) VALUES ('021_marketing_video_projects')"))
 
@@ -73,7 +81,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "029_marketing_subtitles"
+    assert version == "030_professional_storyboard"
 
 
 def test_full_sqlite_upgrade_from_empty_database(
@@ -97,7 +105,7 @@ def test_full_sqlite_upgrade_from_empty_database(
     assert "data_retention_runs" in inspector.get_table_names()
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "029_marketing_subtitles"
+    assert version == "030_professional_storyboard"
     assert "credit_transactions" in inspector.get_table_names()
     assert {
         "credit_wallets",
@@ -110,6 +118,11 @@ def test_full_sqlite_upgrade_from_empty_database(
         engine,
         "marketing_video_projects",
     )
+    assert {"mode", "script_text", "continuity_json"} <= _column_names(
+        engine,
+        "marketing_video_projects",
+    )
+    assert "source_text" in _column_names(engine, "marketing_video_shots")
     assert "credit_period_start" in _column_names(engine, "users")
     assert {"credits_cost", "credits_charged"} <= _column_names(
         engine, "image_generation_tasks"

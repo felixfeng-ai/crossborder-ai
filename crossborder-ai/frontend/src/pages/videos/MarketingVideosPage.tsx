@@ -754,7 +754,7 @@ function ProjectWorkspace({
 }
 
 
-function MarketingVideoPreview({
+export function MarketingVideoPreview({
   project,
   voice,
 }: {
@@ -895,36 +895,44 @@ function MarketingVideoPreview({
             <Download className="mr-2 h-4 w-4" />
             下载 MP4
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={downloadSubtitles}
-          >
-            <Captions className="mr-2 h-4 w-4" />
-            下载 SRT 字幕
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={generateVoiceover}
-            disabled={!voice?.enabled || voicePending}
-            title={voice?.reason || '生成并下载 AI 配音'}
-          >
-            {voicePending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Mic2 className="mr-2 h-4 w-4" />
-            )}
-            {voicePending ? '配音生成中' : '生成 AI 配音 1 积分'}
-          </Button>
+          {project.subtitle_url && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={downloadSubtitles}
+            >
+              <Captions className="mr-2 h-4 w-4" />
+              下载 SRT 字幕
+            </Button>
+          )}
+          {project.mode !== 'script' && !project.continuity?.no_dialogue && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={generateVoiceover}
+              disabled={!voice?.enabled || voicePending}
+              title={voice?.reason || '生成并下载 AI 配音'}
+            >
+              {voicePending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Mic2 className="mr-2 h-4 w-4" />
+              )}
+              {voicePending ? '配音生成中' : '生成 AI 配音 1 积分'}
+            </Button>
+          )}
           <p className="text-[10px] leading-4 text-muted-foreground">
             {project.subtitles_burned_in
               ? '字幕已烧录进成片，也可单独下载 SRT'
-              : '当前成片为独立字幕版本，SRT 可单独下载'}
+              : project.subtitle_url
+                ? '当前成片为独立字幕版本，SRT 可单独下载'
+                : project.mode === 'script'
+                  ? '专业分镜不自动生成字幕，避免编造'
+                  : '成片保持无字幕输出'}
           </p>
-          {voice && !voice.enabled && (
+          {project.mode !== 'script' && !project.continuity?.no_dialogue && voice && !voice.enabled && (
             <p className="text-[10px] leading-4 text-[color:var(--factory-coral)]">
               {voice.reason}
             </p>

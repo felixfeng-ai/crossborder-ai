@@ -42,6 +42,13 @@ from app.services.minimax_video import (
     get_minimax_video_capabilities,
     get_minimax_video_config,
 )
+from app.services.professional_storyboard import (
+    MAX_SCRIPT_CHARS,
+    build_shot_prompt,
+    estimate_storyboard_credits,
+    parse_professional_storyboard,
+    provider_render_duration,
+)
 
 
 router = APIRouter(prefix="/marketing-videos", tags=["AI 营销视频"])
@@ -62,11 +69,28 @@ class CreateMarketingProjectRequest(BaseModel):
     resolution: str = "480P"
 
 
+class StoryboardPreviewRequest(BaseModel):
+    script: str = Field(..., min_length=1, max_length=MAX_SCRIPT_CHARS)
+
+
+class CreateStoryboardProjectRequest(StoryboardPreviewRequest):
+    source_asset_id: str
+    product_name: str = Field(..., min_length=1, max_length=255)
+    platform: str = "tiktok"
+    market: str = Field("US", min_length=2, max_length=50)
+    language: str = Field("en", min_length=2, max_length=30)
+    model: str = "MiniMax-H3-Lite"
+    resolution: str = "480P"
+
+
 class MarketingShotResponse(BaseModel):
     position: int
     title: str
     purpose: str
     prompt: str
+    source_text: Optional[str] = None
+    start_seconds: int = 0
+    end_seconds: int = 0
     duration: int
     status: str
     video_url: Optional[str] = None
@@ -83,6 +107,9 @@ class MarketingProjectResponse(BaseModel):
     language: str
     duration: int
     template_id: str
+    mode: str = "creative"
+    script_text: Optional[str] = None
+    continuity: dict = Field(default_factory=dict)
     model: str
     resolution: str
     status: str
@@ -179,14 +206,21 @@ async def _serialize_project(
     task_by_id = {task.id: task for task in tasks}
 
     shot_items = []
+    cursor_seconds = 0
     for shot in shots:
         task = task_by_id.get(shot.video_task_id)
+        start_seconds = cursor_seconds
+        end_seconds = start_seconds + shot.duration
+        cursor_seconds = end_seconds
         shot_items.append(
             MarketingShotResponse(
                 position=shot.position,
                 title=shot.title,
                 purpose=shot.purpose,
                 prompt=shot.prompt,
+                source_text=shot.source_text,
+                start_seconds=start_seconds,
+                end_seconds=end_seconds,
                 duration=shot.duration,
                 status=shot.status,
                 video_url=(
@@ -197,6 +231,11 @@ async def _serialize_project(
                 error=shot.error,
             )
         )
+    brief = _parse_brief(project)
+    try:
+        continuity = json.loads(project.continuity_json or "{}")
+    except (json.JSONDecodeError, TypeError):
+        continuity = {}
     return MarketingProjectResponse(
         id=str(project.id),
         title=project.title,
@@ -207,10 +246,13 @@ async def _serialize_project(
         language=project.language,
         duration=project.duration,
         template_id=project.template_id,
+        mode=project.mode or "creative",
+        script_text=project.script_text,
+        continuity=continuity if isinstance(continuity, dict) else {},
         model=project.model,
         resolution=project.resolution,
         status=project.status,
-        brief=_parse_brief(project),
+        brief=brief,
         shots=shot_items,
         credits_estimated=project.credits_estimated,
         credits_charged=project.credits_charged,
@@ -221,8 +263,12 @@ async def _serialize_project(
             else None
         ),
         subtitle_url=(
-            f"{settings.API_V1_PREFIX}/marketing-videos/projects/"
-            f"{project.id}/subtitles"
+            None
+            if project.mode == "script" or brief.get("no_subtitles")
+            else (
+                f"{settings.API_V1_PREFIX}/marketing-videos/projects/"
+                f"{project.id}/subtitles"
+            )
         ),
         subtitles_burned_in=bool(project.subtitles_burned_in),
         error=project.error,
@@ -241,6 +287,129 @@ async def marketing_video_capabilities():
         "marketing_templates": list(MARKETING_TEMPLATES),
         "durations": sorted(SUPPORTED_DURATIONS),
     }
+
+
+@router.post("/storyboards/preview")
+async def preview_professional_storyboard(
+    payload: StoryboardPreviewRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """解析专业脚本文案，不调用 LLM，也不扣积分。"""
+    if not check_feature_access(current_user, "ai_video"):
+        raise HTTPException(status_code=403, detail="专业分镜仅限专业版套餐使用")
+    try:
+        storyboard = parse_professional_storyboard(payload.script)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return storyboard.to_dict()
+
+
+@router.post("/storyboards/projects", response_model=MarketingProjectResponse, status_code=201)
+async def create_professional_storyboard_project(
+    payload: CreateStoryboardProjectRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """原样保存用户分镜并创建可逐镜头渲染的专业项目。"""
+    if not check_feature_access(current_user, "ai_video"):
+        raise HTTPException(status_code=403, detail="专业分镜仅限专业版套餐使用")
+    if not get_minimax_video_config()["api_key"]:
+        raise HTTPException(status_code=400, detail="AI 视频服务暂未配置")
+    if not any(item["id"] == payload.platform for item in PLATFORM_OPTIONS):
+        raise HTTPException(status_code=400, detail="目标平台不支持")
+    try:
+        storyboard = parse_professional_storyboard(payload.script)
+        credits = estimate_storyboard_credits(
+            storyboard.shots,
+            model=payload.model,
+            resolution=payload.resolution,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    await _asset_owned(db, payload.source_asset_id, current_user.id)
+    await db.execute(
+        select(User).where(User.id == current_user.id).with_for_update()
+    )
+    key = (idempotency_key or "").strip()[:100] or None
+    if key:
+        existing = (
+            await db.execute(
+                select(MarketingVideoProject).where(
+                    MarketingVideoProject.user_id == current_user.id,
+                    MarketingVideoProject.idempotency_key == key,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return await _serialize_project(db, existing)
+
+    continuity = {
+        "global_constraints": storyboard.global_constraints,
+        "no_dialogue": storyboard.no_dialogue,
+        "no_subtitles": storyboard.no_subtitles,
+        "no_watermark": storyboard.no_watermark,
+        "preamble": storyboard.preamble,
+    }
+    title = (
+        f"{payload.product_name} · {storyboard.title}"
+        if storyboard.title != "专业脚本分镜"
+        else f"{payload.product_name} · 专业分镜"
+    )
+    brief = {
+        **storyboard.to_dict(),
+        "mode": "script",
+        "title": title,
+        "hook": storyboard.shots[0].title,
+        "script": "",
+        "cta": "",
+    }
+    project = MarketingVideoProject(
+        user_id=current_user.id,
+        source_asset_id=uuid.UUID(payload.source_asset_id),
+        title=title[:255],
+        product_name=payload.product_name,
+        idea=f"专业脚本分镜 · {storyboard.shot_count} 个镜头",
+        platform=payload.platform,
+        market=payload.market,
+        language=payload.language,
+        duration=storyboard.total_duration,
+        template_id="professional_script",
+        mode="script",
+        script_text=payload.script,
+        continuity_json=json.dumps(continuity, ensure_ascii=False),
+        model=payload.model,
+        resolution=payload.resolution,
+        status="brief_ready",
+        brief_json=json.dumps(brief, ensure_ascii=False),
+        credits_estimated=credits,
+        idempotency_key=key,
+    )
+    db.add(project)
+    await db.flush()
+    for shot in storyboard.shots:
+        db.add(
+            MarketingVideoShot(
+                project_id=project.id,
+                position=shot.position,
+                title=shot.title,
+                purpose=shot.purpose,
+                prompt=build_shot_prompt(
+                    shot,
+                    product_name=payload.product_name,
+                    global_constraints=storyboard.global_constraints,
+                    no_dialogue=storyboard.no_dialogue,
+                    no_subtitles=storyboard.no_subtitles,
+                    no_watermark=storyboard.no_watermark,
+                ),
+                source_text=shot.source_text,
+                duration=shot.duration,
+                status="planned",
+            )
+        )
+    await db.flush()
+    return await _serialize_project(db, project)
 
 
 @router.post("/projects", response_model=MarketingProjectResponse, status_code=201)
@@ -315,6 +484,8 @@ async def create_marketing_project(
         language=payload.language,
         duration=payload.duration,
         template_id=payload.template_id,
+        mode="creative",
+        continuity_json="{}",
         model=payload.model,
         resolution=payload.resolution,
         status="brief_ready",
@@ -332,6 +503,7 @@ async def create_marketing_project(
                 title=item["title"],
                 purpose=item["purpose"],
                 prompt=item["prompt"],
+                source_text=item["prompt"],
                 duration=item["duration"],
                 status="planned",
             )
@@ -452,9 +624,15 @@ async def download_marketing_subtitles(
 ):
     """按项目分镜实时生成 SRT，避免字幕与用户修改后的方案脱节。"""
     project = await _owned_project(db, project_id, current_user.id)
+    brief = _parse_brief(project)
+    if project.mode == "script" or brief.get("no_subtitles"):
+        raise HTTPException(
+            status_code=409,
+            detail="专业分镜没有结构化字幕文本，不自动编造 SRT",
+        )
     shots = await _project_shots(db, project)
     content = build_marketing_srt(
-        _parse_brief(project),
+        brief,
         [
             {
                 "position": shot.position,
@@ -486,6 +664,11 @@ async def generate_marketing_voiceover(
     """为项目脚本生成配音；供应商失败时不扣积分。"""
     project = await _owned_project(db, project_id, current_user.id)
     brief = _parse_brief(project)
+    if project.mode == "script" or brief.get("no_dialogue"):
+        raise HTTPException(
+            status_code=409,
+            detail="专业分镜没有结构化旁白文本，不自动编造配音",
+        )
     narration = " ".join(
         item
         for item in (

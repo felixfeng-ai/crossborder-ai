@@ -14,6 +14,7 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
+  Download,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -30,8 +31,9 @@ import { toErrorMessage } from '@/utils/errorMessage'
  * 3. 手动触发处理单条任务
  *
  * CSV 格式要求：
- *   title, url, price, description
- *   商品A, https://..., 29.99, 描述文字
+ *   自有商品：title, cost_price, currency, stock_quantity, description,
+ *   main_image_url, brand_name, moq, lead_time_days, sku
+ *   1688 模板继续兼容：title, url, price, description
  */
 
 // ── 类型定义 ──────────────────────────────────────────────────
@@ -128,6 +130,21 @@ export default function BatchPage() {
     e.target.value = ''
   }
 
+  const downloadOwnProductTemplate = () => {
+    const csv = [
+      'title,cost_price,currency,stock_quantity,description,main_image_url,brand_name,moq,lead_time_days,sku',
+      '自有商品示例,38.50,CNY,80,材质与规格描述,https://example.com/product.jpg,品牌名,20,10,OWN-SKU-001',
+    ].join('\n')
+    const url = URL.createObjectURL(
+      new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }),
+    )
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'veyaship-own-product-template.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   // ── 状态徽章颜色映射 ──────────────────────────────────────
   const statusBadge = (status: string) => {
     switch (status) {
@@ -154,7 +171,7 @@ export default function BatchPage() {
             批量任务（F4 Batch）
           </h1>
           <p className="text-muted-foreground">
-            上传 CSV 文件，批量导入商品并生成合规 Listing。
+            上传自有商品或 1688 商品 CSV，批量导入商品并生成合规 Listing。
           </p>
         </div>
         <Button
@@ -206,6 +223,15 @@ export default function BatchPage() {
                 <><Upload className="mr-2 h-4 w-4" />选择 CSV 文件</>
               )}
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5"
+              onClick={downloadOwnProductTemplate}
+            >
+              <Download className="h-3.5 w-3.5" />
+              下载自有商品模板
+            </Button>
             <input
               id="csv-upload"
               type="file"
@@ -214,7 +240,7 @@ export default function BatchPage() {
               onChange={handleFileUpload}
             />
             <span className="text-sm text-muted-foreground">
-              支持 .csv 格式，需包含 title, url, price, description 列
+              支持 .csv 格式；title 必填，url 对自有商品可留空
             </span>
           </div>
 

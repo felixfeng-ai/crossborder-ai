@@ -12,6 +12,7 @@ import logging
 import math
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from sqlalchemy import select, func
@@ -24,6 +25,7 @@ from app.core.access_control import check_feature_access
 from app.dependencies import get_current_user
 from app.models.batch_job import BatchJob
 from app.models.product import Product
+from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.services.listing_service import persist_generated_listing
 from app.services import provider_config
@@ -33,7 +35,7 @@ logger = logging.getLogger("veyaship")
 
 router = APIRouter(prefix="/batch", tags=["批量处理"])
 
-EXPECTED_HEADERS = ["title", "url", "price", "description"]
+REQUIRED_HEADERS = ["title"]
 
 
 @router.post("/upload")
@@ -61,12 +63,25 @@ async def upload_csv(
 
     reader = csv.DictReader(io.StringIO(text))
 
-    # 校验标题头
-    if reader.fieldnames:
-        headers = [h.strip().lower() for h in reader.fieldnames]
-        missing = [h for h in EXPECTED_HEADERS if h not in headers]
-        if missing:
-            raise HTTPException(status_code=400, detail=f"CSV 缺少必要列：{', '.join(missing)}")
+    headers = [h.strip().lower() for h in (reader.fieldnames or [])]
+    missing = [h for h in REQUIRED_HEADERS if h not in headers]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"CSV 缺少必要列：{', '.join(missing)}")
+
+    def value(row: dict, name: str) -> str:
+        return str(row.get(name) or "").strip()
+
+    def integer(row: dict, name: str) -> int | None:
+        raw = value(row, name)
+        if not raw:
+            return None
+        try:
+            return max(0, int(float(raw)))
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"CSV 第 {row_count} 行的 {name} 必须是数字",
+            )
 
     # 逐行创建任务
     jobs = []
@@ -78,10 +93,24 @@ async def upload_csv(
             source_type="csv",
             source_filename=file.filename,
             row_index=row_count,
-            title=row.get("title", "").strip(),
-            url=row.get("url", "").strip(),
-            price=row.get("price", "").strip(),
-            description=row.get("description", "").strip(),
+            title=value(row, "title"),
+            url=value(row, "url") or None,
+            price=value(row, "cost_price") or value(row, "price") or None,
+            description=value(row, "description") or None,
+            origin_type=value(row, "origin_type") or (
+                "1688" if "1688.com" in value(row, "url") else "own"
+            ),
+            main_image_url=value(row, "main_image_url") or None,
+            brand_name=value(row, "brand_name") or None,
+            cost_currency=(
+                value(row, "cost_currency")
+                or value(row, "currency")
+                or "CNY"
+            ).upper(),
+            moq=integer(row, "moq"),
+            lead_time_days=integer(row, "lead_time_days"),
+            stock_quantity=integer(row, "stock_quantity"),
+            sku=value(row, "sku") or None,
             status="pending",
         )
         db.add(job)
@@ -140,6 +169,49 @@ async def list_jobs(
     }
 
 
+async def _create_product_from_job(
+    db: AsyncSession,
+    user: User,
+    job: BatchJob,
+) -> Product:
+    """把 CSV 任务转换为商品，并创建可选的首个 SKU。"""
+    product_id = uuid4()
+    try:
+        price = float(job.price) if job.price else None
+    except ValueError:
+        raise ValueError(f"CSV 第 {job.row_index} 行的价格格式无效")
+    product = Product(
+        id=product_id,
+        user_id=user.id,
+        title=job.title or "",
+        url=job.url or f"own://{product_id}",
+        origin_type=job.origin_type or ("1688" if job.url else "own"),
+        price=price,
+        description=job.description,
+        main_image_url=job.main_image_url,
+        brand_name=job.brand_name,
+        cost_currency=(job.cost_currency or "CNY").upper(),
+        moq=job.moq,
+        lead_time_days=job.lead_time_days,
+    )
+    db.add(product)
+    await db.flush()
+    if job.sku or job.stock_quantity is not None:
+        db.add(
+            ProductVariant(
+                user_id=user.id,
+                product_id=product.id,
+                sku=job.sku or f"OWN-{str(product.id)[:8].upper()}",
+                name=product.title,
+                cost_price=price,
+                stock_quantity=job.stock_quantity or 0,
+                image_url=job.main_image_url,
+            )
+        )
+        await db.flush()
+    return product
+
+
 @router.post("/process/{job_id}")
 async def process_job(
     job_id: str,
@@ -167,14 +239,7 @@ async def process_job(
 
     # 处理：创建商品
     try:
-        product = Product(
-            user_id=current_user.id,
-            title=job.title or "",
-            url=job.url or f"batch://{job.id}",
-            price=float(job.price) if job.price else None,
-        )
-        db.add(product)
-        await db.flush()
+        product = await _create_product_from_job(db, current_user, job)
         job.product_id = product.id
         job.status = "processed"
         job.processed_at = datetime.now(timezone.utc)
@@ -209,14 +274,7 @@ async def cron_process_batch(
     results = []
     for job in jobs:
         try:
-            product = Product(
-                user_id=current_user.id,
-                title=job.title or "",
-                url=job.url or f"batch://{job.id}",
-                price=float(job.price) if job.price else None,
-            )
-            db.add(product)
-            await db.flush()
+            product = await _create_product_from_job(db, current_user, job)
             job.product_id = product.id
             job.status = "processed"
             job.processed_at = datetime.now(timezone.utc)
@@ -287,15 +345,7 @@ async def batch_process_with_ai(
             continue
         try:
             async with db.begin_nested():
-                product = Product(
-                    user_id=current_user.id,
-                    title=job.title or "",
-                    url=job.url or f"batch://{job.id}",
-                    price=float(job.price) if job.price else None,
-                    description=job.description or "",
-                )
-                db.add(product)
-                await db.flush()
+                product = await _create_product_from_job(db, current_user, job)
 
                 title = await llm.generate(
                     f"You are a professional {platform} listing copywriter.",

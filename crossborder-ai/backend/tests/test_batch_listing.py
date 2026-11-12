@@ -67,6 +67,49 @@ async def test_batch_process_creates_user_owned_product(
 
 
 @pytest.mark.asyncio
+async def test_own_product_csv_without_url_imports_rich_fields(
+    client: AsyncClient,
+    auth_headers: dict,
+):
+    csv_text = (
+        "title,cost_price,currency,stock_quantity,description,main_image_url,"
+        "brand_name,moq,lead_time_days,sku\n"
+        "自有香薰礼盒,38.50,CNY,80,自有货源商品描述,"
+        "https://cdn.example.com/gift.jpg,VEYA,20,10,OWN-GIFT-01\n"
+    )
+    uploaded = await client.post(
+        "/api/v1/batch/upload",
+        files={"file": ("own-products.csv", csv_text.encode("utf-8"), "text/csv")},
+        headers=auth_headers,
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    job_id = await _pending_job_id(client, auth_headers)
+
+    processed = await client.post(
+        f"/api/v1/batch/process/{job_id}",
+        headers=auth_headers,
+    )
+    assert processed.status_code == 200, processed.text
+
+    products = await client.get("/api/v1/products", headers=auth_headers)
+    product = products.json()["items"][0]
+    assert product["title"] == "自有香薰礼盒"
+    assert product["origin_type"] == "own"
+    assert product["price"] == 38.5
+    assert product["brand_name"] == "VEYA"
+    assert product["moq"] == 20
+    assert product["main_image_url"] == "https://cdn.example.com/gift.jpg"
+
+    variants = await client.get(
+        f"/api/v1/products/{product['id']}/variants",
+        headers=auth_headers,
+    )
+    assert variants.status_code == 200
+    assert variants.json()["items"][0]["sku"] == "OWN-GIFT-01"
+    assert variants.json()["items"][0]["stock_quantity"] == 80
+
+
+@pytest.mark.asyncio
 async def test_batch_ai_persists_listing_and_charges_once(
     client: AsyncClient,
     auth_headers: dict,

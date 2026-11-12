@@ -1,6 +1,6 @@
-"""VeyaShip - 商品模型
+"""VeyaShip - 商品模型。
 
-存储从 1688 抓取或手动录入的商品信息。
+同时承载 1688 抓取商品与卖家自有货源商品。
 """
 
 import uuid
@@ -54,6 +54,14 @@ class Product(Base):
     url: Mapped[str] = mapped_column(
         String(500), index=True, nullable=False
     )
+    # 1688 / own，用于区分抓取货源和卖家自有货源。
+    origin_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="1688",
+        server_default="1688",
+        index=True,
+    )
     # title 可为空，因为手动录入时可以只填链接不填标题
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # 主图链接，后续 AI 生成 Listing 时可以直接引用
@@ -69,6 +77,15 @@ class Product(Base):
     # ── 描述（手动补充） ──────────────────────────────────────
     # 用户可以在抓取后手动补充商品描述，AI 生成 Listing 时会用到
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    brand_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cost_currency: Mapped[str] = mapped_column(
+        String(8),
+        nullable=False,
+        default="CNY",
+        server_default="CNY",
+    )
+    moq: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    lead_time_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # ── 时间戳 ──────────────────────────────────────────────
     # created_at 在插入时自动填

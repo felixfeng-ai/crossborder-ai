@@ -10,8 +10,8 @@
 
 import math
 from datetime import datetime
-from typing import Optional
-from uuid import UUID, UUID as UUIDType
+from typing import Literal, Optional
+from uuid import UUID, UUID as UUIDType, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select, func
@@ -22,6 +22,7 @@ from app.core.rate_limit import RateLimit
 from app.core.redis import cache_clear
 from app.dependencies import get_current_user
 from app.models.product import Product
+from app.models.product_variant import ProductVariant
 from app.models.listing_draft import ListingDraft
 from app.models.user import User
 from app.services.scraper import SERVICE_NOT_CONFIGURED_MSG, ScrapeError, scrape_1688
@@ -47,8 +48,9 @@ class ScrapeRequest(BaseModel):
 
 class ManualProductRequest(BaseModel):
     """请求体：手动录入商品"""
-    url: str = Field(..., description="商品链接")
-    title: Optional[str] = None
+    url: Optional[str] = Field(None, description="商品链接；自有货源可不填")
+    title: str = Field(..., min_length=1, max_length=500)
+    description: Optional[str] = None
     main_image_url: Optional[str] = None
     price: Optional[float] = Field(
         None,
@@ -57,6 +59,13 @@ class ManualProductRequest(BaseModel):
     )
     sales_count: Optional[int] = Field(None, ge=0)
     shop_name: Optional[str] = None
+    origin_type: Optional[Literal["1688", "own"]] = None
+    brand_name: Optional[str] = None
+    cost_currency: str = Field("CNY", min_length=3, max_length=8)
+    moq: Optional[int] = Field(None, ge=0)
+    lead_time_days: Optional[int] = Field(None, ge=0)
+    sku: Optional[str] = Field(None, max_length=100)
+    stock_quantity: Optional[int] = Field(None, ge=0)
 
 
 class ProductResponse(BaseModel):
@@ -65,12 +74,18 @@ class ProductResponse(BaseModel):
     url: str
     title: Optional[str] = None
     main_image_url: Optional[str] = None
+    description: Optional[str] = None
+    origin_type: str = "1688"
     price: Optional[float] = Field(
         None,
         description="1688 供货参考价，不是平台销售价",
     )
     sales_count: Optional[int] = None
     shop_name: Optional[str] = None
+    brand_name: Optional[str] = None
+    cost_currency: str = "CNY"
+    moq: Optional[int] = None
+    lead_time_days: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -195,6 +210,7 @@ async def scrape_product(
     product = Product(
         user_id=current_user.id,  # 记录所属用户
         url=data["url"],
+        origin_type="1688",
         title=data["title"],
         main_image_url=data["main_image_url"],
         price=data["price"],
@@ -228,28 +244,53 @@ async def create_product_manual(
     db: AsyncSession = Depends(get_db),
 ):
     """手动录入商品（兜底方案，抓取失败时用）"""
-    # 查重
-    result = await db.execute(
-        select(Product).where(
-            Product.url == payload.url,
-            Product.user_id == current_user.id,
+    normalized_url = (payload.url or "").strip()
+    if normalized_url:
+        result = await db.execute(
+            select(Product).where(
+                Product.url == normalized_url,
+                Product.user_id == current_user.id,
+            )
         )
-    )
-    if result.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="该商品链接已存在")
+        if result.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="该商品链接已存在")
 
-    # INSERT
+    new_id = uuid4()
+    origin_type = payload.origin_type or (
+        "1688" if "1688.com" in normalized_url else "own"
+    )
     product = Product(
+        id=new_id,
         user_id=current_user.id,
-        url=payload.url,
+        url=normalized_url or f"own://{new_id}",
+        origin_type=origin_type,
         title=payload.title,
+        description=payload.description,
         main_image_url=payload.main_image_url,
         price=payload.price,
         sales_count=payload.sales_count,
         shop_name=payload.shop_name,
+        brand_name=payload.brand_name,
+        cost_currency=payload.cost_currency.upper(),
+        moq=payload.moq,
+        lead_time_days=payload.lead_time_days,
     )
     db.add(product)
     await db.flush()
+
+    if payload.stock_quantity is not None or payload.sku:
+        db.add(
+            ProductVariant(
+                user_id=current_user.id,
+                product_id=product.id,
+                sku=payload.sku or f"OWN-{str(product.id)[:8].upper()}",
+                name=payload.title,
+                cost_price=payload.price,
+                stock_quantity=payload.stock_quantity or 0,
+                image_url=payload.main_image_url,
+            )
+        )
+        await db.flush()
 
     return {
         "message": "创建成功",

@@ -39,6 +39,49 @@ async def test_create_product_manual(client: AsyncClient, auth_headers: dict):
 
 
 @pytest.mark.asyncio
+async def test_create_own_product_without_external_url(
+    client: AsyncClient,
+    auth_headers: dict,
+):
+    response = await client.post(
+        "/api/v1/products/manual",
+        json={
+            "title": "自有品牌保温杯",
+            "description": "304 不锈钢，容量 500ml",
+            "main_image_url": "https://cdn.example.com/own-cup.jpg",
+            "price": 23.5,
+            "origin_type": "own",
+            "brand_name": "VeyaHome",
+            "cost_currency": "CNY",
+            "moq": 50,
+            "lead_time_days": 7,
+            "sku": "OWN-CUP-500",
+            "stock_quantity": 120,
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201, response.text
+    product = response.json()["product"]
+    assert product["title"] == "自有品牌保温杯"
+    assert product["origin_type"] == "own"
+    assert product["url"].startswith("own://")
+    assert product["brand_name"] == "VeyaHome"
+    assert product["cost_currency"] == "CNY"
+    assert product["moq"] == 50
+    assert product["lead_time_days"] == 7
+    assert product["description"] == "304 不锈钢，容量 500ml"
+
+    variants = await client.get(
+        f"/api/v1/products/{product['id']}/variants",
+        headers=auth_headers,
+    )
+    assert variants.status_code == 200
+    assert variants.json()["items"][0]["sku"] == "OWN-CUP-500"
+    assert variants.json()["items"][0]["stock_quantity"] == 120
+
+
+@pytest.mark.asyncio
 async def test_create_product_duplicate_url(client: AsyncClient, auth_headers: dict):
     """测试重复 URL 录入被拒绝"""
     # 第一次录入

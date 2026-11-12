@@ -28,6 +28,18 @@ class BatchJob(Base):
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     price: Mapped[str | None] = mapped_column(String(50), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin_type: Mapped[str] = mapped_column(
+        String(20), default="own", server_default="own"
+    )
+    main_image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    brand_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cost_currency: Mapped[str] = mapped_column(
+        String(8), default="CNY", server_default="CNY"
+    )
+    moq: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    lead_time_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stock_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sku: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # 处理结果关联
     product_id: Mapped[uuid.UUID | None] = mapped_column(

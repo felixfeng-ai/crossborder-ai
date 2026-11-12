@@ -20,6 +20,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Upload,
+  ImagePlus,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,17 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import apiClient from '@/api/client'
+import { resolveMediaUrl } from '@/lib/apiUrl'
+import {
+  buildOwnProductPayload,
+  productOriginLabel,
+} from '@/lib/products/entry'
+import {
+  imageUploadErrorMessage,
+  uploadImageFile,
+  validateImageUpload,
+} from '@/lib/images/upload'
+import { cn } from '@/utils/cn'
 import { toErrorMessage } from '@/utils/errorMessage'
 
 interface Product {
@@ -37,6 +49,12 @@ interface Product {
   price: number | null
   sales_count: number | null
   shop_name: string | null
+  description: string | null
+  origin_type: '1688' | 'own'
+  brand_name: string | null
+  cost_currency: string
+  moq: number | null
+  lead_time_days: number | null
   created_at: string
   updated_at: string
 }
@@ -55,14 +73,27 @@ export default function ProductsPage() {
   const [url, setUrl] = useState('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
-  const [showManual, setShowManual] = useState(false)
+  const [entryMode, setEntryMode] = useState<'1688' | 'own'>('1688')
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageProgress, setImageProgress] = useState(0)
+  const [manualError, setManualError] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState<'single' | 'batch' | 'all' | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
   // 手动输入表单
   const [manualForm, setManualForm] = useState({
-    url: '', title: '', price: '', shop_name: '', main_image_url: '', sales_count: '',
+    url: '',
+    title: '',
+    description: '',
+    price: '',
+    currency: 'CNY',
+    brandName: '',
+    moq: '',
+    leadTimeDays: '',
+    sku: '',
+    stockQuantity: '',
+    mainImageUrl: '',
   })
 
   // 商品列表
@@ -96,10 +127,27 @@ export default function ProductsPage() {
       const res = await apiClient.post('/products/manual', data)
       return res.data
     },
+    onMutate: () => {
+      setManualError('')
+    },
     onSuccess: () => {
-      setManualForm({ url: '', title: '', price: '', shop_name: '', main_image_url: '', sales_count: '' })
-      setShowManual(false)
+      setManualForm({
+        url: '',
+        title: '',
+        description: '',
+        price: '',
+        currency: 'CNY',
+        brandName: '',
+        moq: '',
+        leadTimeDays: '',
+        sku: '',
+        stockQuantity: '',
+        mainImageUrl: '',
+      })
       queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+    onError: (error) => {
+      setManualError(toErrorMessage(error, '自有商品创建失败'))
     },
   })
 
@@ -139,6 +187,35 @@ export default function ProductsPage() {
   const handleScrape = () => {
     if (!url.trim()) return
     scrapeMutation.mutate(url.trim())
+  }
+
+  const handleOwnImageUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    const validationError = validateImageUpload(file)
+    if (validationError) {
+      setManualError(validationError)
+      return
+    }
+    setManualError('')
+    setImageUploading(true)
+    setImageProgress(0)
+    try {
+      const asset = await uploadImageFile<{ image_url: string }>(file, {
+        onProgress: setImageProgress,
+      })
+      setManualForm((current) => ({
+        ...current,
+        mainImageUrl: asset.image_url,
+      }))
+    } catch (error) {
+      setManualError(imageUploadErrorMessage(error))
+    } finally {
+      setImageUploading(false)
+    }
   }
 
   const toggleSelect = (id: string) => {
@@ -185,7 +262,7 @@ export default function ProductsPage() {
             <Package className="h-6 w-6 text-primary" />
             商品库
           </h1>
-          <p className="text-muted-foreground text-sm">粘贴商品链接自动抓取，或手动/CSV 批量录入自有商品</p>
+          <p className="text-muted-foreground text-sm">1688 链接自动抓取，或录入图片、成本、库存完整的自有货源商品</p>
         </div>
         <div className="flex gap-2">
           {selected.size > 0 && (
@@ -204,10 +281,55 @@ export default function ProductsPage() {
           <Button variant="outline" size="sm" onClick={() => navigate('/app/batch')} className="gap-1">
             <Upload className="mr-1 h-4 w-4" />CSV 批量导入
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowManual(!showManual)}>
-            <FileInput className="mr-1 h-4 w-4" />手动录入
+          <Button variant="outline" size="sm" onClick={() => setEntryMode('own')}>
+            <FileInput className="mr-1 h-4 w-4" />录入自有商品
           </Button>
         </div>
+      </div>
+
+      <div className="grid overflow-hidden border border-border bg-[var(--factory-panel)] sm:grid-cols-2">
+        <button
+          type="button"
+          aria-pressed={entryMode === '1688'}
+          onClick={() => setEntryMode('1688')}
+          className={cn(
+            'flex min-h-16 items-center gap-3 border-b border-border px-4 py-3 text-left sm:border-b-0 sm:border-r',
+            entryMode === '1688'
+              ? 'bg-[color:var(--factory-accent)]/8'
+              : 'hover:bg-accent/40',
+          )}
+        >
+          <span className="flex h-9 w-9 items-center justify-center border border-border bg-background">
+            <LinkIcon className="h-4 w-4 text-[color:var(--factory-accent)]" />
+          </span>
+          <span>
+            <span className="block text-sm font-medium">1688 货源</span>
+            <span className="mt-0.5 block text-[11px] text-muted-foreground">
+              粘贴链接，自动获取标题、图片、价格和销量
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          aria-pressed={entryMode === 'own'}
+          onClick={() => setEntryMode('own')}
+          className={cn(
+            'flex min-h-16 items-center gap-3 px-4 py-3 text-left',
+            entryMode === 'own'
+              ? 'bg-[color:var(--factory-accent)]/8'
+              : 'hover:bg-accent/40',
+          )}
+        >
+          <span className="flex h-9 w-9 items-center justify-center border border-border bg-background">
+            <Package className="h-4 w-4 text-[color:var(--factory-accent)]" />
+          </span>
+          <span>
+            <span className="block text-sm font-medium">自有货源</span>
+            <span className="mt-0.5 block text-[11px] text-muted-foreground">
+              无需商品链接，支持图片、成本、MOQ、库存和描述
+            </span>
+          </span>
+        </button>
       </div>
 
       {/* 确认弹窗 */}
@@ -236,15 +358,22 @@ export default function ProductsPage() {
       )}
 
       {/* 自动抓取 */}
+      {entryMode === '1688' && (
       <Card>
         <CardContent className="pt-6">
+          <div className="mb-3">
+            <p className="text-sm font-medium">自动抓取仅支持 1688 商品链接</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              自有商品请切换到“自有货源”，无需填写外部链接。
+            </p>
+          </div>
           <div className="flex gap-3">
             <div className="relative flex-1">
               <LinkIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="粘贴商品链接，或手动录入..."
+                placeholder="粘贴 1688 商品详情页链接..."
                 className="pl-10"
                 onKeyDown={(e) => e.key === 'Enter' && handleScrape()}
               />
@@ -265,24 +394,159 @@ export default function ProductsPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
-      {/* 手动录入 */}
-      {showManual && (
+      {/* 自有货源录入 */}
+      {entryMode === 'own' && (
         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Plus className="h-4 w-4" />手动录入商品</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Plus className="h-4 w-4" />录入自有货源商品
+              </CardTitle>
+            </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2 sm:col-span-2"><Label>商品链接 *</Label><Input value={manualForm.url} onChange={(e) => setManualForm({ ...manualForm, url: e.target.value })} /></div>
-                <div className="space-y-2"><Label>标题</Label><Input value={manualForm.title} onChange={(e) => setManualForm({ ...manualForm, title: e.target.value })} /></div>
-                <div className="space-y-2"><Label>采购/供货价</Label><Input value={manualForm.price} onChange={(e) => setManualForm({ ...manualForm, price: e.target.value })} /></div>
-                <div className="space-y-2"><Label>店铺</Label><Input value={manualForm.shop_name} onChange={(e) => setManualForm({ ...manualForm, shop_name: e.target.value })} /></div>
-                <div className="space-y-2"><Label>销量</Label><Input value={manualForm.sales_count} onChange={(e) => setManualForm({ ...manualForm, sales_count: e.target.value })} /></div>
+              {manualError && (
+                <p className="border border-destructive/30 bg-destructive/8 px-3 py-2 text-xs text-destructive">
+                  {manualError}
+                </p>
+              )}
+              <div className="grid gap-4 md:grid-cols-[160px_minmax(0,1fr)]">
+                <div>
+                  <Label>商品主图</Label>
+                  <div className="mt-2 flex aspect-square items-center justify-center overflow-hidden border border-dashed border-border bg-secondary">
+                    {manualForm.mainImageUrl ? (
+                      <img
+                        src={resolveMediaUrl(manualForm.mainImageUrl)}
+                        alt="自有商品主图"
+                        className="h-full w-full object-contain p-2"
+                      />
+                    ) : (
+                      <ImagePlus className="h-6 w-6 text-muted-foreground" />
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 w-full"
+                    disabled={imageUploading}
+                    onClick={() => document.getElementById('own-product-image')?.click()}
+                  >
+                    {imageUploading ? (
+                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="mr-2 h-3.5 w-3.5" />
+                    )}
+                    {imageUploading ? `上传 ${imageProgress}%` : '上传商品图'}
+                  </Button>
+                  <input
+                    id="own-product-image"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handleOwnImageUpload}
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>商品名称 *</Label>
+                    <Input
+                      value={manualForm.title}
+                      onChange={(event) => setManualForm({ ...manualForm, title: event.target.value })}
+                      placeholder="例如：自有品牌 304 不锈钢保温杯 500ml"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>品牌</Label>
+                    <Input
+                      value={manualForm.brandName}
+                      onChange={(event) => setManualForm({ ...manualForm, brandName: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>商品链接（可选）</Label>
+                    <Input
+                      value={manualForm.url}
+                      onChange={(event) => setManualForm({ ...manualForm, url: event.target.value })}
+                      placeholder="没有官网或店铺链接可留空"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>成本价</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={manualForm.price}
+                      onChange={(event) => setManualForm({ ...manualForm, price: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>币种</Label>
+                    <select
+                      value={manualForm.currency}
+                      onChange={(event) => setManualForm({ ...manualForm, currency: event.target.value })}
+                      className="h-9 w-full border border-input bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      {['CNY', 'USD', 'EUR', 'GBP', 'JPY'].map((currency) => (
+                        <option key={currency} value={currency}>{currency}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>MOQ</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={manualForm.moq}
+                      onChange={(event) => setManualForm({ ...manualForm, moq: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>交付周期（天）</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={manualForm.leadTimeDays}
+                      onChange={(event) => setManualForm({ ...manualForm, leadTimeDays: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>初始 SKU</Label>
+                    <Input
+                      value={manualForm.sku}
+                      onChange={(event) => setManualForm({ ...manualForm, sku: event.target.value })}
+                      placeholder="例如 OWN-CUP-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>初始库存</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={manualForm.stockQuantity}
+                      onChange={(event) => setManualForm({ ...manualForm, stockQuantity: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>商品描述</Label>
+                    <textarea
+                      value={manualForm.description}
+                      onChange={(event) => setManualForm({ ...manualForm, description: event.target.value })}
+                      className="min-h-24 w-full resize-y border border-input bg-background px-3 py-2 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring"
+                      placeholder="材质、尺寸、规格、包装和核心卖点"
+                    />
+                  </div>
+                </div>
               </div>
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setShowManual(false)}>取消</Button>
-                <Button onClick={() => manualMutation.mutate({ url: manualForm.url, title: manualForm.title || null, price: manualForm.price ? parseFloat(manualForm.price) : null, shop_name: manualForm.shop_name || null, sales_count: manualForm.sales_count ? parseInt(manualForm.sales_count) : null })} disabled={!manualForm.url.trim() || manualMutation.isPending}>
-                  {manualMutation.isPending ? '保存中...' : '保存'}
+                <Button variant="outline" onClick={() => setEntryMode('1688')}>取消</Button>
+                <Button
+                  onClick={() => manualMutation.mutate(buildOwnProductPayload(manualForm))}
+                  disabled={!manualForm.title.trim() || manualMutation.isPending || imageUploading}
+                >
+                  {manualMutation.isPending ? '保存中...' : '保存自有商品'}
                 </Button>
               </div>
             </CardContent>
@@ -348,7 +612,7 @@ export default function ProductsPage() {
                   >
                     {product.main_image_url ? (
                       <img
-                        src={product.main_image_url}
+                        src={resolveMediaUrl(product.main_image_url)}
                         alt=""
                         className="h-full w-full object-cover"
                         loading="lazy"
@@ -365,15 +629,31 @@ export default function ProductsPage() {
                     >
                       {product.title || '无标题商品'}
                     </button>
+                    <div className="mt-1 flex items-center gap-2">
+                      <Badge variant="outline" className="text-[9px]">
+                        {productOriginLabel(product.origin_type)}
+                      </Badge>
+                      {product.brand_name && (
+                        <span className="truncate text-[10px] text-muted-foreground">
+                          {product.brand_name}
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {product.shop_name || '来源商品'}
+                      {product.shop_name || (product.origin_type === 'own' ? '卖家自有货源' : '1688 来源商品')}
                       {product.sales_count != null ? ` · 已售 ${product.sales_count}` : ''}
                       {` · ${new Date(product.created_at).toLocaleDateString('zh-CN')}`}
                     </p>
                     <div className="mt-1.5 flex items-center gap-3">
                       {product.price != null && (
                         <span className="metric-number text-sm font-medium">
-                          供货 ¥{product.price.toFixed(2)}
+                          {product.origin_type === 'own' ? '成本' : '供货'}{' '}
+                          {product.cost_currency || 'CNY'} {product.price.toFixed(2)}
+                        </span>
+                      )}
+                      {product.moq != null && (
+                        <span className="text-[10px] text-muted-foreground">
+                          MOQ {product.moq}
                         </span>
                       )}
                     </div>
@@ -403,7 +683,7 @@ export default function ProductsPage() {
         <div className="flex flex-col items-center py-16 text-muted-foreground">
           <ShoppingBag className="h-12 w-12 mb-3 opacity-50" />
           <p className="text-sm">暂无商品</p>
-          <p className="text-xs mt-1">粘贴 1688 链接或点击手动录入添加</p>
+          <p className="text-xs mt-1">粘贴 1688 链接，或切换到自有货源录入商品</p>
         </div>
       )}
     </motion.div>

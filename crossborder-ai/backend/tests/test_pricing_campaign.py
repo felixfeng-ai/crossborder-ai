@@ -7,6 +7,7 @@ import pytest_asyncio
 from sqlalchemy import select
 
 from app.models.credit_wallet import CreditWallet
+from app.models.plan_upgrade import PlanUpgradeRequest
 from app.models.subscription import UserSubscription
 from app.models.user import User
 from app.routers import billing as billing_router
@@ -179,6 +180,40 @@ async def test_professional_user_cannot_downgrade_or_reapply(
         )
         assert response.status_code == 409, response.text
         assert "高于当前套餐" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_approve_stale_downgrade_request(
+    client,
+    auth_headers,
+    admin_headers,
+    db_session,
+):
+    user = await _auth_user(db_session)
+    user.plan = "professional"
+    request = PlanUpgradeRequest(
+        user_id=user.id,
+        plan="standard",
+        contact="wx-stale",
+        order_id="VS-STALE-DOWNGRADE",
+        amount=99,
+        original_amount=99,
+        billing_cycle="monthly",
+        status="pending",
+    )
+    db_session.add(request)
+    await db_session.flush()
+
+    response = await client.post(
+        f"/api/v1/billing/upgrades/{request.id}/approve",
+        json={"note": "尝试开通"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 409, response.text
+    await db_session.refresh(request)
+    assert request.status == "rejected"
+    assert "低档或同级" in (request.note or "")
 
 
 @pytest.mark.asyncio

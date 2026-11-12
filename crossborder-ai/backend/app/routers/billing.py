@@ -531,6 +531,16 @@ async def approve_upgrade(
     req = await _load_pending_request(db, request_id)
 
     user = (await db.execute(select(User).where(User.id == req.user_id))).scalar_one()
+    if PLAN_RANK.get(req.plan, 0) <= PLAN_RANK.get(user.plan, 0):
+        req.status = "rejected"
+        req.handled_by = admin.id
+        req.handled_at = datetime.now(timezone.utc)
+        req.note = "当前套餐已覆盖该申请，禁止开通低档或同级套餐"
+        await db.commit()
+        raise HTTPException(
+            status_code=409,
+            detail="该申请不是有效升级，已自动标记拒绝，不能开通低档或同级套餐",
+        )
     await activate_paid_plan(
         db,
         user,

@@ -34,6 +34,7 @@ PROVIDER_FIELDS: dict[str, tuple[str, ...]] = {
         "voice_id",
         "resolution",
     ),
+    "jimeng": ("api_key", "base_url", "model", "resolution"),
 }
 
 
@@ -63,6 +64,10 @@ def _env_fallback(provider: str, field: str) -> str:
         ("minimax", "tts_model"): settings.MINIMAX_TTS_MODEL,
         ("minimax", "voice_id"): settings.MINIMAX_TTS_VOICE_ID,
         ("minimax", "resolution"): settings.MINIMAX_VIDEO_RESOLUTION,
+        ("jimeng", "api_key"): settings.JIMENG_API_KEY or "",
+        ("jimeng", "base_url"): settings.JIMENG_VIDEO_BASE_URL,
+        ("jimeng", "model"): settings.JIMENG_VIDEO_MODEL,
+        ("jimeng", "resolution"): settings.JIMENG_VIDEO_RESOLUTION,
     }
     return fallbacks.get((provider, field), "")
 

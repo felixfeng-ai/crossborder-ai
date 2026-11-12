@@ -10,6 +10,7 @@ from app.models.image_asset import ImageAsset
 from app.models.user import User
 from app.models.video_generation_task import VideoGenerationTask
 from app.services.video_provider import (
+    JimengVideoProvider,
     MiniMaxVideoProvider,
     VideoImagePayload,
     VideoProviderRequest,
@@ -110,6 +111,63 @@ async def test_minimax_adapter_normalizes_submit_and_lifecycle(monkeypatch):
     assert queried["status"] == "running"
     assert canceled is True
     assert downloaded == b"mp4"
+
+
+@pytest.mark.asyncio
+async def test_jimeng_adapter_is_registered_and_adapts_reference_prompt(monkeypatch):
+    submitted = {}
+
+    async def fake_submit(**kwargs):
+        submitted.update(kwargs)
+        return "jimeng-task"
+
+    async def fake_query(task_id):
+        return {"status": "running"}
+
+    async def fake_cancel(task_id):
+        return True
+
+    async def fake_download(url):
+        return b"mp4"
+
+    monkeypatch.setattr(
+        "app.services.video_provider.submit_jimeng_video",
+        fake_submit,
+    )
+    monkeypatch.setattr(
+        "app.services.video_provider.query_jimeng_video",
+        fake_query,
+    )
+    monkeypatch.setattr(
+        "app.services.video_provider.cancel_jimeng_video",
+        fake_cancel,
+    )
+    monkeypatch.setattr(
+        "app.services.video_provider.download_jimeng_video",
+        fake_download,
+    )
+
+    provider = get_video_provider("jimeng")
+    assert isinstance(provider, JimengVideoProvider)
+    request = VideoProviderRequest(
+        prompt="<Picture 1> front view, <Picture 2> detail view",
+        model="doubao-seedance-1-5-pro-251215",
+        resolution="720P",
+        duration=5,
+        ratio="9:16",
+        reference_images=[
+            VideoImagePayload(data=b"front", mime="image/png"),
+            VideoImagePayload(data=b"detail", mime="image/jpeg"),
+        ],
+    )
+
+    task_id = await provider.submit(request)
+    assert task_id == "jimeng-task"
+    assert submitted["prompt"] == "[图1] front view, [图2] detail view"
+    assert submitted["reference_images"] == [
+        (b"front", "image/png"),
+        (b"detail", "image/jpeg"),
+    ]
 
 
 @pytest.mark.asyncio

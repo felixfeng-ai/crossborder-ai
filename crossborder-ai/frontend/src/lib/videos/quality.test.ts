@@ -3,6 +3,7 @@ import {
   qualityTierCredits,
   qualityTierLabel,
   stylePresetLabel,
+  videoProviderLabel,
   type VideoQualityTier,
   type VideoStylePreset,
 } from './quality'
@@ -40,5 +41,6 @@ describe('video quality helpers', () => {
     expect(qualityTierLabel(tiers, 'standard')).toBe('标准商用')
     expect(stylePresetLabel(styles, 'premium_luxury')).toBe('高端静奢')
     expect(stylePresetLabel(styles, 'missing')).toBe('默认风格')
+    expect(videoProviderLabel('jimeng')).toBe('即梦 Seedance')
   })
 })

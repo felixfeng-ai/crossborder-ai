@@ -156,6 +156,46 @@ async def test_justone_token_is_encrypted_and_masked(
 
 
 @pytest.mark.asyncio
+async def test_jimeng_provider_config_is_encrypted_and_masked(
+    client: AsyncClient,
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    headers = await _register(client, "admin@veyaship.com")
+    monkeypatch.setattr(provider_config.settings, "JIMENG_API_KEY", None)
+    secret = "ark-secret-key-123456"
+
+    updated = await client.put(
+        "/api/v1/settings/providers/jimeng",
+        json={
+            "api_key": secret,
+            "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+            "model": "doubao-seedance-1-5-pro-251215",
+            "resolution": "720P",
+        },
+        headers=headers,
+    )
+    assert updated.status_code == 200, updated.text
+    assert secret not in updated.text
+
+    row = (
+        await db_session.execute(
+            select(SystemConfig).where(
+                SystemConfig.key == "provider:jimeng:api_key"
+            )
+        )
+    ).scalar_one()
+    assert row.value.startswith("enc:")
+
+    status = await client.get("/api/v1/settings/providers", headers=headers)
+    data = status.json()["providers"]["jimeng"]
+    assert data["configured"] is True
+    assert "****" in data["fields"]["api_key"]
+    assert data["fields"]["model"] == "doubao-seedance-1-5-pro-251215"
+    assert secret not in status.text
+
+
+@pytest.mark.asyncio
 async def test_aliyun_runtime_config_enables_image_task(
     client: AsyncClient,
     db_session,

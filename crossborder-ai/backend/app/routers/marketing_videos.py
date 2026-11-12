@@ -41,10 +41,6 @@ from app.services.minimax_tts import (
     get_minimax_tts_capabilities,
     synthesize_minimax_tts,
 )
-from app.services.minimax_video import (
-    get_minimax_video_capabilities,
-    get_minimax_video_config,
-)
 from app.services.professional_storyboard import (
     MAX_SCRIPT_CHARS,
     parse_professional_storyboard,
@@ -58,6 +54,10 @@ from app.services.video_quality import (
     list_quality_tiers,
     list_style_presets,
     resolve_quality_tier,
+)
+from app.services.video_provider import (
+    get_video_capabilities_summary,
+    get_video_provider,
 )
 from app.services.video_thumbnail import ensure_video_thumbnail
 
@@ -383,6 +383,7 @@ def _estimate_storyboard_quality_credits(
         render_duration = provider_render_duration(
             str(quality_tier["model"]),
             duration,
+            provider_name=str(quality_tier["provider"]),
         )
         total += estimate_quality_credits(
             str(quality_tier["id"]),
@@ -504,14 +505,18 @@ async def _serialize_project(
 
 @router.get("/capabilities")
 async def marketing_video_capabilities():
-    video = get_minimax_video_capabilities()
+    video = get_video_capabilities_summary()
+    provider_names = {
+        str(provider["provider"])
+        for provider in video["providers"]
+    }
     return {
         **video,
         "voice": get_minimax_tts_capabilities(),
         "platforms": list(PLATFORM_OPTIONS),
         "marketing_templates": list(MARKETING_TEMPLATES),
         "durations": sorted(SUPPORTED_DURATIONS),
-        "quality_tiers": list_quality_tiers(),
+        "quality_tiers": list_quality_tiers(provider_names),
         "style_presets": list_style_presets(),
     }
 
@@ -541,13 +546,14 @@ async def create_professional_storyboard_project(
     """原样保存用户分镜并创建可逐镜头渲染的专业项目。"""
     if not check_feature_access(current_user, "ai_video"):
         raise HTTPException(status_code=403, detail="专业分镜仅限专业版套餐使用")
-    if not get_minimax_video_config()["api_key"]:
-        raise HTTPException(status_code=400, detail="AI 视频服务暂未配置")
     if not any(item["id"] == payload.platform for item in PLATFORM_OPTIONS):
         raise HTTPException(status_code=400, detail="目标平台不支持")
     try:
         storyboard = parse_professional_storyboard(payload.script)
         quality_tier = resolve_quality_tier(payload.quality_tier)
+        provider = get_video_provider(str(quality_tier["provider"]))
+        if not provider.is_configured():
+            raise ValueError("所选 AI 视频服务暂未配置")
         get_style_preset(payload.style_preset)
         credits = _estimate_storyboard_quality_credits(
             storyboard.shots,
@@ -676,8 +682,6 @@ async def create_marketing_project(
     """生成营销方案与分镜，不调用视频供应商。"""
     if not check_feature_access(current_user, "ai_video"):
         raise HTTPException(status_code=403, detail="AI 营销视频仅限专业版套餐使用")
-    if not get_minimax_video_config()["api_key"]:
-        raise HTTPException(status_code=400, detail="AI 视频服务暂未配置")
     if payload.duration not in SUPPORTED_DURATIONS:
         raise HTTPException(status_code=400, detail="营销视频时长仅支持 15、20、30 秒")
     if not any(item["id"] == payload.platform for item in PLATFORM_OPTIONS):
@@ -688,6 +692,9 @@ async def create_marketing_project(
         raise HTTPException(status_code=402, detail="积分不足，生成营销方案需要 1 积分")
     try:
         quality_tier = resolve_quality_tier(payload.quality_tier)
+        provider = get_video_provider(str(quality_tier["provider"]))
+        if not provider.is_configured():
+            raise ValueError("所选 AI 视频服务暂未配置")
         get_style_preset(payload.style_preset)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

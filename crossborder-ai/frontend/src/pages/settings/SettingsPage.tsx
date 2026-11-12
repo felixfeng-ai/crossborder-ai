@@ -112,6 +112,20 @@ const PROVIDERS = [
     ],
   },
   {
+    id: 'jimeng',
+    label: '即梦 / Seedance（火山方舟）',
+    fields: [
+      { key: 'api_key', label: '方舟 API Key', secret: true },
+      {
+        key: 'base_url',
+        label: 'Base URL',
+        secret: false,
+      },
+      { key: 'model', label: 'Seedance 模型 ID', secret: false },
+      { key: 'resolution', label: '默认清晰度', secret: false },
+    ],
+  },
+  {
     id: 'shopify',
     label: 'Shopify 应用',
     fields: [

@@ -34,8 +34,6 @@ from app.services.marketing_video_agent import (
 )
 from app.services.minimax_video import (
     VIDEO_TEMPLATES,
-    estimate_video_cost_micros,
-    get_minimax_video_config,
 )
 from app.services.video_quality import (
     compile_i2va_prompt,
@@ -43,6 +41,7 @@ from app.services.video_quality import (
     resolve_quality_tier,
 )
 from app.services.professional_storyboard import provider_render_duration
+from app.services.video_provider import get_video_provider
 
 
 SUPPORTED_MARKETING_DURATIONS = {15, 20, 30}
@@ -295,8 +294,6 @@ async def create_product_video_task(
     """校验权限、积分和首帧后提交商品图生视频任务。"""
     if not check_feature_access(user, "ai_video"):
         raise PermissionError("AI 视频生成仅限专业版套餐使用")
-    if not get_minimax_video_config()["api_key"]:
-        raise ValueError("AI 视频服务暂未配置")
     if ratio != "9:16":
         raise ValueError("当前仅支持 9:16 商品短视频")
 
@@ -311,10 +308,17 @@ async def create_product_video_task(
         raise ValueError("商品首帧不存在")
 
     quality = resolve_quality_tier(quality_tier)
+    provider = get_video_provider(str(quality["provider"]))
+    if not provider.is_configured():
+        raise ValueError("所选 AI 视频服务暂未配置")
     model = str(quality["model"])
     resolution = str(quality["resolution"])
     credits_cost = estimate_quality_credits(quality_tier, duration)
-    estimated_cost_micros = estimate_video_cost_micros(model, resolution, duration)
+    estimated_cost_micros = provider.estimate_cost_micros(
+        model,
+        resolution,
+        duration,
+    )
     locked_user = (
         await db.execute(
             select(User).where(User.id == user.id).with_for_update()
@@ -404,8 +408,6 @@ async def create_marketing_plan_project(
     """生成营销方案和分镜，不提交视频供应商，也不扣视频积分。"""
     if not check_feature_access(user, "ai_video"):
         raise PermissionError("AI 营销视频仅限专业版套餐使用")
-    if not get_minimax_video_config()["api_key"]:
-        raise ValueError("AI 视频服务暂未配置")
     if duration not in SUPPORTED_MARKETING_DURATIONS:
         raise ValueError("营销视频时长仅支持 15、20、30 秒")
     if not any(item["id"] == platform for item in PLATFORM_OPTIONS):
@@ -432,12 +434,19 @@ async def create_marketing_plan_project(
         brand_context=brand_context,
     )
     quality = resolve_quality_tier(quality_tier)
+    provider = get_video_provider(str(quality["provider"]))
+    if not provider.is_configured():
+        raise ValueError("所选 AI 视频服务暂未配置")
     model = str(quality["model"])
     resolution = str(quality["resolution"])
     credits = sum(
         estimate_quality_credits(
             quality_tier,
-            provider_render_duration(model, int(item["duration"])),
+            provider_render_duration(
+                model,
+                int(item["duration"]),
+                provider_name=str(quality["provider"]),
+            ),
         )
         for item in plan["shots"]
     )

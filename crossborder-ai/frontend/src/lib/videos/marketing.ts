@@ -45,6 +45,7 @@ export interface MarketingVideoProject {
   continuity_mode?: 'natural' | string
   quality_tier?: string
   style_preset?: string
+  provider?: string
   credits_per_second?: number
   script_text?: string | null
   continuity?: Record<string, unknown>

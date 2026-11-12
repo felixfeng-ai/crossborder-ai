@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from app.core.config import settings
+from app.services import provider_config
 from app.services.minimax_video import PRODUCT_LOCK_PROMPT
 
 
@@ -35,6 +37,16 @@ QUALITY_TIERS: tuple[dict[str, Any], ...] = (
         "resolution": "2K",
         "credits_per_second": 24,
         "estimated_time_multiplier": 1.7,
+    },
+    {
+        "id": "seedance",
+        "name": "Seedance 商用",
+        "description": "720P 即梦 Seedance，适合商品动作、人物演示和营销镜头。",
+        "provider": "jimeng",
+        "model": "doubao-seedance-1-5-pro-251215",
+        "resolution": "720P",
+        "credits_per_second": 18,
+        "estimated_time_multiplier": 1.2,
     },
 )
 
@@ -111,9 +123,16 @@ _QUALITY_BY_ID = {item["id"]: item for item in QUALITY_TIERS}
 _STYLE_BY_ID = {item["id"]: item for item in STYLE_PRESETS}
 
 
-def list_quality_tiers() -> list[dict[str, Any]]:
+def list_quality_tiers(
+    configured_providers: set[str] | None = None,
+) -> list[dict[str, Any]]:
     """返回前端可见的质量档位副本。"""
-    return [dict(item) for item in QUALITY_TIERS]
+    return [
+        resolve_quality_tier(str(item["id"]))
+        for item in QUALITY_TIERS
+        if configured_providers is None
+        or str(item["provider"]) in configured_providers
+    ]
 
 
 def list_style_presets() -> list[dict[str, str]]:
@@ -126,7 +145,25 @@ def resolve_quality_tier(tier_id: str) -> dict[str, Any]:
     tier = _QUALITY_BY_ID.get(tier_id)
     if tier is None:
         raise ValueError("视频质量档位不支持")
-    return dict(tier)
+    resolved = dict(tier)
+    if resolved["provider"] == "jimeng":
+        resolved["model"] = (
+            provider_config.get(
+                "jimeng",
+                "model",
+                settings.JIMENG_VIDEO_MODEL,
+            )
+            or settings.JIMENG_VIDEO_MODEL
+        )
+        resolved["resolution"] = (
+            provider_config.get(
+                "jimeng",
+                "resolution",
+                settings.JIMENG_VIDEO_RESOLUTION,
+            )
+            or settings.JIMENG_VIDEO_RESOLUTION
+        ).upper()
+    return resolved
 
 
 def get_style_preset(style_id: str) -> dict[str, str]:
@@ -150,6 +187,7 @@ def get_video_target_size(resolution: str) -> tuple[int, int]:
     """返回 9:16 目标尺寸；保持偶数宽高，避免编码器兼容问题。"""
     sizes = {
         "480P": (480, 854),
+        "720P": (720, 1280),
         "768P": (768, 1366),
         "2K": (1440, 2560),
     }

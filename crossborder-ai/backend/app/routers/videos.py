@@ -22,9 +22,6 @@ from app.models.user import User
 from app.models.video_generation_task import VideoGenerationTask
 from app.services.minimax_video import (
     VIDEO_TEMPLATES,
-    estimate_video_cost_micros,
-    get_minimax_video_capabilities,
-    get_minimax_video_config,
 )
 from app.services.video_quality import (
     compile_i2va_prompt,
@@ -35,6 +32,10 @@ from app.services.video_quality import (
 )
 from app.services.video_thumbnail import ensure_video_thumbnail
 from app.services.video_task_executor import cancel_video_task, submit_video_task
+from app.services.video_provider import (
+    get_video_capabilities_summary,
+    get_video_provider,
+)
 
 
 router = APIRouter(prefix="/videos", tags=["AI 商品视频"])
@@ -163,9 +164,14 @@ async def _get_owned_source_asset(
 @router.get("/capabilities")
 async def video_capabilities():
     """返回可用模型、分辨率和积分估算，不暴露供应商密钥。"""
+    summary = get_video_capabilities_summary()
+    provider_names = {
+        str(provider["provider"])
+        for provider in summary["providers"]
+    }
     return {
-        **get_minimax_video_capabilities(),
-        "quality_tiers": list_quality_tiers(),
+        **summary,
+        "quality_tiers": list_quality_tiers(provider_names),
         "style_presets": list_style_presets(),
     }
 
@@ -180,8 +186,6 @@ async def generate_video(
     """提交图生视频任务；供应商受理后才扣减积分。"""
     if not check_feature_access(current_user, "ai_video"):
         raise HTTPException(status_code=403, detail="AI 视频生成仅限专业版套餐使用")
-    if not get_minimax_video_config()["api_key"]:
-        raise HTTPException(status_code=400, detail="AI 视频服务暂未配置")
     if payload.ratio != "9:16":
         raise HTTPException(status_code=400, detail="当前仅支持 9:16 商品短视频")
 
@@ -194,13 +198,17 @@ async def generate_video(
 
     try:
         quality_tier = resolve_quality_tier(payload.quality_tier)
+        provider_name = str(quality_tier["provider"])
+        provider = get_video_provider(provider_name)
+        if not provider.is_configured():
+            raise ValueError("所选 AI 视频服务暂未配置")
         model = str(quality_tier["model"])
         resolution = str(quality_tier["resolution"])
         credits_cost = estimate_quality_credits(
             payload.quality_tier,
             payload.duration,
         )
-        estimated_cost_micros = estimate_video_cost_micros(
+        estimated_cost_micros = provider.estimate_cost_micros(
             model,
             resolution,
             payload.duration,

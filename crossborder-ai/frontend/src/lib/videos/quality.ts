@@ -19,6 +19,15 @@ export interface VideoStylePreset {
 
 export const DEFAULT_QUALITY_TIER = 'standard'
 
+const PROVIDER_LABELS: Record<string, string> = {
+  minimax: 'MiniMax',
+  jimeng: '即梦 Seedance',
+}
+
+export function videoProviderLabel(provider: string): string {
+  return PROVIDER_LABELS[provider] || provider || '视频供应商'
+}
+
 export function qualityTierCredits(
   tiers: VideoQualityTier[],
   tierId: string,

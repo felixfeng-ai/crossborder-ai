@@ -34,6 +34,7 @@ export interface VideoTask {
   thumbnail_url?: string | null
   model: string
   resolution: string
+  provider: string
   quality_tier: string
   style_preset: string
   credits_per_second: number

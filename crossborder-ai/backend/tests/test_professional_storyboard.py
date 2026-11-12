@@ -130,6 +130,11 @@ def test_parser_rejects_timecode_mismatch():
 def test_provider_render_duration_uses_model_minimum():
     assert provider_render_duration("MiniMax-H3-Lite", 3) == 4
     assert provider_render_duration("MiniMax-H3-Lite", 7) == 7
+    assert provider_render_duration(
+        "doubao-seedance-1-5-pro-251215",
+        3,
+        provider_name="jimeng",
+    ) == 4
 
 
 def test_shot_prompt_contains_adjacent_shot_boundaries_and_reference_roles():

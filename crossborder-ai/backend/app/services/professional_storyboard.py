@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 import re
 from typing import Any
 
-from app.services.minimax_video import MODEL_CONFIGS, PRODUCT_LOCK_PROMPT, estimate_video_credits
+from app.services.minimax_video import PRODUCT_LOCK_PROMPT, estimate_video_credits
 
 
 MAX_STORYBOARD_SHOTS = 12
@@ -293,17 +293,19 @@ def build_reference_asset_prompt(reference_assets: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def provider_render_duration(model: str, target_duration: int) -> int:
+def provider_render_duration(
+    model: str,
+    target_duration: int,
+    provider_name: str = "minimax",
+) -> int:
     """返回供应商实际可接受的镜头时长，短镜头在合成阶段再裁切。"""
-    model_config = MODEL_CONFIGS.get(model)
-    if model_config is None:
-        raise ValueError("视频模型不支持")
-    target = int(target_duration)
-    if target <= 0:
-        raise ValueError("镜头时长必须大于 0 秒")
-    if target > int(model_config["max_duration"]):
-        raise ValueError(f"镜头时长不能超过 {model_config['max_duration']} 秒")
-    return max(int(model_config["min_duration"]), target)
+    # 延迟导入避免 Provider 适配器与分镜提示词模块循环依赖。
+    from app.services.video_provider import get_video_provider
+
+    return get_video_provider(provider_name).render_duration(
+        model,
+        target_duration,
+    )
 
 
 def estimate_storyboard_credits(

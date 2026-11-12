@@ -242,7 +242,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
           <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2">
             <span className="status-dot" />
             <span className="text-xs text-muted-foreground">
-              {capabilities?.enabled ? 'MiniMax H3 已就绪' : '视频服务待配置'}
+              {capabilities?.enabled ? 'AI 视频服务已就绪' : '视频服务待配置'}
             </span>
           </div>
         </div>

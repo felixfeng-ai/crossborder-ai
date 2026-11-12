@@ -171,6 +171,12 @@ class Settings(BaseSettings):
     MINIMAX_TTS_BASE_URL: str = "https://api.minimaxi.com"
     MINIMAX_TTS_MODEL: str = "speech-02-hd"
     MINIMAX_TTS_VOICE_ID: str = "English_Graceful_Lady"
+
+    # --- 即梦 / Seedance（火山方舟）---
+    JIMENG_API_KEY: Optional[str] = None
+    JIMENG_VIDEO_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
+    JIMENG_VIDEO_MODEL: str = "doubao-seedance-1-5-pro-251215"
+    JIMENG_VIDEO_RESOLUTION: str = "720P"
     VIDEO_STORAGE_DIR: str = "./storage/videos"
 
     # --- Shopify ---

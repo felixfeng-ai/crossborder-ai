@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.services import provider_config
 from app.services.video_quality import (
     compile_i2va_prompt,
     compile_ref2va_prompt,
@@ -18,6 +19,7 @@ def test_quality_tiers_control_model_resolution_and_credits():
         "draft",
         "standard",
         "cinematic",
+        "seedance",
     ]
 
     standard = resolve_quality_tier("standard")
@@ -30,6 +32,12 @@ def test_quality_tiers_control_model_resolution_and_credits():
     assert cinematic["model"] == "MiniMax-H3"
     assert cinematic["resolution"] == "2K"
     assert cinematic["credits_per_second"] == 24
+
+    seedance = resolve_quality_tier("seedance")
+    assert seedance["provider"] == "jimeng"
+    assert seedance["model"] == "doubao-seedance-1-5-pro-251215"
+    assert seedance["resolution"] == "720P"
+    assert seedance["credits_per_second"] == 18
 
     with pytest.raises(ValueError, match="质量档位"):
         resolve_quality_tier("unknown")
@@ -103,4 +111,21 @@ def test_compile_ref2va_prompt_uses_six_reference_sections():
 def test_target_size_follows_quality_resolution():
     assert get_video_target_size("480P") == (480, 854)
     assert get_video_target_size("768P") == (768, 1366)
+    assert get_video_target_size("720P") == (720, 1280)
     assert get_video_target_size("2K") == (1440, 2560)
+
+
+def test_seedance_tier_uses_admin_model_and_resolution(monkeypatch):
+    monkeypatch.setattr(
+        provider_config,
+        "get",
+        lambda provider, field, default="": {
+            "model": "ep-20261112-seedance",
+            "resolution": "1080P",
+        }.get(field, default)
+        if provider == "jimeng"
+        else default,
+    )
+    tier = resolve_quality_tier("seedance")
+    assert tier["model"] == "ep-20261112-seedance"
+    assert tier["resolution"] == "1080P"

@@ -2,6 +2,7 @@ import { Sparkles } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import {
   qualityTierCredits,
+  videoProviderLabel,
   type VideoQualityTier,
   type VideoStylePreset,
 } from '@/lib/videos/quality'
@@ -73,7 +74,7 @@ export function VideoQualityControls({
           <div className="min-w-0">
             <p className="text-[11px] font-medium">
               {tier
-                ? `${tier.model.replace('MiniMax-', '')} · ${tier.resolution} · ${tier.credits_per_second} 积分/秒`
+                ? `${videoProviderLabel(tier.provider)} · ${tier.resolution} · ${tier.credits_per_second} 积分/秒`
                 : '请选择质量档位'}
             </p>
             <p className="mt-1 text-[10px] leading-4 text-muted-foreground">

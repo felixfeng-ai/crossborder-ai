@@ -318,7 +318,11 @@ async def start_marketing_project(
                 provider=project.provider or "minimax",
                 model=project.model,
                 resolution=project.resolution,
-                duration=provider_render_duration(project.model, shot.duration),
+                duration=provider_render_duration(
+                    project.model,
+                    shot.duration,
+                    provider_name=project.provider or "minimax",
+                ),
                 ratio="9:16",
                 prompt=shot.prompt,
                 status="queued",

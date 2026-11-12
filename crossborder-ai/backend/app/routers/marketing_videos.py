@@ -27,7 +27,6 @@ from app.services.ai.persona_kit import build_persona_kit, fetch_persona, format
 from app.services.marketing_video_agent import (
     MARKETING_TEMPLATES,
     PLATFORM_OPTIONS,
-    estimate_marketing_plan_credits,
     generate_marketing_plan,
 )
 from app.services.marketing_video_executor import (
@@ -47,11 +46,17 @@ from app.services.minimax_video import (
 )
 from app.services.professional_storyboard import (
     MAX_SCRIPT_CHARS,
-    build_reference_asset_prompt,
-    build_shot_prompt,
-    estimate_storyboard_credits,
     parse_professional_storyboard,
     provider_render_duration,
+)
+from app.services.video_quality import (
+    compile_i2va_prompt,
+    compile_ref2va_prompt,
+    estimate_quality_credits,
+    get_style_preset,
+    list_quality_tiers,
+    list_style_presets,
+    resolve_quality_tier,
 )
 
 
@@ -96,6 +101,8 @@ class CreateMarketingProjectRequest(BaseModel):
     source_asset_id: str
     reference_assets: list[ProductReferenceAssetInput] = Field(default_factory=list)
     continuity_mode: Literal["natural"] = "natural"
+    quality_tier: str = "draft"
+    style_preset: str = "premium_luxury"
     idea: str = Field(..., min_length=3, max_length=3000)
     product_name: str = Field(..., min_length=1, max_length=255)
     platform: str = "tiktok"
@@ -115,6 +122,8 @@ class CreateStoryboardProjectRequest(StoryboardPreviewRequest):
     source_asset_id: str
     reference_assets: list[ProductReferenceAssetInput] = Field(default_factory=list)
     continuity_mode: Literal["natural"] = "natural"
+    quality_tier: str = "draft"
+    style_preset: str = "premium_luxury"
     product_name: str = Field(..., min_length=1, max_length=255)
     platform: str = "tiktok"
     market: str = Field("US", min_length=2, max_length=50)
@@ -150,6 +159,9 @@ class MarketingProjectResponse(BaseModel):
     mode: str = "creative"
     reference_assets: list[ProductReferenceAssetResponse] = Field(default_factory=list)
     continuity_mode: str = "natural"
+    quality_tier: str = "draft"
+    style_preset: str = "premium_luxury"
+    credits_per_second: int = 0
     script_text: Optional[str] = None
     continuity: dict = Field(default_factory=dict)
     model: str
@@ -321,6 +333,60 @@ def _parse_reference_assets(project: MarketingVideoProject) -> list[dict]:
     return value if isinstance(value, list) else []
 
 
+def _compile_shot_prompt(
+    *,
+    product_name: str,
+    direction: str,
+    duration: int,
+    style_preset: str,
+    reference_assets: list[dict],
+    previous_title: str | None = None,
+    next_title: str | None = None,
+) -> str:
+    """按参考图数量选择 H3 单帧或多参考图官方结构。"""
+    if len(reference_assets) > 1:
+        return compile_ref2va_prompt(
+            product_name=product_name,
+            direction=direction,
+            duration=duration,
+            style_id=style_preset,
+            reference_assets=reference_assets,
+            previous_title=previous_title,
+            next_title=next_title,
+        )
+    return compile_i2va_prompt(
+        product_name=product_name,
+        direction=direction,
+        duration=duration,
+        style_id=style_preset,
+        previous_title=previous_title,
+        next_title=next_title,
+    )
+
+
+def _estimate_storyboard_quality_credits(
+    shots,
+    quality_tier: dict,
+) -> int:
+    """按供应商最短镜头时长和质量档位估算整项目积分。"""
+    total = 0
+    for shot in shots:
+        duration = (
+            shot.duration
+            if hasattr(shot, "duration")
+            else int(shot.get("duration") or 0)
+        )
+        render_duration = provider_render_duration(
+            str(quality_tier["model"]),
+            duration,
+        )
+        total += estimate_quality_credits(
+            str(quality_tier["id"]),
+            render_duration,
+        )
+    return total
+
+
 async def _serialize_project(
     db: AsyncSession,
     project: MarketingVideoProject,
@@ -391,6 +457,9 @@ async def _serialize_project(
         continuity_mode=(
             "strict" if continuity.get("mode") == "strict" else "natural"
         ),
+        quality_tier=project.quality_tier,
+        style_preset=project.style_preset,
+        credits_per_second=project.credits_per_second,
         script_text=project.script_text,
         continuity=continuity if isinstance(continuity, dict) else {},
         model=project.model,
@@ -431,6 +500,8 @@ async def marketing_video_capabilities():
         "platforms": list(PLATFORM_OPTIONS),
         "marketing_templates": list(MARKETING_TEMPLATES),
         "durations": sorted(SUPPORTED_DURATIONS),
+        "quality_tiers": list_quality_tiers(),
+        "style_presets": list_style_presets(),
     }
 
 
@@ -465,10 +536,11 @@ async def create_professional_storyboard_project(
         raise HTTPException(status_code=400, detail="目标平台不支持")
     try:
         storyboard = parse_professional_storyboard(payload.script)
-        credits = estimate_storyboard_credits(
+        quality_tier = resolve_quality_tier(payload.quality_tier)
+        get_style_preset(payload.style_preset)
+        credits = _estimate_storyboard_quality_credits(
             storyboard.shots,
-            model=payload.model,
-            resolution=payload.resolution,
+            quality_tier,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -532,8 +604,11 @@ async def create_professional_storyboard_project(
         mode="script",
         script_text=payload.script,
         continuity_json=json.dumps(continuity, ensure_ascii=False),
-        model=payload.model,
-        resolution=payload.resolution,
+        quality_tier=payload.quality_tier,
+        style_preset=payload.style_preset,
+        credits_per_second=int(quality_tier["credits_per_second"]),
+        model=str(quality_tier["model"]),
+        resolution=str(quality_tier["resolution"]),
         status="brief_ready",
         brief_json=json.dumps(brief, ensure_ascii=False),
         credits_estimated=credits,
@@ -542,26 +617,33 @@ async def create_professional_storyboard_project(
     db.add(project)
     await db.flush()
     for index, shot in enumerate(storyboard.shots):
+        direction = shot.source_text
+        if storyboard.global_constraints:
+            direction = (
+                f"{direction}\nProject continuity: {storyboard.global_constraints}"
+            )
         db.add(
             MarketingVideoShot(
                 project_id=project.id,
                 position=shot.position,
                 title=shot.title,
                 purpose=shot.purpose,
-                prompt=build_shot_prompt(
-                    shot,
+                prompt=_compile_shot_prompt(
                     product_name=payload.product_name,
-                    global_constraints=storyboard.global_constraints,
-                    no_dialogue=storyboard.no_dialogue,
-                    no_subtitles=storyboard.no_subtitles,
-                    no_watermark=storyboard.no_watermark,
-                    previous_shot=storyboard.shots[index - 1] if index > 0 else None,
-                    next_shot=(
-                        storyboard.shots[index + 1]
+                    direction=direction,
+                    duration=shot.duration,
+                    style_preset=payload.style_preset,
+                    reference_assets=reference_assets,
+                    previous_title=(
+                        storyboard.shots[index - 1].title
+                        if index > 0
+                        else None
+                    ),
+                    next_title=(
+                        storyboard.shots[index + 1].title
                         if index + 1 < storyboard.shot_count
                         else None
                     ),
-                    reference_assets=reference_assets,
                 ),
                 source_text=shot.source_text,
                 duration=shot.duration,
@@ -592,6 +674,11 @@ async def create_marketing_project(
         raise HTTPException(status_code=400, detail="营销视频模板不存在")
     if current_user.credits < 1:
         raise HTTPException(status_code=402, detail="积分不足，生成营销方案需要 1 积分")
+    try:
+        quality_tier = resolve_quality_tier(payload.quality_tier)
+        get_style_preset(payload.style_preset)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     await _asset_owned(db, payload.source_asset_id, current_user.id)
     reference_assets = await _normalize_reference_assets(
@@ -630,18 +717,10 @@ async def create_marketing_project(
         template_id=payload.template_id,
         brand_context=brand_context,
     )
-    reference_prompt = build_reference_asset_prompt(reference_assets)
-    if reference_prompt:
-        for item in plan["shots"]:
-            item["prompt"] = f"{item['prompt']}\n\n{reference_prompt}"
-    try:
-        credits = estimate_marketing_plan_credits(
-            plan,
-            model=payload.model,
-            resolution=payload.resolution,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    credits = _estimate_storyboard_quality_credits(
+        plan["shots"],
+        quality_tier,
+    )
 
     project = MarketingVideoProject(
         user_id=current_user.id,
@@ -657,8 +736,11 @@ async def create_marketing_project(
         template_id=payload.template_id,
         mode="creative",
         continuity_json="{}",
-        model=payload.model,
-        resolution=payload.resolution,
+        quality_tier=payload.quality_tier,
+        style_preset=payload.style_preset,
+        credits_per_second=int(quality_tier["credits_per_second"]),
+        model=str(quality_tier["model"]),
+        resolution=str(quality_tier["resolution"]),
         status="brief_ready",
         brief_json=json.dumps(plan, ensure_ascii=False),
         credits_estimated=credits,
@@ -666,15 +748,31 @@ async def create_marketing_project(
     )
     db.add(project)
     await db.flush()
-    for item in plan["shots"]:
+    for index, item in enumerate(plan["shots"]):
+        source_text = item["prompt"]
+        compiled_prompt = _compile_shot_prompt(
+            product_name=payload.product_name,
+            direction=source_text,
+            duration=item["duration"],
+            style_preset=payload.style_preset,
+            reference_assets=reference_assets,
+            previous_title=(
+                plan["shots"][index - 1]["title"] if index > 0 else None
+            ),
+            next_title=(
+                plan["shots"][index + 1]["title"]
+                if index + 1 < len(plan["shots"])
+                else None
+            ),
+        )
         db.add(
             MarketingVideoShot(
                 project_id=project.id,
                 position=item["position"],
                 title=item["title"],
                 purpose=item["purpose"],
-                prompt=item["prompt"],
-                source_text=item["prompt"],
+                prompt=compiled_prompt,
+                source_text=source_text,
                 duration=item["duration"],
                 status="planned",
             )

@@ -39,7 +39,7 @@ PLAN_CATALOG: dict[str, dict] = {
         "annual_price": 2490,
         "annual_full_price": 2988,
         "first_month_bonus_credits": 100,
-        "monthly_credits": 2000,
+        "monthly_credits": 3000,
         "valid_days": 30,
     },
 }

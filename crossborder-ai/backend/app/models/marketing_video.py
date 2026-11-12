@@ -54,6 +54,24 @@ class MarketingVideoProject(Base):
         default="[]",
         server_default="[]",
     )
+    quality_tier: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="draft",
+        server_default="draft",
+    )
+    style_preset: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="premium_luxury",
+        server_default="premium_luxury",
+    )
+    credits_per_second: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     idea: Mapped[str] = mapped_column(Text, nullable=False)

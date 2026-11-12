@@ -388,6 +388,14 @@ class AgentOrchestrator:
                             "type": "string",
                             "description": "视频模板，默认 clean_product",
                         },
+                        "quality_tier": {
+                            "type": "string",
+                            "enum": ["draft", "standard", "cinematic"],
+                        },
+                        "style_preset": {
+                            "type": "string",
+                            "description": "视觉风格预设 ID",
+                        },
                         "model": {"type": "string"},
                         "resolution": {"type": "string"},
                         "duration": {"type": "integer"},
@@ -419,6 +427,14 @@ class AgentOrchestrator:
                         "language": {"type": "string"},
                         "duration": {"type": "integer"},
                         "template_id": {"type": "string"},
+                        "quality_tier": {
+                            "type": "string",
+                            "enum": ["draft", "standard", "cinematic"],
+                        },
+                        "style_preset": {
+                            "type": "string",
+                            "description": "视觉风格预设 ID",
+                        },
                     },
                     "required": ["source_asset_id", "product_name", "idea"],
                 },
@@ -1228,16 +1244,15 @@ class AgentOrchestrator:
                 "status": "failed",
                 "error": "缺少商品首帧素材 ID",
             }
-        model = str(params.get("model") or "MiniMax-H3-Lite")
-        resolution = str(params.get("resolution") or "480P")
+        quality_tier = str(params.get("quality_tier") or "draft")
+        style_preset = str(params.get("style_preset") or "commerce_showcase")
         duration = int(params.get("duration") or 4)
         if not params.get("confirmed", False):
-            from app.services.minimax_video import estimate_video_credits
+            from app.services.video_quality import estimate_quality_credits
 
             try:
-                estimated_credits = estimate_video_credits(
-                    model,
-                    resolution,
+                estimated_credits = estimate_quality_credits(
+                    quality_tier,
                     duration,
                 )
             except ValueError as exc:
@@ -1264,8 +1279,8 @@ class AgentOrchestrator:
                 source_asset_id=source_asset_id,
                 prompt=str(params.get("prompt") or ""),
                 template_id=str(params.get("template_id") or "clean_product"),
-                model=model,
-                resolution=resolution,
+                quality_tier=quality_tier,
+                style_preset=style_preset,
                 duration=duration,
                 ratio=str(params.get("ratio") or "9:16"),
                 reserve_credits=1,
@@ -1284,6 +1299,8 @@ class AgentOrchestrator:
                 "status": task.status,
                 "credits_cost": task.credits_cost,
                 "model": task.model,
+                "quality_tier": task.quality_tier,
+                "style_preset": task.style_preset,
                 "duration": task.duration,
             },
             "links": [
@@ -1309,6 +1326,8 @@ class AgentOrchestrator:
                 language=str(params.get("language") or "en"),
                 duration=int(params.get("duration") or 15),
                 template_id=str(params.get("template_id") or "presenter_demo"),
+                quality_tier=str(params.get("quality_tier") or "draft"),
+                style_preset=str(params.get("style_preset") or "premium_luxury"),
             )
         except (PermissionError, ValueError) as exc:
             return {

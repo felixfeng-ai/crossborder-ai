@@ -51,7 +51,7 @@ async def _user_with_wallet(
 def test_plan_catalog_uses_cost_sustainable_defaults():
     assert PLAN_CATALOG["free"]["monthly_credits"] == 30
     assert PLAN_CATALOG["standard"]["monthly_credits"] == 800
-    assert PLAN_CATALOG["professional"]["monthly_credits"] == 2000
+    assert PLAN_CATALOG["professional"]["monthly_credits"] == 3000
     assert PLAN_CATALOG["standard"]["valid_days"] == 30
     assert PLAN_CATALOG["professional"]["valid_days"] == 30
 
@@ -147,8 +147,8 @@ async def test_professional_without_subscription_reconciles_to_full_allowance(
 
     assert subscription.plan == "professional"
     assert subscription.source == "automatic_plan_reconciliation"
-    assert wallet.plan_credits == 2000
-    assert user.credits == 2000
+    assert wallet.plan_credits == 3000
+    assert user.credits == 3000
     assert user.credit_period_start == now
 
 
@@ -210,8 +210,8 @@ async def test_legacy_excess_plan_credits_are_reclassified_as_purchased(
 
     assert transaction is not None
     assert transaction.feature == "legacy_plan_credit_reclassification"
-    assert wallet.plan_credits == 2_000
-    assert wallet.purchased_credits == 97_998
+    assert wallet.plan_credits == 3_000
+    assert wallet.purchased_credits == 96_998
     assert user.credits == 99_998
 
 

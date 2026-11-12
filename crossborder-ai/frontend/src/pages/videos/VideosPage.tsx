@@ -19,8 +19,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import ConfirmDialog from '@/components/common/ConfirmDialog'
 import { Label } from '@/components/ui/label'
+import { VideoQualityControls } from '@/components/videos/VideoQualityControls'
 import {
-  estimateVideoCredits,
   formatVideoDuration,
   getVideoModel,
   isVideoTerminal,
@@ -29,6 +29,10 @@ import {
   type VideoTask,
 } from '@/lib/videos/workbench'
 import { safeFilenamePart } from '@/lib/videos/marketing'
+import {
+  DEFAULT_QUALITY_TIER,
+  qualityTierCredits,
+} from '@/lib/videos/quality'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { cn } from '@/utils/cn'
 import { resolveMediaUrl } from '@/lib/apiUrl'
@@ -49,8 +53,8 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
   const [sourceAssetId, setSourceAssetId] = useState('')
   const [selectedTaskId, setSelectedTaskId] = useState('')
   const [templateId, setTemplateId] = useState('clean_product')
-  const [modelId, setModelId] = useState('MiniMax-H3-Lite')
-  const [resolution, setResolution] = useState('480P')
+  const [qualityTier, setQualityTier] = useState(DEFAULT_QUALITY_TIER)
+  const [stylePreset, setStylePreset] = useState('premium_luxury')
   const [duration, setDuration] = useState(4)
   const [prompt, setPrompt] = useState('')
   const [actionError, setActionError] = useState('')
@@ -93,25 +97,31 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
   const selectedTemplate = capabilities?.templates.find(
     (template) => template.id === templateId,
   )
-  const currentModel = getVideoModel(capabilities, modelId)
-  const credits = estimateVideoCredits(capabilities, modelId, resolution, duration)
+  const currentTier =
+    capabilities?.quality_tiers.find((tier) => tier.id === qualityTier) || null
+  const currentModel = getVideoModel(capabilities, currentTier?.model || '')
+  const credits = qualityTierCredits(
+    capabilities?.quality_tiers || [],
+    qualityTier,
+    duration,
+  )
 
   useEffect(() => {
     if (!capabilities) return
-    if (!getVideoModel(capabilities, modelId)) {
-      setModelId(capabilities.default_model)
+    if (!capabilities.quality_tiers.some((tier) => tier.id === qualityTier)) {
+      setQualityTier(capabilities.quality_tiers[0]?.id || DEFAULT_QUALITY_TIER)
     }
-  }, [capabilities, modelId])
+    if (!capabilities.style_presets.some((style) => style.id === stylePreset)) {
+      setStylePreset(capabilities.style_presets[0]?.id || 'premium_luxury')
+    }
+  }, [capabilities, qualityTier, stylePreset])
 
   useEffect(() => {
     if (!currentModel) return
-    if (!currentModel.resolutions.includes(resolution)) {
-      setResolution(currentModel.resolutions[0] || '480P')
-    }
     if (duration < currentModel.min_duration || duration > currentModel.max_duration) {
       setDuration(currentModel.min_duration)
     }
-  }, [currentModel, duration, resolution])
+  }, [currentModel, duration])
 
   useEffect(() => {
     if (!assets.length) {
@@ -142,8 +152,8 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
           source_asset_id: selectedAsset.id,
           prompt,
           template_id: templateId,
-          model: modelId,
-          resolution,
+          quality_tier: qualityTier,
+          style_preset: stylePreset,
           duration,
           ratio: '9:16',
         },
@@ -209,7 +219,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
     !capabilities?.enabled ||
     !selectedAsset ||
     !templateId ||
-    !currentModel?.resolutions.includes(resolution) ||
+    !currentTier ||
     generateMutation.isPending
 
   return (
@@ -398,60 +408,34 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="video-model">模型</Label>
-                <select
-                  id="video-model"
-                  value={modelId}
-                  onChange={(event) => setModelId(event.target.value)}
-                  className="h-10 w-full border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
-                >
-                  {(capabilities?.models || []).map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.id.replace('MiniMax-', '')}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="video-duration">时长</Label>
-                <select
-                  id="video-duration"
-                  value={duration}
-                  onChange={(event) => setDuration(Number(event.target.value))}
-                  className="metric-number h-10 w-full border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
-                >
-                  {DURATION_OPTIONS.filter(
-                    (value) =>
-                      !currentModel ||
-                      (value >= currentModel.min_duration && value <= currentModel.max_duration),
-                  ).map((value) => (
-                    <option key={value} value={value}>
-                      {value} 秒
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+            <VideoQualityControls
+              tiers={capabilities?.quality_tiers || []}
+              styles={capabilities?.style_presets || []}
+              qualityTier={qualityTier}
+              stylePreset={stylePreset}
+              duration={duration}
+              onQualityTierChange={setQualityTier}
+              onStylePresetChange={setStylePreset}
+            />
 
-            <div className="space-y-2.5">
-              <Label>清晰度</Label>
-              <div className="grid grid-cols-3 gap-1 border border-border p-0.5">
-                {(currentModel?.resolutions || []).map((item) => (
-                  <Button
-                    key={item}
-                    type="button"
-                    variant={resolution === item ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="metric-number h-8 text-xs"
-                    aria-pressed={resolution === item}
-                    onClick={() => setResolution(item)}
-                  >
-                    {item}
-                  </Button>
+            <div className="space-y-2">
+              <Label htmlFor="video-duration">时长</Label>
+              <select
+                id="video-duration"
+                value={duration}
+                onChange={(event) => setDuration(Number(event.target.value))}
+                className="metric-number h-10 w-full border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+              >
+                {DURATION_OPTIONS.filter(
+                  (value) =>
+                    !currentModel ||
+                    (value >= currentModel.min_duration && value <= currentModel.max_duration),
+                ).map((value) => (
+                  <option key={value} value={value}>
+                    {value} 秒
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
 
             <div className="space-y-2">

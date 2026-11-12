@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ProductReferencePicker } from '@/components/videos/ProductReferencePicker'
+import { VideoQualityControls } from '@/components/videos/VideoQualityControls'
 import {
   projectStatusLabel,
   shotStatusLabel,
@@ -32,6 +33,7 @@ import {
   buildReferenceAssetsPayload,
   type ProductReferenceRole,
 } from '@/lib/videos/references'
+import { DEFAULT_QUALITY_TIER } from '@/lib/videos/quality'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { cn } from '@/utils/cn'
 import { MarketingVideoPreview } from './MarketingVideosPage'
@@ -80,8 +82,8 @@ export default function ProfessionalStoryboardPage() {
   const [platform, setPlatform] = useState('tiktok')
   const [market, setMarket] = useState('US')
   const [language, setLanguage] = useState('en')
-  const [modelId, setModelId] = useState('MiniMax-H3-Lite')
-  const [resolution, setResolution] = useState('480P')
+  const [qualityTier, setQualityTier] = useState(DEFAULT_QUALITY_TIER)
+  const [stylePreset, setStylePreset] = useState('cinematic_story')
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [activeProject, setActiveProject] = useState<MarketingVideoProject | null>(null)
   const [actionError, setActionError] = useState('')
@@ -138,7 +140,6 @@ export default function ProfessionalStoryboardPage() {
   const history = historyQuery.data || []
   const project = activeProject || projectQuery.data || null
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) || null
-  const currentModel = capabilities?.models.find((item) => item.id === modelId)
 
   useEffect(() => {
     if (projectQuery.data) {
@@ -151,17 +152,13 @@ export default function ProfessionalStoryboardPage() {
 
   useEffect(() => {
     if (!capabilities) return
-    if (!capabilities.models.some((item) => item.id === modelId)) {
-      setModelId(capabilities.default_model)
+    if (!capabilities.quality_tiers.some((item) => item.id === qualityTier)) {
+      setQualityTier(capabilities.quality_tiers[0]?.id || DEFAULT_QUALITY_TIER)
     }
-  }, [capabilities, modelId])
-
-  useEffect(() => {
-    if (!currentModel) return
-    if (!currentModel.resolutions.includes(resolution)) {
-      setResolution(currentModel.resolutions[0] || capabilities?.default_resolution || '480P')
+    if (!capabilities.style_presets.some((item) => item.id === stylePreset)) {
+      setStylePreset(capabilities.style_presets[0]?.id || 'cinematic_story')
     }
-  }, [capabilities?.default_resolution, currentModel, resolution])
+  }, [capabilities, qualityTier, stylePreset])
 
   useEffect(() => {
     if (!assets.length) {
@@ -224,8 +221,8 @@ export default function ProfessionalStoryboardPage() {
           platform,
           market,
           language,
-          model: modelId,
-          resolution,
+          quality_tier: qualityTier,
+          style_preset: stylePreset,
         },
         { headers: { 'Idempotency-Key': crypto.randomUUID() } },
       )
@@ -409,34 +406,14 @@ export default function ProfessionalStoryboardPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>模型</Label>
-                <select
-                  value={modelId}
-                  onChange={(event) => setModelId(event.target.value)}
-                  className="h-9 w-full border border-input bg-background px-2 text-[11px] outline-none focus:ring-2 focus:ring-ring"
-                >
-                  {(capabilities?.models || []).map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.id.replace('MiniMax-', '')}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>清晰度</Label>
-                <select
-                  value={resolution}
-                  onChange={(event) => setResolution(event.target.value)}
-                  className="metric-number h-9 w-full border border-input bg-background px-2 text-[11px] outline-none focus:ring-2 focus:ring-ring"
-                >
-                  {(currentModel?.resolutions || ['480P']).map((value) => (
-                    <option key={value} value={value}>{value}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
+            <VideoQualityControls
+              tiers={capabilities?.quality_tiers || []}
+              styles={capabilities?.style_presets || []}
+              qualityTier={qualityTier}
+              stylePreset={stylePreset}
+              onQualityTierChange={setQualityTier}
+              onStylePresetChange={setStylePreset}
+            />
 
             <Button
               className="w-full"

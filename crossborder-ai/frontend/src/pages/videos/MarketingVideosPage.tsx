@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ProductReferencePicker } from '@/components/videos/ProductReferencePicker'
+import { VideoQualityControls } from '@/components/videos/VideoQualityControls'
 import {
   buildMarketingPipeline,
   downloadFilename,
@@ -37,6 +38,7 @@ import {
   buildReferenceAssetsPayload,
   type ProductReferenceRole,
 } from '@/lib/videos/references'
+import { DEFAULT_QUALITY_TIER } from '@/lib/videos/quality'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { cn } from '@/utils/cn'
 
@@ -85,8 +87,8 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
   const [language, setLanguage] = useState('en')
   const [duration, setDuration] = useState(15)
   const [templateId, setTemplateId] = useState('presenter_demo')
-  const [modelId, setModelId] = useState('MiniMax-H3-Lite')
-  const [resolution, setResolution] = useState('480P')
+  const [qualityTier, setQualityTier] = useState(DEFAULT_QUALITY_TIER)
+  const [stylePreset, setStylePreset] = useState('authentic_lifestyle')
   const [actionError, setActionError] = useState('')
 
   const capabilitiesQuery = useQuery<MarketingCapabilities>({
@@ -154,13 +156,16 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
 
   useEffect(() => {
     if (!capabilities) return
-    if (!capabilities.models.some((item) => item.id === modelId)) {
-      setModelId(capabilities.default_model)
+    if (!capabilities.quality_tiers.some((item) => item.id === qualityTier)) {
+      setQualityTier(capabilities.quality_tiers[0]?.id || DEFAULT_QUALITY_TIER)
+    }
+    if (!capabilities.style_presets.some((item) => item.id === stylePreset)) {
+      setStylePreset(capabilities.style_presets[0]?.id || 'authentic_lifestyle')
     }
     if (!capabilities.durations.includes(duration)) {
       setDuration(capabilities.durations[0] || 15)
     }
-  }, [capabilities, duration, modelId])
+  }, [capabilities, duration, qualityTier, stylePreset])
 
   useEffect(() => {
     if (!assets.length) {
@@ -194,7 +199,6 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
   }, [history, selectedProjectId])
 
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) || null
-  const currentModel = capabilities?.models.find((item) => item.id === modelId)
   const canGeneratePlan =
     Boolean(selectedAsset) &&
     productName.trim().length > 0 &&
@@ -222,8 +226,8 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
           language,
           duration,
           template_id: templateId,
-          model: modelId,
-          resolution,
+          quality_tier: qualityTier,
+          style_preset: stylePreset,
         },
         { headers: { 'Idempotency-Key': crypto.randomUUID() } },
       )
@@ -528,35 +532,15 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
                   人物模板使用 AI 品牌演示者，不作为真实消费者证言。
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3 border-t border-border pt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="marketing-model">模型</Label>
-                  <select
-                    id="marketing-model"
-                    value={modelId}
-                    onChange={(event) => setModelId(event.target.value)}
-                    className="h-9 w-full border border-input bg-background px-2 text-[11px] outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    {(capabilities?.models || []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.id.replace('MiniMax-', '')}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="marketing-resolution">清晰度</Label>
-                  <select
-                    id="marketing-resolution"
-                    value={resolution}
-                    onChange={(event) => setResolution(event.target.value)}
-                    className="metric-number h-9 w-full border border-input bg-background px-2 text-[11px] outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    {(currentModel?.resolutions || ['480P']).map((value) => (
-                      <option key={value} value={value}>{value}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="border-t border-border pt-4">
+                <VideoQualityControls
+                  tiers={capabilities?.quality_tiers || []}
+                  styles={capabilities?.style_presets || []}
+                  qualityTier={qualityTier}
+                  stylePreset={stylePreset}
+                  onQualityTierChange={setQualityTier}
+                  onStylePresetChange={setStylePreset}
+                />
               </div>
             </div>
           </section>

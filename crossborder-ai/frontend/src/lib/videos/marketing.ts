@@ -1,3 +1,5 @@
+import type { VideoQualityTier, VideoStylePreset } from './quality'
+
 export interface MarketingVideoBrief {
   title?: string
   audience?: string
@@ -41,6 +43,9 @@ export interface MarketingVideoProject {
   mode?: 'creative' | 'script' | string
   reference_assets?: MarketingProductReference[]
   continuity_mode?: 'natural' | string
+  quality_tier?: string
+  style_preset?: string
+  credits_per_second?: number
   script_text?: string | null
   continuity?: Record<string, unknown>
   model: string
@@ -87,6 +92,8 @@ export interface MarketingCapabilities {
   platforms: MarketingPlatform[]
   marketing_templates: MarketingTemplate[]
   durations: number[]
+  quality_tiers: VideoQualityTier[]
+  style_presets: VideoStylePreset[]
   voice?: {
     enabled: boolean
     provider: string

@@ -28,7 +28,7 @@ describe('landing content facts', () => {
 
   it('套餐回退值与线上接口一致', () => {
     expect(FALLBACK_PLANS.map((plan) => plan.price)).toEqual([0, 99, 249])
-    expect(FALLBACK_PLANS.map((plan) => plan.monthly_credits)).toEqual([30, 800, 2000])
+    expect(FALLBACK_PLANS.map((plan) => plan.monthly_credits)).toEqual([30, 800, 3000])
     expect(FALLBACK_CREDIT_PACKS.map((pack) => pack.credits)).toEqual([50, 200, 500, 1200])
     expect(planDisplayName('free')).toBe('免费版')
     expect(planValidityLabel(FALLBACK_PLANS[1])).toBe('30 天有效')

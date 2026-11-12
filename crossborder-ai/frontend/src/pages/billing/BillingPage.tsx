@@ -171,15 +171,15 @@ const OUTPUT_OPTIONS: Array<{
     id: 'video',
     label: '营销成片',
     icon: Film,
-    count: '13',
+    count: '6',
     unit: '条',
-    detail: '30 秒 / 768P / 8 镜头',
+    detail: '30 秒 / 标准 768P / 8 镜头',
   },
   {
     id: 'image',
     label: '商品图',
     icon: ImageIcon,
-    count: '666',
+    count: '1,000',
     unit: '张',
     detail: '3 积分 / 张',
   },
@@ -187,7 +187,7 @@ const OUTPUT_OPTIONS: Array<{
     id: 'listing',
     label: 'Listing',
     icon: FileText,
-    count: '2,000',
+    count: '3,000',
     unit: '份',
     detail: '1 积分 / 份',
   },
@@ -364,7 +364,7 @@ export default function BillingPage() {
 
           <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
             <span className="border border-[color:var(--factory-accent)]/30 bg-[color:var(--factory-accent)]/10 px-2.5 py-1 text-[color:var(--factory-accent)]">
-              {firstMonthEligible ? '首月最高省 ¥50' : '2,000 AI 积分'}
+              {firstMonthEligible ? '首月最高省 ¥50' : '3,000 AI 积分'}
             </span>
             <span className="border border-border px-2.5 py-1 text-muted-foreground">
               年付买 10 个月送 2 个月
@@ -827,8 +827,9 @@ export default function BillingPage() {
             {[
               ['AI Listing', '1 积分'],
               ['AI 图片', '3 积分 / 张'],
-              ['480P 视频', '12 积分 / 4 秒'],
-              ['768P 视频', '18 积分 / 4 秒'],
+              ['480P 视频', '32 积分 / 4 秒'],
+              ['768P 视频', '60 积分 / 4 秒'],
+              ['2K 视频', '96 积分 / 4 秒'],
               ['AI 配音', '1 积分 / 100 字符'],
               ['配音最低消耗', '3 积分'],
             ].map(([label, value], index) => (

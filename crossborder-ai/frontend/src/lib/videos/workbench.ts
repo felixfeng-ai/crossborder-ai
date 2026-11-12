@@ -1,3 +1,5 @@
+import type { VideoQualityTier, VideoStylePreset } from './quality'
+
 export interface VideoModelCapability {
   id: string
   min_duration: number
@@ -21,6 +23,8 @@ export interface VideoCapabilities {
   default_resolution: string
   models: VideoModelCapability[]
   templates: VideoTemplate[]
+  quality_tiers: VideoQualityTier[]
+  style_presets: VideoStylePreset[]
 }
 
 export interface VideoTask {
@@ -29,6 +33,9 @@ export interface VideoTask {
   video_url?: string | null
   model: string
   resolution: string
+  quality_tier: string
+  style_preset: string
+  credits_per_second: number
   duration: number
   ratio: string
   prompt: string

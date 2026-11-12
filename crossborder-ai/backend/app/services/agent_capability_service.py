@@ -30,16 +30,19 @@ from app.services.ai.persona_kit import (
 from app.services.marketing_video_agent import (
     MARKETING_TEMPLATES,
     PLATFORM_OPTIONS,
-    estimate_marketing_plan_credits,
     generate_marketing_plan,
 )
 from app.services.minimax_video import (
-    PRODUCT_LOCK_PROMPT,
     VIDEO_TEMPLATES,
     estimate_video_cost_micros,
-    estimate_video_credits,
     get_minimax_video_config,
 )
+from app.services.video_quality import (
+    compile_i2va_prompt,
+    estimate_quality_credits,
+    resolve_quality_tier,
+)
+from app.services.professional_storyboard import provider_render_duration
 
 
 SUPPORTED_MARKETING_DURATIONS = {15, 20, 30}
@@ -281,6 +284,8 @@ async def create_product_video_task(
     source_asset_id: str,
     prompt: str = "",
     template_id: str = "clean_product",
+    quality_tier: str = "draft",
+    style_preset: str = "commerce_showcase",
     model: str = "MiniMax-H3-Lite",
     resolution: str = "480P",
     duration: int = 4,
@@ -301,10 +306,14 @@ async def create_product_video_task(
     )
     if template is None:
         raise ValueError("视频模板不存在")
-    if await get_owned_image_asset(db, user.id, source_asset_id) is None:
+    asset = await get_owned_image_asset(db, user.id, source_asset_id)
+    if asset is None:
         raise ValueError("商品首帧不存在")
 
-    credits_cost = estimate_video_credits(model, resolution, duration)
+    quality = resolve_quality_tier(quality_tier)
+    model = str(quality["model"])
+    resolution = str(quality["resolution"])
+    credits_cost = estimate_quality_credits(quality_tier, duration)
     estimated_cost_micros = estimate_video_cost_micros(model, resolution, duration)
     locked_user = (
         await db.execute(
@@ -319,10 +328,13 @@ async def create_product_video_task(
             f"积分不足，本次视频生成需要 {credits_cost} 积分{reserve_hint}"
         )
 
-    prompt_parts = [template["prompt_suffix"]]
-    if prompt.strip():
-        prompt_parts.append(prompt.strip())
-    prompt_parts.append(PRODUCT_LOCK_PROMPT)
+    final_prompt = compile_i2va_prompt(
+        product_name=asset.name,
+        direction=prompt,
+        duration=duration,
+        style_id=style_preset,
+        template_direction=template["prompt_suffix"],
+    )
     task = VideoGenerationTask(
         user_id=user.id,
         source_asset_id=UUID(str(source_asset_id)),
@@ -330,9 +342,12 @@ async def create_product_video_task(
         provider="minimax",
         model=model,
         resolution=resolution,
+        quality_tier=quality_tier,
+        style_preset=style_preset,
+        credits_per_second=int(quality["credits_per_second"]),
         duration=duration,
         ratio=ratio,
-        prompt="\n\n".join(prompt_parts),
+        prompt=final_prompt,
         status="queued",
         credits_cost=credits_cost,
         estimated_cost_micros=estimated_cost_micros,
@@ -381,6 +396,8 @@ async def create_marketing_plan_project(
     language: str = "en",
     duration: int = 15,
     template_id: str = "presenter_demo",
+    quality_tier: str = "draft",
+    style_preset: str = "premium_luxury",
     model: str = "MiniMax-H3-Lite",
     resolution: str = "480P",
 ) -> tuple[MarketingVideoProject, int]:
@@ -414,10 +431,15 @@ async def create_marketing_plan_project(
         template_id=template_id,
         brand_context=brand_context,
     )
-    credits = estimate_marketing_plan_credits(
-        plan,
-        model=model,
-        resolution=resolution,
+    quality = resolve_quality_tier(quality_tier)
+    model = str(quality["model"])
+    resolution = str(quality["resolution"])
+    credits = sum(
+        estimate_quality_credits(
+            quality_tier,
+            provider_render_duration(model, int(item["duration"])),
+        )
+        for item in plan["shots"]
     )
     project = MarketingVideoProject(
         user_id=user.id,
@@ -430,6 +452,9 @@ async def create_marketing_plan_project(
         language=language,
         duration=duration,
         template_id=template_id,
+        quality_tier=quality_tier,
+        style_preset=style_preset,
+        credits_per_second=int(quality["credits_per_second"]),
         model=model,
         resolution=resolution,
         status="brief_ready",
@@ -438,14 +463,29 @@ async def create_marketing_plan_project(
     )
     db.add(project)
     await db.flush()
-    for item in plan["shots"]:
+    for index, item in enumerate(plan["shots"]):
+        compiled_prompt = compile_i2va_prompt(
+            product_name=product_name,
+            direction=item["prompt"],
+            duration=int(item["duration"]),
+            style_id=style_preset,
+            previous_title=(
+                plan["shots"][index - 1]["title"] if index > 0 else None
+            ),
+            next_title=(
+                plan["shots"][index + 1]["title"]
+                if index + 1 < len(plan["shots"])
+                else None
+            ),
+        )
         db.add(
             MarketingVideoShot(
                 project_id=project.id,
                 position=item["position"],
                 title=item["title"],
                 purpose=item["purpose"],
-                prompt=item["prompt"],
+                prompt=compiled_prompt,
+                source_text=item["prompt"],
                 duration=item["duration"],
                 status="planned",
             )

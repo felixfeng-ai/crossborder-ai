@@ -68,7 +68,7 @@ async def _professional_user(db_session) -> User:
         await db_session.execute(select(User).where(User.email == "test@example.com"))
     ).scalar_one()
     user.plan = "professional"
-    user.credits = 200
+    user.credits = 1000
     await db_session.flush()
     return user
 
@@ -241,7 +241,7 @@ async def test_storyboard_preview_and_create_preserve_shots_without_plan_charge(
     assert body["shots"][-1]["duration"] == 3
     assert body["subtitle_url"] is None
     await db_session.refresh(user)
-    assert user.credits == 200
+    assert user.credits == 1000
 
 
 @pytest.mark.asyncio
@@ -444,3 +444,68 @@ async def test_storyboard_render_passes_product_reference_images_to_provider(
     assert len(submitted) == 8
     assert all(len(item["reference_images"]) == 3 for item in submitted)
     assert all(item["first_frame"] is None for item in submitted)
+
+
+@pytest.mark.asyncio
+async def test_storyboard_project_uses_quality_tier_and_official_prompt(
+    client,
+    db_session,
+    auth_headers,
+    tmp_path,
+    monkeypatch,
+):
+    primary = await _seed_asset(db_session, tmp_path, monkeypatch)
+    detail = await _seed_asset(db_session, tmp_path, monkeypatch)
+    user = await _professional_user(db_session)
+    user.credits = 600
+    await db_session.flush()
+    monkeypatch.setattr(settings, "MINIMAX_API_KEY", "video-key")
+    provider_config.clear_cache()
+
+    created = await client.post(
+        "/api/v1/marketing-videos/storyboards/projects",
+        json={
+            "source_asset_id": str(primary.id),
+            "reference_assets": [
+                {"asset_id": str(detail.id), "role": "detail"},
+            ],
+            "product_name": "DONMIS 圣诞香薰礼盒",
+            "script": SCRIPT,
+            "platform": "tiktok",
+            "market": "US",
+            "language": "en",
+            "quality_tier": "standard",
+            "style_preset": "festive_warmth",
+        },
+        headers=auth_headers,
+    )
+
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["quality_tier"] == "standard"
+    assert body["style_preset"] == "festive_warmth"
+    assert body["model"] == "MiniMax-H3-Highspeed"
+    assert body["resolution"] == "768P"
+    assert body["credits_estimated"] == 480
+    assert "subject_definitions:" in body["shots"][0]["prompt"]
+    assert "retention_analysis:" in body["shots"][0]["prompt"]
+
+    submitted = []
+
+    async def fake_submit(**kwargs):
+        submitted.append(kwargs)
+        return f"quality-shot-{len(submitted)}"
+
+    monkeypatch.setattr(
+        "app.services.video_task_executor.submit_minimax_video",
+        fake_submit,
+    )
+    rendered = await client.post(
+        f"/api/v1/marketing-videos/projects/{body['id']}/render",
+        headers=auth_headers,
+    )
+
+    assert rendered.status_code == 202, rendered.text
+    assert submitted[0]["model"] == "MiniMax-H3-Highspeed"
+    assert submitted[0]["resolution"] == "768P"
+    assert "subject_definitions:" in submitted[0]["prompt"]

@@ -18,7 +18,7 @@ async def test_public_plans_expose_current_capabilities(client):
     assert plans["professional"]["recommended"] is True
     assert any("30 AI 积分" in item for item in plans["free"]["features"])
     assert any("800 AI 积分" in item for item in plans["standard"]["features"])
-    assert any("2,000 AI 积分" in item for item in plans["professional"]["features"])
+    assert any("3,000 AI 积分" in item for item in plans["professional"]["features"])
     assert any("VOC" in item for item in plans["free"]["features"])
     assert any("自动巡检" in item for item in plans["standard"]["features"])
     assert any("字幕" in item for item in plans["professional"]["features"])

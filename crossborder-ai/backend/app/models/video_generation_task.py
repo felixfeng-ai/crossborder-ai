@@ -42,6 +42,24 @@ class VideoGenerationTask(Base):
         default="[]",
         server_default="[]",
     )
+    quality_tier: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="draft",
+        server_default="draft",
+    )
+    style_preset: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="commerce_showcase",
+        server_default="commerce_showcase",
+    )
+    credits_per_second: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
     template_id: Mapped[str] = mapped_column(String(50), nullable=False, default="clean_product")
     provider: Mapped[str] = mapped_column(String(30), nullable=False, default="minimax")
     model: Mapped[str] = mapped_column(String(100), nullable=False)

@@ -392,6 +392,61 @@ async def test_submit_video_task_deducts_credits_and_persists_provider_id(
 
 
 @pytest.mark.asyncio
+async def test_single_video_uses_quality_tier_and_structured_prompt(
+    client: AsyncClient,
+    auth_headers: dict,
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    asset = await _seed_asset(db_session, tmp_path, monkeypatch)
+    user = await _professional_user(db_session)
+    user.credits = 500
+    await db_session.flush()
+    monkeypatch.setattr(settings, "MINIMAX_API_KEY", "video-key")
+    provider_config.clear_cache()
+    submitted = {}
+
+    async def fake_submit(**kwargs):
+        submitted.update(kwargs)
+        return "minimax-quality-task"
+
+    monkeypatch.setattr(
+        "app.services.video_task_executor.submit_minimax_video",
+        fake_submit,
+    )
+
+    response = await client.post(
+        "/api/v1/videos/generate",
+        json={
+            "source_asset_id": str(asset.id),
+            "prompt": "一只手轻轻打开礼盒，露出内部香薰片",
+            "template_id": "clean_product",
+            "quality_tier": "standard",
+            "style_preset": "premium_luxury",
+            "duration": 4,
+            "ratio": "9:16",
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["model"] == "MiniMax-H3-Highspeed"
+    assert body["resolution"] == "768P"
+    assert body["quality_tier"] == "standard"
+    assert body["style_preset"] == "premium_luxury"
+    assert body["credits_cost"] == 60
+    assert submitted["model"] == "MiniMax-H3-Highspeed"
+    assert submitted["resolution"] == "768P"
+    assert "integrated_multimodal_description:" in submitted["prompt"]
+    assert "overall_soundscape:" in submitted["prompt"]
+    assert "一只手轻轻打开礼盒" in submitted["prompt"]
+    await db_session.refresh(user)
+    assert user.credits == 440
+
+
+@pytest.mark.asyncio
 async def test_insufficient_credits_does_not_submit_provider(
     client: AsyncClient,
     auth_headers: dict,

@@ -322,9 +322,9 @@ async def test_approve_first_month_grants_bonus_and_sets_duration(
         )
     ).scalar_one()
     assert user.plan == "professional"
-    assert wallet.plan_credits == 2000
+    assert wallet.plan_credits == 3000
     assert wallet.purchased_credits == 100
-    assert user.credits == 2100
+    assert user.credits == 3100
     assert (subscription.expires_at - subscription.starts_at).days == 30
 
 

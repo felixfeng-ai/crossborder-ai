@@ -80,6 +80,16 @@ def test_repair_migration_restores_stamped_schema_drift(
         engine,
         "video_generation_tasks",
     )
+    assert {
+        "quality_tier",
+        "style_preset",
+        "credits_per_second",
+    } <= _column_names(engine, "marketing_video_projects")
+    assert {
+        "quality_tier",
+        "style_preset",
+        "credits_per_second",
+    } <= _column_names(engine, "video_generation_tasks")
     assert {"ix_batch_jobs_listing_id", "ix_batch_jobs_product_id"} <= _index_names(
         engine,
         "batch_jobs",
@@ -89,7 +99,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "032_video_continuity_engine"
+    assert version == "033_video_quality_engine"
 
 
 def test_full_sqlite_upgrade_from_empty_database(
@@ -119,9 +129,19 @@ def test_full_sqlite_upgrade_from_empty_database(
         engine,
         "video_generation_tasks",
     )
+    assert {
+        "quality_tier",
+        "style_preset",
+        "credits_per_second",
+    } <= _column_names(engine, "marketing_video_projects")
+    assert {
+        "quality_tier",
+        "style_preset",
+        "credits_per_second",
+    } <= _column_names(engine, "video_generation_tasks")
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "032_video_continuity_engine"
+    assert version == "033_video_quality_engine"
     assert "credit_transactions" in inspector.get_table_names()
     assert {
         "credit_wallets",

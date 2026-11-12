@@ -31,6 +31,26 @@ const capabilities: VideoCapabilities = {
       prompt_suffix: 'product shot',
     },
   ],
+  quality_tiers: [
+    {
+      id: 'draft',
+      name: '快速草稿',
+      description: '预览',
+      model: 'MiniMax-H3-Lite',
+      resolution: '480P',
+      credits_per_second: 8,
+      estimated_time_multiplier: 0.7,
+    },
+  ],
+  style_presets: [
+    {
+      id: 'commerce_showcase',
+      name: '电商展示',
+      description: '清晰展示',
+      prompt: 'clean product shot',
+      music: 'light rhythm',
+    },
+  ],
 }
 
 

@@ -18,6 +18,7 @@ from app.models.video_generation_task import VideoGenerationTask
 from app.services.credit_service import add_credits
 from app.services.marketing_subtitles import build_marketing_srt
 from app.services.professional_storyboard import provider_render_duration
+from app.services.video_quality import get_video_target_size
 from app.services.video_task_executor import cancel_video_task, submit_video_task
 
 
@@ -95,6 +96,7 @@ def assemble_marketing_video(
     subtitle_path: Path | None = None,
     segment_durations: list[int] | None = None,
     transition_duration: float = 0.20,
+    resolution: str = "768P",
 ) -> bool:
     """使用交叉转场合成镜头，并统一转为 H.264/AAC。
 
@@ -114,6 +116,7 @@ def assemble_marketing_video(
     target_path = output_path.with_name(
         f"{output_path.stem}.standardized{output_path.suffix}"
     )
+    target_width, target_height = get_video_target_size(resolution)
     ffmpeg = _ffmpeg_executable()
     if len(segment_paths) == 1:
         normalize_command = [
@@ -134,7 +137,12 @@ def assemble_marketing_video(
             "-pix_fmt",
             "yuv420p",
             "-vf",
-            "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1",
+            (
+                f"scale={target_width}:{target_height}:"
+                "force_original_aspect_ratio=decrease,"
+                f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2,"
+                "setsar=1"
+            ),
             "-c:a",
             "aac",
             "-b:a",
@@ -155,8 +163,10 @@ def assemble_marketing_video(
         filters: list[str] = []
         for index in range(len(segment_paths)):
             filters.append(
-                f"[{index}:v]scale=720:1280:force_original_aspect_ratio=decrease,"
-                f"pad=720:1280:(ow-iw)/2:(oh-ih)/2,fps=30,settb=AVTB,"
+                f"[{index}:v]scale={target_width}:{target_height}:"
+                "force_original_aspect_ratio=decrease,"
+                f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2,"
+                "fps=30,settb=AVTB,"
                 f"format=yuv420p[v{index}]"
             )
             filters.append(
@@ -301,6 +311,9 @@ async def start_marketing_project(
                 user_id=project.user_id,
                 source_asset_id=project.source_asset_id,
                 reference_assets_json=project.reference_assets_json,
+                quality_tier=project.quality_tier,
+                style_preset=project.style_preset,
+                credits_per_second=project.credits_per_second,
                 template_id=project.template_id,
                 provider="minimax",
                 model=project.model,
@@ -506,6 +519,7 @@ async def sync_marketing_video_projects(
                     output_path,
                     subtitle_path=subtitle_path,
                     segment_durations=[shot.duration for shot in shots],
+                    resolution=project.resolution,
                 )
             finally:
                 if subtitle_path is not None:

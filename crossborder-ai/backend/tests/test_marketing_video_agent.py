@@ -253,6 +253,7 @@ def test_assemble_marketing_video_uses_visual_and_audio_crossfade(
         segments,
         output,
         segment_durations=[4, 4, 3],
+        resolution="768P",
     )
 
     assert output.is_file()
@@ -260,6 +261,7 @@ def test_assemble_marketing_video_uses_visual_and_audio_crossfade(
     command = " ".join(calls[0])
     assert "xfade=transition=fade" in command
     assert "acrossfade=d=0.20" in command
+    assert "scale=768:1366" in command
     assert "concat" not in command
 
 
@@ -625,10 +627,12 @@ async def test_sync_marketing_project_assembles_completed_shots(
         output_path,
         subtitle_path=None,
         segment_durations=None,
+        resolution=None,
     ):
         assert len(segment_paths) == 3
         assert subtitle_path is not None
         assert segment_durations == [5, 5, 5]
+        assert resolution == "480P"
         assert subtitle_path.is_file()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"\x00\x00\x00\x18ftypmp42final")

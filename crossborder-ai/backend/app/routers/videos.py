@@ -20,12 +20,17 @@ from app.models.marketing_video import MarketingVideoShot
 from app.models.user import User
 from app.models.video_generation_task import VideoGenerationTask
 from app.services.minimax_video import (
-    PRODUCT_LOCK_PROMPT,
     VIDEO_TEMPLATES,
     estimate_video_cost_micros,
-    estimate_video_credits,
     get_minimax_video_capabilities,
     get_minimax_video_config,
+)
+from app.services.video_quality import (
+    compile_i2va_prompt,
+    estimate_quality_credits,
+    list_quality_tiers,
+    list_style_presets,
+    resolve_quality_tier,
 )
 from app.services.video_task_executor import cancel_video_task, submit_video_task
 
@@ -37,6 +42,9 @@ class GenerateVideoRequest(BaseModel):
     source_asset_id: str
     prompt: str = Field(default="", max_length=3000)
     template_id: str = "clean_product"
+    quality_tier: str = "draft"
+    style_preset: str = "commerce_showcase"
+    # 保留旧字段供旧客户端提交；实际模型和分辨率由质量档位决定。
     model: str = "MiniMax-H3-Lite"
     resolution: str = "480P"
     duration: int = Field(default=4, ge=4, le=15)
@@ -49,6 +57,9 @@ class VideoTaskResponse(BaseModel):
     video_url: Optional[str] = None
     model: str
     resolution: str
+    quality_tier: str
+    style_preset: str
+    credits_per_second: int
     duration: int
     ratio: str
     prompt: str
@@ -69,6 +80,9 @@ def _serialize_task(task: VideoGenerationTask) -> VideoTaskResponse:
         video_url=_video_file_url(task.id) if task.status == "succeeded" else None,
         model=task.model,
         resolution=task.resolution,
+        quality_tier=task.quality_tier,
+        style_preset=task.style_preset,
+        credits_per_second=task.credits_per_second,
         duration=task.duration,
         ratio=task.ratio,
         prompt=task.prompt,
@@ -135,7 +149,11 @@ async def _get_owned_source_asset(
 @router.get("/capabilities")
 async def video_capabilities():
     """返回可用模型、分辨率和积分估算，不暴露供应商密钥。"""
-    return get_minimax_video_capabilities()
+    return {
+        **get_minimax_video_capabilities(),
+        "quality_tiers": list_quality_tiers(),
+        "style_presets": list_style_presets(),
+    }
 
 
 @router.post("/generate", response_model=VideoTaskResponse, status_code=202)
@@ -161,20 +179,26 @@ async def generate_video(
         raise HTTPException(status_code=400, detail="视频模板不存在")
 
     try:
-        credits_cost = estimate_video_credits(
-            payload.model,
-            payload.resolution,
+        quality_tier = resolve_quality_tier(payload.quality_tier)
+        model = str(quality_tier["model"])
+        resolution = str(quality_tier["resolution"])
+        credits_cost = estimate_quality_credits(
+            payload.quality_tier,
             payload.duration,
         )
         estimated_cost_micros = estimate_video_cost_micros(
-            payload.model,
-            payload.resolution,
+            model,
+            resolution,
             payload.duration,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    await _get_owned_source_asset(db, payload.source_asset_id, current_user.id)
+    asset = await _get_owned_source_asset(
+        db,
+        payload.source_asset_id,
+        current_user.id,
+    )
     key = (idempotency_key or "").strip()[:100] or None
     # 行锁把同一用户的提交串行化，避免并发请求同时通过余额检查。
     locked_user = (
@@ -204,19 +228,24 @@ async def generate_video(
             detail=f"积分不足，本次视频生成需要 {credits_cost} 积分",
         )
 
-    prompt_parts = [template["prompt_suffix"]]
-    if payload.prompt.strip():
-        prompt_parts.append(payload.prompt.strip())
-    prompt_parts.append(PRODUCT_LOCK_PROMPT)
-    final_prompt = "\n\n".join(prompt_parts)
+    final_prompt = compile_i2va_prompt(
+        product_name=asset.name,
+        direction=payload.prompt,
+        duration=payload.duration,
+        style_id=payload.style_preset,
+        template_direction=template["prompt_suffix"],
+    )
 
     task = VideoGenerationTask(
         user_id=current_user.id,
         source_asset_id=uuid.UUID(payload.source_asset_id),
         template_id=payload.template_id,
         provider="minimax",
-        model=payload.model,
-        resolution=payload.resolution,
+        model=model,
+        resolution=resolution,
+        quality_tier=payload.quality_tier,
+        style_preset=payload.style_preset,
+        credits_per_second=int(quality_tier["credits_per_second"]),
         duration=payload.duration,
         ratio=payload.ratio,
         prompt=final_prompt,

@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.models.user import User
 from app.services.ai.deepseek import DeepSeekService
+from app.services.plan_service import activate_paid_plan
 
 
 async def _make_standard(client: AsyncClient, db_session, headers: dict) -> None:
@@ -17,8 +18,12 @@ async def _make_standard(client: AsyncClient, db_session, headers: dict) -> None
             select(User).where(User.id == uuid.UUID(me.json()["id"]))
         )
     ).scalar_one()
-    user.plan = "standard"
-    await db_session.flush()
+    await activate_paid_plan(
+        db_session,
+        user,
+        "standard",
+        source="test_activation",
+    )
 
 
 async def _upload_one(client: AsyncClient, headers: dict, suffix: str) -> None:
@@ -92,7 +97,7 @@ async def test_batch_ai_persists_listing_and_charges_once(
     assert history.json()["items"][0]["id"] == result["listing_id"]
 
     me = await client.get("/api/v1/auth/me", headers=auth_headers)
-    assert me.json()["credits"] == 29
+    assert me.json()["credits"] == 799
 
 
 @pytest.mark.asyncio

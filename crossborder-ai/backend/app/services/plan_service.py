@@ -110,12 +110,48 @@ async def apply_monthly_allowance(
     force: bool = False,
 ) -> CreditTransaction | None:
     current = now or datetime.now(timezone.utc)
-    if (
-        not force
-        and user.credit_period_start
+    # 同一用户可能同时请求 /auth/me 和 /billing/wallet；锁住用户行避免
+    # 两个请求同时创建订阅或重复发放月度额度。
+    locked_user = (
+        await db.execute(
+            select(User).where(User.id == user.id).with_for_update()
+        )
+    ).scalar_one()
+    user = locked_user
+    reconciled = False
+    if user.plan in {"standard", "professional"}:
+        subscription = await get_active_subscription(db, user.id, now=current)
+        if subscription is None or subscription.plan != user.plan:
+            # plan 字段与订阅必须一致。旧数据或手工改套餐可能留下
+            # Professional + Free 30 分，这里自动补成正确订阅和额度。
+            await db.execute(
+                update(UserSubscription)
+                .where(
+                    UserSubscription.user_id == user.id,
+                    UserSubscription.status == "active",
+                )
+                .values(status="replaced")
+            )
+            plan_config = PLAN_CATALOG[user.plan]
+            db.add(
+                UserSubscription(
+                    user_id=user.id,
+                    plan=user.plan,
+                    status="active",
+                    starts_at=current,
+                    expires_at=current + timedelta(days=plan_config["valid_days"]),
+                    source="automatic_plan_reconciliation",
+                )
+            )
+            await db.flush()
+            reconciled = True
+
+    same_period = bool(
+        user.credit_period_start
         and user.credit_period_start.year == current.year
         and user.credit_period_start.month == current.month
-    ):
+    )
+    if not force and same_period and not reconciled:
         return None
 
     wallet = await get_or_create_wallet(db, user, lock=True)

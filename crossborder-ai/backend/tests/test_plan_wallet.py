@@ -121,6 +121,67 @@ async def test_activate_paid_plan_sets_expiry_and_quota(db_session):
 
 
 @pytest.mark.asyncio
+async def test_professional_without_subscription_reconciles_to_full_allowance(
+    db_session,
+):
+    now = datetime(2026, 11, 12, tzinfo=timezone.utc)
+    user, wallet = await _user_with_wallet(
+        db_session,
+        plan="professional",
+        plan_credits=30,
+        purchased_credits=0,
+    )
+    user.credit_period_start = now
+    await db_session.flush()
+
+    await apply_monthly_allowance(db_session, user, now=now)
+    await db_session.refresh(wallet)
+    subscription = (
+        await db_session.execute(
+            select(UserSubscription).where(
+                UserSubscription.user_id == user.id,
+                UserSubscription.status == "active",
+            )
+        )
+    ).scalar_one()
+
+    assert subscription.plan == "professional"
+    assert subscription.source == "automatic_plan_reconciliation"
+    assert wallet.plan_credits == 2000
+    assert user.credits == 2000
+    assert user.credit_period_start == now
+
+
+@pytest.mark.asyncio
+async def test_same_active_plan_does_not_refill_spent_plan_credits(db_session):
+    now = datetime(2026, 11, 12, tzinfo=timezone.utc)
+    user, wallet = await _user_with_wallet(
+        db_session,
+        plan="professional",
+        plan_credits=30,
+        purchased_credits=5,
+    )
+    user.credit_period_start = now
+    db_session.add(
+        UserSubscription(
+            user_id=user.id,
+            plan="professional",
+            status="active",
+            starts_at=now - timedelta(days=2),
+            expires_at=now + timedelta(days=28),
+        )
+    )
+    await db_session.flush()
+
+    result = await apply_monthly_allowance(db_session, user, now=now)
+    await db_session.refresh(wallet)
+
+    assert result is None
+    assert wallet.plan_credits == 30
+    assert wallet.purchased_credits == 5
+
+
+@pytest.mark.asyncio
 async def test_expired_subscription_downgrades_but_keeps_purchased(db_session):
     now = datetime(2026, 11, 11, tzinfo=timezone.utc)
     user, wallet = await _user_with_wallet(

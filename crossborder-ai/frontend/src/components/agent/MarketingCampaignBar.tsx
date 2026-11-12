@@ -9,6 +9,7 @@ import type { CampaignAssetsResponse } from '@/lib/agent/campaignAssets'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { MarketingAssetBoard } from './MarketingAssetBoard'
 import { MarketingCopyBoard } from './MarketingCopyBoard'
+import { MarketingDistributionBoard } from './MarketingDistributionBoard'
 import { MarketingImageBatchPanel } from './MarketingImageBatchPanel'
 
 interface Campaign {
@@ -56,7 +57,7 @@ export function MarketingCampaignBar({
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
   const [batchOpen, setBatchOpen] = useState(false)
-  const [assetTab, setAssetTab] = useState<'images' | 'copy'>('images')
+  const [assetTab, setAssetTab] = useState<'images' | 'copy' | 'distribution'>('images')
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     title: '',
@@ -231,6 +232,22 @@ export function MarketingCampaignBar({
               >
                 文案素材
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={assetTab === 'distribution'}
+                className={`px-3 py-1.5 text-[11px] ${
+                  assetTab === 'distribution'
+                    ? 'bg-secondary font-medium text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => {
+                  setBatchOpen(false)
+                  setAssetTab('distribution')
+                }}
+              >
+                发布与效果
+              </button>
             </div>
             {assetTab === 'images' && (
               <Button
@@ -256,12 +273,14 @@ export function MarketingCampaignBar({
               )}
               <MarketingAssetBoard assets={assets} onChanged={refreshAssets} />
             </>
-          ) : (
+          ) : assetTab === 'copy' ? (
             <MarketingCopyBoard
               campaignId={campaignId}
               language={selected.language}
               market={selected.market}
             />
+          ) : (
+            <MarketingDistributionBoard campaignId={campaignId} />
           )}
         </div>
       )}

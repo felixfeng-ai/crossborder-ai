@@ -1,12 +1,17 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   MAX_IMAGE_UPLOAD_BYTES,
   imageUploadErrorMessage,
+  uploadImageFile,
   validateImageUpload,
 } from './upload'
 
 
 describe('image upload diagnostics', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('上传前拦截大小和格式问题', () => {
     expect(
       validateImageUpload({
@@ -55,5 +60,33 @@ describe('image upload diagnostics', () => {
         },
       }),
     ).toBe('无法识别图片，请上传 JPEG、PNG 或 WebP 文件')
+  })
+
+  it('使用原生 fetch 发送真正的 multipart 请求', async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.body).toBeInstanceOf(FormData)
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer test-token',
+      })
+      return new Response(
+        JSON.stringify({ id: 'asset-1', name: '素材2' }),
+        {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => key === 'access_token' ? 'test-token' : null,
+    })
+    const file = new File([new Uint8Array([1, 2, 3])], '素材2.jpg', {
+      type: 'image/jpeg',
+    })
+
+    const result = await uploadImageFile<{ id: string; name: string }>(file)
+
+    expect(result).toEqual({ id: 'asset-1', name: '素材2' })
+    expect(fetchMock).toHaveBeenCalledOnce()
   })
 })

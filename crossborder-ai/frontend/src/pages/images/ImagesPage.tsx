@@ -32,6 +32,7 @@ import { toErrorMessage } from '@/utils/errorMessage'
 import { resolveMediaUrl } from '@/lib/apiUrl'
 import {
   imageUploadErrorMessage,
+  uploadImageFile,
   validateImageUpload,
 } from '@/lib/images/upload'
 
@@ -110,14 +111,7 @@ export default function ImagesPage() {
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      const formData = new FormData()
-      formData.append('file', file)
-      const response = await apiClient.post<WorkbenchAsset>(
-        '/images/assets/upload',
-        formData,
-        { timeout: 60_000 },
-      )
-      return response.data
+      return uploadImageFile<WorkbenchAsset>(file)
     },
     onMutate: () => setActionError(''),
     onSuccess: (asset) => {

@@ -9,15 +9,24 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
 const apiClient = axios.create({
   baseURL: API_BASE,
-  headers: {
-    'Content-Type': 'application/json',
-  },
   timeout: 30000,
 })
+
+export function normalizeFormDataHeaders(
+  config: InternalAxiosRequestConfig,
+): InternalAxiosRequestConfig {
+  // 全局 JSON Content-Type 会让浏览器把 FormData 当普通对象处理，
+  // 后端最终收到的是没有 file 字段的 JSON。移除后由浏览器生成 boundary。
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    config.headers.delete('Content-Type')
+  }
+  return config
+}
 
 // --- Request Interceptor: Attach JWT ---
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    normalizeFormDataHeaders(config)
     const token = localStorage.getItem('access_token')
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`

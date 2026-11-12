@@ -4,6 +4,7 @@ import io
 import json
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -195,7 +196,10 @@ def test_marketing_plan_credit_estimate_counts_every_shot():
     assert credits >= 40
 
 
-def test_assemble_marketing_video_copies_segments(tmp_path, monkeypatch):
+def test_assemble_marketing_video_normalizes_for_browser_playback(
+    tmp_path,
+    monkeypatch,
+):
     segments = []
     for index in range(2):
         path = tmp_path / f"shot-{index}.mp4"
@@ -206,7 +210,7 @@ def test_assemble_marketing_video_copies_segments(tmp_path, monkeypatch):
 
     def fake_run(command, **kwargs):
         calls.append(command)
-        output.write_bytes(b"\x00\x00\x00\x18ftypmp42final")
+        Path(command[-1]).write_bytes(b"\x00\x00\x00\x18ftypmp42final")
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(
@@ -217,11 +221,17 @@ def test_assemble_marketing_video_copies_segments(tmp_path, monkeypatch):
 
     assert output.is_file()
     assert len(calls) == 1
-    assert "copy" in calls[0]
+    assert "libx264" in calls[0]
+    assert "yuv420p" in calls[0]
+    assert "aac" in calls[0]
+    assert "copy" not in calls[0]
     assert not list(tmp_path.glob("veyaship-concat-*.txt"))
 
 
-def test_assemble_marketing_video_falls_back_to_reencode(tmp_path, monkeypatch):
+def test_assemble_marketing_video_rejects_failed_normalization(
+    tmp_path,
+    monkeypatch,
+):
     segment = tmp_path / "shot.mp4"
     segment.write_bytes(b"\x00\x00\x00\x18ftypmp42shot")
     output = tmp_path / "final.mp4"
@@ -229,19 +239,18 @@ def test_assemble_marketing_video_falls_back_to_reencode(tmp_path, monkeypatch):
 
     def fake_run(command, **kwargs):
         calls.append(command)
-        if len(calls) == 2:
-            output.write_bytes(b"\x00\x00\x00\x18ftypmp42encoded")
-        return SimpleNamespace(returncode=0 if len(calls) == 2 else 1)
+        return SimpleNamespace(returncode=1)
 
     monkeypatch.setattr(
         "app.services.marketing_video_executor.subprocess.run",
         fake_run,
     )
-    assemble_marketing_video([segment], output)
+    with pytest.raises(ValueError, match="标准化失败"):
+        assemble_marketing_video([segment], output)
 
-    assert len(calls) == 2
-    assert "libx264" in calls[1]
-    assert output.is_file()
+    assert len(calls) == 1
+    assert "libx264" in calls[0]
+    assert not output.exists()
 
 
 def test_assemble_marketing_video_rejects_bad_inputs(tmp_path, monkeypatch):
@@ -537,6 +546,68 @@ async def test_sync_marketing_project_assembles_completed_shots(
     assert project.status == "succeeded"
     assert project.final_storage_key
     assert (tmp_path / "videos" / project.final_storage_key).is_file()
+
+
+@pytest.mark.asyncio
+async def test_marketing_project_only_exposes_existing_video_file(
+    client: AsyncClient,
+    auth_headers: dict,
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    user = await _professional_user(db_session)
+    monkeypatch.setattr(settings, "VIDEO_STORAGE_DIR", str(tmp_path / "videos"))
+    storage_key = f"{user.id}/marketing-file-check.mp4"
+    final_path = tmp_path / "videos" / storage_key
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    final_path.write_bytes(b"\x00\x00\x00\x18ftypmp42final")
+    project = MarketingVideoProject(
+        user_id=user.id,
+        source_asset_id=None,
+        title="File availability",
+        product_name="Terra",
+        idea="check file",
+        platform="tiktok",
+        market="US",
+        language="en",
+        duration=4,
+        template_id="professional_script",
+        mode="script",
+        model="MiniMax-H3-Lite",
+        resolution="480P",
+        status="succeeded",
+        brief_json="{}",
+        credits_estimated=10,
+        credits_charged=10,
+        final_storage_key=storage_key,
+    )
+    db_session.add(project)
+    await db_session.flush()
+
+    available = await client.get(
+        f"/api/v1/marketing-videos/projects/{project.id}",
+        headers=auth_headers,
+    )
+    assert available.status_code == 200
+    assert available.json()["video_available"] is True
+    assert available.json()["final_video_url"].endswith("/file")
+
+    final_path.unlink()
+    missing = await client.get(
+        f"/api/v1/marketing-videos/projects/{project.id}",
+        headers=auth_headers,
+    )
+    assert missing.status_code == 200
+    assert missing.json()["video_available"] is False
+    assert missing.json()["final_video_url"] is None
+
+    file_response = await client.get(
+        f"/api/v1/marketing-videos/projects/{project.id}/file",
+        headers=auth_headers,
+    )
+    assert file_response.status_code == 404
+    assert "文件缺失" in file_response.json()["detail"]
 
 
 @pytest.mark.asyncio

@@ -118,6 +118,7 @@ class MarketingProjectResponse(BaseModel):
     credits_estimated: int
     credits_charged: int
     credits_refunded: int
+    video_available: bool = False
     final_video_url: Optional[str] = None
     subtitle_url: Optional[str] = None
     subtitles_burned_in: bool = False
@@ -236,6 +237,11 @@ async def _serialize_project(
         continuity = json.loads(project.continuity_json or "{}")
     except (json.JSONDecodeError, TypeError):
         continuity = {}
+    video_available = bool(
+        project.status == "succeeded"
+        and project.final_storage_key
+        and _project_file_path(project.final_storage_key).is_file()
+    )
     return MarketingProjectResponse(
         id=str(project.id),
         title=project.title,
@@ -257,9 +263,10 @@ async def _serialize_project(
         credits_estimated=project.credits_estimated,
         credits_charged=project.credits_charged,
         credits_refunded=project.credits_refunded,
+        video_available=video_available,
         final_video_url=(
             f"{settings.API_V1_PREFIX}/marketing-videos/projects/{project.id}/file"
-            if project.status == "succeeded"
+            if video_available
             else None
         ),
         subtitle_url=(
@@ -634,7 +641,10 @@ async def get_marketing_project_file(
         raise HTTPException(status_code=404, detail="营销成片不存在")
     path = _project_file_path(project.final_storage_key)
     if not path.is_file():
-        raise HTTPException(status_code=404, detail="营销成片不存在")
+        raise HTTPException(
+            status_code=404,
+            detail="营销成片文件缺失，请重新生成或联系管理员",
+        )
     return FileResponse(
         path,
         media_type=project.mime or "video/mp4",

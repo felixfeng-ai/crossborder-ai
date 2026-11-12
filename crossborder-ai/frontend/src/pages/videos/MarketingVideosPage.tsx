@@ -773,17 +773,25 @@ export function MarketingVideoPreview({
 }) {
   const [videoUrl, setVideoUrl] = useState('')
   const [error, setError] = useState('')
+  const [videoLoading, setVideoLoading] = useState(false)
   const [voiceError, setVoiceError] = useState('')
   const [voicePending, setVoicePending] = useState(false)
 
   useEffect(() => {
     setError('')
+    setVideoUrl('')
     if (project.status !== 'succeeded') {
-      setVideoUrl('')
+      setVideoLoading(false)
+      return
+    }
+    if (project.video_available === false) {
+      setVideoLoading(false)
+      setError('成片文件缺失，请重新生成或联系管理员')
       return
     }
     const controller = new AbortController()
     let objectUrl = ''
+    setVideoLoading(true)
     apiClient
       .get(`/marketing-videos/projects/${project.id}/file`, {
         responseType: 'blob',
@@ -792,17 +800,19 @@ export function MarketingVideoPreview({
       .then((response) => {
         objectUrl = URL.createObjectURL(response.data)
         setVideoUrl(objectUrl)
+        setVideoLoading(false)
       })
       .catch((reason) => {
         if (!controller.signal.aborted) {
           setError(toErrorMessage(reason, '营销成片加载失败'))
+          setVideoLoading(false)
         }
       })
     return () => {
       controller.abort()
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [project.id, project.status])
+  }, [project.id, project.status, project.video_available])
 
   const download = async () => {
     try {
@@ -860,17 +870,38 @@ export function MarketingVideoPreview({
     }
   }
 
+  const isVideoLoading =
+    videoLoading ||
+    (project.status === 'succeeded' &&
+      project.video_available !== false &&
+      !videoUrl &&
+      !error)
+
   const previewContent = videoUrl ? (
     <video
       src={videoUrl}
       controls
       playsInline
+      preload="metadata"
+      onCanPlay={() => setVideoLoading(false)}
+      onError={() => {
+        setVideoLoading(false)
+        setError('浏览器无法播放该成片，请下载后检查或重新生成')
+      }}
       className="aspect-[9/16] max-h-[420px] w-full bg-black object-contain"
     />
   ) : error ? (
     <div className="flex min-h-52 flex-col items-center justify-center border border-destructive/30 px-4 text-center text-xs text-destructive">
       <CircleAlert className="mb-2 h-5 w-5" />
       {error}
+    </div>
+  ) : isVideoLoading ? (
+    <div className="flex aspect-[9/16] max-h-[420px] flex-col items-center justify-center border border-border bg-[var(--factory-ground)] px-5 text-center">
+      <Loader2 className="h-7 w-7 animate-spin text-[color:var(--factory-accent)]" />
+      <p className="mt-3 text-xs text-muted-foreground">成片加载中</p>
+      <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+        正在读取已生成的 MP4 文件
+      </p>
     </div>
   ) : (
     <div className="flex aspect-[9/16] max-h-[420px] flex-col items-center justify-center border border-border bg-[var(--factory-ground)] px-5 text-center">

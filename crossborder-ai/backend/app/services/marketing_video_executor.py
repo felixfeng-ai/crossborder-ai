@@ -104,7 +104,11 @@ def assemble_marketing_video(
     output_path: Path,
     subtitle_path: Path | None = None,
 ) -> bool:
-    """拼接镜头并尽量烧录字幕；字幕滤镜不可用时保留无字幕成片。"""
+    """拼接镜头并统一转为 H.264/AAC，确保浏览器可直接播放。
+
+    供应商可能返回 H.265、混合帧率或不带音轨的 MP4。即使状态显示成功，
+    浏览器也可能无法解码；因此最终成片不能依赖 ``-c copy``。
+    """
     if not segment_paths:
         raise ValueError("没有可合成的视频镜头")
     missing = [str(path) for path in segment_paths if not path.is_file()]
@@ -125,12 +129,11 @@ def assemble_marketing_video(
         manifest = Path(handle.name)
     _ffmpeg_concat_file(segment_paths, manifest)
 
-    target_path = (
-        output_path.with_name(f"{output_path.stem}.subtitle-source{output_path.suffix}")
-        if subtitle_path is not None
-        else output_path
+    # 先写入独立的标准化文件，成功后再原子替换正式成片，避免失败时破坏旧文件。
+    target_path = output_path.with_name(
+        f"{output_path.stem}.standardized{output_path.suffix}"
     )
-    copy_command = [
+    normalize_command = [
         _ffmpeg_executable(),
         "-y",
         "-f",
@@ -139,51 +142,39 @@ def assemble_marketing_video(
         "0",
         "-i",
         str(manifest),
-        "-c",
-        "copy",
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a?",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-pix_fmt",
+        "yuv420p",
+        "-vf",
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
         "-movflags",
         "+faststart",
         str(target_path),
     ]
     burned_in = False
     try:
-        copied = subprocess.run(
-            copy_command,
+        normalized = subprocess.run(
+            normalize_command,
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=600,
             check=False,
         )
-        if copied.returncode != 0 or not target_path.is_file():
-            # 不同模型版本可能产生不同编码参数，统一重编码保证成片可播放。
-            reencode_command = [
-                _ffmpeg_executable(),
-                "-y",
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                str(manifest),
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-movflags",
-                "+faststart",
-                str(target_path),
-            ]
-            encoded = subprocess.run(
-                reencode_command,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                check=False,
-            )
-            if encoded.returncode != 0:
-                raise ValueError("营销视频合成失败")
+        if normalized.returncode != 0 or not target_path.is_file():
+            raise ValueError("营销视频标准化失败")
 
         if subtitle_path is not None:
             subtitle_command = [
@@ -195,10 +186,16 @@ def assemble_marketing_video(
                 f"subtitles='{_subtitle_filter_path(subtitle_path)}'",
                 "-c:v",
                 "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "20",
                 "-pix_fmt",
                 "yuv420p",
                 "-c:a",
                 "aac",
+                "-b:a",
+                "128k",
                 "-movflags",
                 "+faststart",
                 str(output_path),
@@ -215,10 +212,11 @@ def assemble_marketing_video(
             else:
                 # 服务器可能没有 libass 或中文字体；独立 SRT 仍可下载。
                 target_path.replace(output_path)
+        else:
+            target_path.replace(output_path)
     finally:
         manifest.unlink(missing_ok=True)
-        if target_path != output_path:
-            target_path.unlink(missing_ok=True)
+        target_path.unlink(missing_ok=True)
     if not output_path.is_file():
         raise ValueError("营销视频合成失败")
     return burned_in

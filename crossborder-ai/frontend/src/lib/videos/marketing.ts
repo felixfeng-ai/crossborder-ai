@@ -43,6 +43,7 @@ export interface MarketingVideoProject {
   credits_estimated: number
   credits_charged: number
   credits_refunded?: number
+  video_available?: boolean
   final_video_url?: string | null
   subtitle_url?: string | null
   subtitles_burned_in?: boolean

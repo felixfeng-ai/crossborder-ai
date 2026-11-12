@@ -34,9 +34,9 @@ async def get_platform_capabilities():
             },
             "amazon": {
                 "auth_supported": True,
-                "publish_supported": False,
-                "mode": "auth_only",
-                "reason": "Amazon SP-API 已支持授权连接，Listing 发布尚未接入",
+                "publish_supported": True,
+                "mode": "listings_items",
+                "reason": "需要 Amazon 应用开通 Listings Items 权限并完成卖家授权",
             },
             "temu": {
                 "auth_supported": False,

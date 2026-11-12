@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   copyPlatformLabel,
   latestCopyByPlatform,
+  performanceStatusLabel,
   type MarketingCopyAsset,
 } from './marketingCopy'
 
@@ -27,6 +28,9 @@ function asset(
     keywords: [],
     metadata: {},
     status: 'ready',
+    performance_status: 'active',
+    performance_metrics: {},
+    last_evaluated_at: null,
     compliance_status: 'pass',
     violations: [],
     source: 'agent',
@@ -58,5 +62,11 @@ describe('marketing copy board helpers', () => {
     expect(copyPlatformLabel('tiktok')).toBe('TikTok')
     expect(copyPlatformLabel('amazon')).toBe('Amazon')
     expect(copyPlatformLabel('shopify')).toBe('Shopify')
+  })
+
+  it('明确展示 A/B 自动优化状态', () => {
+    expect(performanceStatusLabel('winner')).toBe('推荐继续')
+    expect(performanceStatusLabel('paused')).toBe('已暂停')
+    expect(performanceStatusLabel('insufficient_data')).toBe('样本不足')
   })
 })

@@ -70,7 +70,7 @@ export const LANDING_FEATURES: LandingFeature[] = [
   {
     icon: 'channel',
     title: 'SKU 与渠道连接',
-    desc: '配置售价、成本、库存和变体；11 个平台生成 Listing 文案，Shopify 支持草稿发布，Amazon 支持 SP-API 授权连接。',
+    desc: '配置售价、成本、库存和变体；11 个平台生成 Listing 文案，Shopify 支持草稿发布，Amazon 支持 SP-API Listing 发布。',
   },
   {
     icon: 'ops',

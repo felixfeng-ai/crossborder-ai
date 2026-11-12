@@ -93,6 +93,7 @@ class MarketingPerformanceSnapshot(Base):
             "source",
             "period_start",
             "period_end",
+            "scope_key",
             name="uq_marketing_performance_period",
         ),
     )
@@ -115,6 +116,19 @@ class MarketingPerformanceSnapshot(Base):
     platform: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     source: Mapped[str] = mapped_column(
         String(40), nullable=False, default="manual", server_default="manual"
+    )
+    copy_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("marketing_copy_assets.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # 无 copy_id 时使用空字符串参与唯一约束，保证 PostgreSQL/SQLite 幂等一致。
+    scope_key: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="",
+        server_default="",
     )
     period_start: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False

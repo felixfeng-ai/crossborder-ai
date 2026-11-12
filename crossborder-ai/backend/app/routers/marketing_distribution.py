@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -11,6 +11,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access_control import check_feature_access
+from app.core.crypto import decrypt_value
 from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.models.marketing_copy import MarketingCopyAsset
@@ -19,13 +20,34 @@ from app.models.marketing_distribution import (
     MarketingPerformanceSnapshot,
 )
 from app.models.product import Product
+from app.models.product_variant import ProductVariant
+from app.models.platform_connection import PlatformConnection
+from app.models.publication import Publication
 from app.models.shopify_channel import ShopifyChannel
 from app.models.user import User
 from app.routers.marketing_campaigns import get_owned_campaign
 from app.services.listing_service import persist_generated_listing
+from app.services.ads_metric_import import (
+    AdsMetricImportError,
+    parse_ad_metrics_csv,
+)
+from app.services.amazon_listing_publish import (
+    AmazonListingPublishError,
+    AmazonListingPublishService,
+    build_amazon_listing_payload,
+)
+from app.services.marketing_optimization import (
+    build_optimization_asset_actions,
+    evaluate_campaign_ab_performance,
+    evaluate_variant_performance,
+)
 from app.services.shopify_publish_service import (
     ShopifyPublishError,
     publish_shopify_product,
+)
+from app.services.publication_service import (
+    create_publication,
+    find_publication_by_idempotency,
 )
 
 
@@ -39,11 +61,19 @@ class CampaignPublicationRequest(BaseModel):
     copy_id: Optional[str] = None
     channel_id: Optional[str] = None
     variant_ids: list[str] = Field(default_factory=list)
+    variant_id: Optional[str] = None
+    product_type: str = ""
+    marketplace_id: Optional[str] = None
+    language_tag: Optional[str] = None
+    currency: str = "USD"
+    additional_attributes: dict = Field(default_factory=dict)
+    preview: bool = False
 
 
 class PerformanceSnapshotInput(BaseModel):
     platform: str
     source: str = "manual"
+    copy_id: Optional[str] = None
     period_start: datetime
     period_end: datetime
     impressions: int = Field(0, ge=0)
@@ -58,6 +88,14 @@ class PerformanceSnapshotInput(BaseModel):
 
 class PerformanceImportRequest(BaseModel):
     items: list[PerformanceSnapshotInput] = Field(..., min_length=1)
+
+
+class AdMetricCsvImportRequest(BaseModel):
+    provider: str
+    period_start: datetime
+    period_end: datetime
+    copy_id: Optional[str] = None
+    csv_text: str = Field(..., min_length=1, max_length=2_000_000)
 
 
 def _serialize_publication(record: MarketingCampaignPublication) -> dict:
@@ -89,6 +127,7 @@ def _serialize_snapshot(snapshot: MarketingPerformanceSnapshot) -> dict:
         "id": str(snapshot.id),
         "platform": snapshot.platform,
         "source": snapshot.source,
+        "copy_id": str(snapshot.copy_id) if snapshot.copy_id else None,
         "period_start": snapshot.period_start.isoformat(),
         "period_end": snapshot.period_end.isoformat(),
         "impressions": snapshot.impressions,
@@ -145,6 +184,25 @@ async def _owned_copy(
             )
         )
     ).scalar_one_or_none()
+
+
+async def _resolve_metric_copy(
+    db: AsyncSession,
+    campaign_id: uuid.UUID,
+    copy_id: str | None,
+    user_id,
+) -> MarketingCopyAsset | None:
+    """校验效果数据绑定的文案必须属于当前活动。"""
+    if not copy_id:
+        return None
+    try:
+        parsed_id = uuid.UUID(copy_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="文案 ID 无效")
+    asset = await _owned_copy(db, campaign_id, parsed_id, user_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="文案不存在")
+    return asset
 
 
 @router.get("/{campaign_id}/publications")
@@ -205,16 +263,207 @@ async def publish_campaign_copy(
             return _serialize_publication(existing)
 
     if platform == "amazon":
+        if (
+            not payload.copy_id
+            or not payload.channel_id
+            or not payload.product_type.strip()
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Amazon 发布需要文案、卖家连接和 product type",
+            )
+        try:
+            copy_uuid = uuid.UUID(payload.copy_id)
+            channel_uuid = uuid.UUID(payload.channel_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Amazon 文案或连接 ID 无效")
+        copy_asset = await _owned_copy(
+            db,
+            campaign.id,
+            copy_uuid,
+            current_user.id,
+        )
+        if copy_asset is None:
+            raise HTTPException(status_code=404, detail="文案不存在")
+        if copy_asset.platform != "amazon":
+            raise HTTPException(status_code=400, detail="请选择 Amazon 平台文案")
+        if copy_asset.compliance_status != "pass":
+            raise HTTPException(status_code=409, detail="文案未通过合规检查")
+        if not campaign.product_id:
+            raise HTTPException(status_code=409, detail="活动尚未绑定商品")
+        product = await db.get(Product, campaign.product_id)
+        if product is None or product.user_id != current_user.id:
+            raise HTTPException(status_code=404, detail="活动商品不存在")
+        connection = (
+            await db.execute(
+                select(PlatformConnection).where(
+                    PlatformConnection.id == channel_uuid,
+                    PlatformConnection.user_id == current_user.id,
+                    PlatformConnection.platform == "amazon",
+                    PlatformConnection.status == "active",
+                )
+            )
+        ).scalar_one_or_none()
+        if connection is None:
+            raise HTTPException(status_code=404, detail="Amazon 卖家连接不存在或未启用")
+        variant_query = select(ProductVariant).where(
+            ProductVariant.product_id == product.id,
+            ProductVariant.user_id == current_user.id,
+            ProductVariant.is_active.is_(True),
+        )
+        if payload.variant_id:
+            try:
+                variant_uuid = uuid.UUID(payload.variant_id)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="SKU 变体 ID 无效")
+            variant_query = variant_query.where(ProductVariant.id == variant_uuid)
+        variant = (
+            await db.execute(
+                variant_query.order_by(ProductVariant.created_at, ProductVariant.id)
+            )
+        ).scalars().first()
+        if variant is None:
+            raise HTTPException(status_code=409, detail="Amazon 发布至少需要一个启用 SKU")
+        marketplace_id = (
+            payload.marketplace_id
+            or connection.marketplace_id
+            or ""
+        ).strip()
+        if not marketplace_id:
+            raise HTTPException(status_code=409, detail="Amazon 卖家连接缺少 Marketplace ID")
+        try:
+            violations = json.loads(copy_asset.violations_json or "[]")
+        except (json.JSONDecodeError, TypeError):
+            violations = []
+        listing = await persist_generated_listing(
+            db,
+            user=current_user,
+            product=product,
+            platform="amazon",
+            language=copy_asset.language,
+            tone="marketing",
+            title=copy_asset.headline,
+            description=copy_asset.body,
+            bullet_points=[],
+            seo_title=copy_asset.headline[:200],
+            seo_description=copy_asset.body[:160],
+            violations=violations if isinstance(violations, list) else [],
+            blocked=False,
+            ai_model_used=copy_asset.model_used or "marketing-copy",
+        )
+        try:
+            credentials = json.loads(decrypt_value(connection.credentials))
+            refresh_token = str(credentials.get("refresh_token") or "")
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail="Amazon 授权凭据无法读取") from exc
+        if not refresh_token:
+            raise HTTPException(status_code=409, detail="Amazon 授权缺少 Refresh Token")
+        try:
+            payload_body = build_amazon_listing_payload(
+                product,
+                listing,
+                variant,
+                product_type=payload.product_type,
+                marketplace_id=marketplace_id,
+                language_tag=payload.language_tag,
+                currency=payload.currency,
+                additional_attributes=payload.additional_attributes,
+            )
+            submit_result = await AmazonListingPublishService().submit_listing(
+                refresh_token=refresh_token,
+                seller_id=connection.external_account_id,
+                marketplace_id=marketplace_id,
+                sku=variant.sku,
+                payload=payload_body,
+                preview=payload.preview,
+            )
+        except AmazonListingPublishError as exc:
+            if not payload.preview:
+                record = MarketingCampaignPublication(
+                    user_id=current_user.id,
+                    campaign_id=campaign.id,
+                    copy_id=copy_asset.id,
+                    listing_id=listing.id,
+                    platform="amazon",
+                    channel_id=payload.channel_id,
+                    status="failed",
+                    error=str(exc),
+                    idempotency_key=idempotency_key or None,
+                )
+                db.add(record)
+                await db.commit()
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"message": str(exc), "issues": exc.issues},
+            ) from exc
+
+        issues = submit_result.get("issues") or []
+        if payload.preview:
+            return {
+                "status": submit_result.get("status") or "VALID",
+                "submission_id": submit_result.get("submissionId"),
+                "sku": variant.sku,
+                "issues": issues,
+            }
+        blocking_issues = [
+            item
+            for item in issues
+            if str(item.get("severity") or "").upper() == "ERROR"
+        ]
+        submission_status = str(submit_result.get("status") or "").upper()
+        if blocking_issues or submission_status in {"INVALID", "REJECTED"}:
+            error = "Amazon Listing 校验未通过"
+            record = MarketingCampaignPublication(
+                user_id=current_user.id,
+                campaign_id=campaign.id,
+                copy_id=copy_asset.id,
+                listing_id=listing.id,
+                platform="amazon",
+                channel_id=payload.channel_id,
+                status="failed",
+                error=error,
+                idempotency_key=idempotency_key or None,
+            )
+            db.add(record)
+            await db.commit()
+            raise HTTPException(
+                status_code=409,
+                detail={"message": error, "issues": issues},
+            )
+
+        existing_publication = await find_publication_by_idempotency(
+            db,
+            current_user.id,
+            "amazon",
+            idempotency_key,
+        )
+        publication = existing_publication or await create_publication(
+            db,
+            user_id=current_user.id,
+            listing_id=listing.id,
+            platform="amazon",
+            channel_id=str(connection.id),
+            idempotency_key=idempotency_key,
+        )
+        publication.status = "completed"
+        publication.external_product_id = variant.sku
+        listing.status = "published"
+        listing.published_at = datetime.now(timezone.utc)
         record = MarketingCampaignPublication(
             user_id=current_user.id,
             campaign_id=campaign.id,
+            copy_id=copy_asset.id,
+            listing_id=listing.id,
+            publication_id=publication.id,
             platform="amazon",
-            status="unavailable",
-            error="Amazon SP-API 已支持授权连接，但 Listing 发布接口尚未接入",
+            channel_id=payload.channel_id,
+            status="completed",
+            external_product_id=variant.sku,
+            error=None,
             idempotency_key=idempotency_key or None,
         )
         db.add(record)
-        await db.flush()
+        await db.commit()
         await db.refresh(record)
         return _serialize_publication(record)
 
@@ -350,17 +599,29 @@ async def import_campaign_metrics(
                     MarketingPerformanceSnapshot.source == value.source,
                     MarketingPerformanceSnapshot.period_start == value.period_start,
                     MarketingPerformanceSnapshot.period_end == value.period_end,
+                    MarketingPerformanceSnapshot.scope_key
+                    == (value.copy_id or ""),
                 )
             )
         ).scalar_one_or_none()
+        copy_asset = await _resolve_metric_copy(
+            db,
+            campaign.id,
+            value.copy_id,
+            current_user.id,
+        )
         snapshot = existing or MarketingPerformanceSnapshot(
             user_id=current_user.id,
             campaign_id=campaign.id,
             platform=value.platform,
             source=value.source,
+            copy_id=copy_asset.id if copy_asset else None,
+            scope_key=str(copy_asset.id) if copy_asset else "",
             period_start=value.period_start,
             period_end=value.period_end,
         )
+        snapshot.copy_id = copy_asset.id if copy_asset else None
+        snapshot.scope_key = str(copy_asset.id) if copy_asset else ""
         snapshot.impressions = value.impressions
         snapshot.clicks = value.clicks
         snapshot.orders = value.orders
@@ -372,11 +633,97 @@ async def import_campaign_metrics(
         db.add(snapshot)
         items.append(snapshot)
     await db.flush()
+    await evaluate_campaign_ab_performance(
+        db,
+        campaign_id=campaign.id,
+        user_id=current_user.id,
+    )
     for item in items:
         await db.refresh(item)
     return {
         "total": len(items),
         "items": [_serialize_snapshot(item) for item in items],
+    }
+
+
+@router.post("/{campaign_id}/metrics/import", status_code=201)
+async def import_campaign_metrics_csv(
+    campaign_id: str,
+    payload: AdMetricCsvImportRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """导入 Amazon Ads、TikTok Ads 或 Meta Ads 官方导出 CSV。"""
+    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="营销活动不存在")
+    if payload.period_end < payload.period_start:
+        raise HTTPException(status_code=400, detail="效果数据时间范围无效")
+    copy_asset = await _resolve_metric_copy(
+        db,
+        campaign.id,
+        payload.copy_id,
+        current_user.id,
+    )
+    try:
+        metrics = parse_ad_metrics_csv(payload.provider, payload.csv_text)
+    except AdsMetricImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    scope_key = str(copy_asset.id) if copy_asset else ""
+    snapshot = (
+        await db.execute(
+            select(MarketingPerformanceSnapshot).where(
+                MarketingPerformanceSnapshot.user_id == current_user.id,
+                MarketingPerformanceSnapshot.campaign_id == campaign.id,
+                MarketingPerformanceSnapshot.platform == metrics.platform,
+                MarketingPerformanceSnapshot.source == metrics.source,
+                MarketingPerformanceSnapshot.period_start == payload.period_start,
+                MarketingPerformanceSnapshot.period_end == payload.period_end,
+                MarketingPerformanceSnapshot.scope_key == scope_key,
+            )
+        )
+    ).scalar_one_or_none()
+    if snapshot is None:
+        snapshot = MarketingPerformanceSnapshot(
+            user_id=current_user.id,
+            campaign_id=campaign.id,
+            platform=metrics.platform,
+            source=metrics.source,
+            copy_id=copy_asset.id if copy_asset else None,
+            scope_key=scope_key,
+            period_start=payload.period_start,
+            period_end=payload.period_end,
+        )
+    snapshot.copy_id = copy_asset.id if copy_asset else None
+    snapshot.scope_key = scope_key
+    snapshot.impressions = metrics.impressions
+    snapshot.clicks = metrics.clicks
+    snapshot.orders = metrics.orders
+    snapshot.conversions = metrics.conversions
+    snapshot.spend = metrics.spend
+    snapshot.revenue = metrics.revenue
+    snapshot.currency = metrics.currency
+    snapshot.metadata_json = json.dumps(
+        {
+            "provider": metrics.provider,
+            "import_format": "csv",
+            "variant_key": copy_asset.variant_key if copy_asset else None,
+        },
+        ensure_ascii=False,
+    )
+    db.add(snapshot)
+    await db.flush()
+    await evaluate_campaign_ab_performance(
+        db,
+        campaign_id=campaign.id,
+        user_id=current_user.id,
+    )
+    await db.commit()
+    await db.refresh(snapshot)
+    return {
+        "provider": metrics.provider,
+        "item": _serialize_snapshot(snapshot),
     }
 
 
@@ -438,6 +785,8 @@ async def get_campaign_optimization(
         )
     ).scalars().all()
     totals = _aggregate_performance(list(snapshots))
+    variant_analysis = evaluate_variant_performance(list(copies), list(snapshots))
+    asset_actions = build_optimization_asset_actions(variant_analysis)
     recommendations: list[dict] = []
     if not snapshots:
         recommendations.append({
@@ -489,14 +838,39 @@ async def get_campaign_optimization(
             "detail": f"当前有 {len(blocked_copies)} 条文案存在合规问题。",
             "action": "前往文案素材板修改后重新执行合规检查。",
         })
-    recommendations.append({
-        "code": "connect_variant_metrics",
-        "severity": "info",
-        "title": "补齐 A/B 版本级数据",
-        "detail": "当前效果快照没有绑定具体 A/B 文案，不能据此宣布任一变体获胜。",
-        "action": "后续广告数据导入时携带 copy_id，再判断暂停或放量版本。",
-    })
+    if not any(item.copy_id for item in snapshots):
+        recommendations.append({
+            "code": "connect_variant_metrics",
+            "severity": "info",
+            "title": "补齐 A/B 版本级数据",
+            "detail": "当前效果快照没有绑定具体 A/B 文案，不能据此宣布任一变体获胜。",
+            "action": "后续广告数据导入时携带 copy_id，再判断暂停或放量版本。",
+        })
+    if any(
+        item["performance_status"] == "paused"
+        for item in variant_analysis
+    ):
+        recommendations.append({
+            "code": "ab_loser_paused",
+            "severity": "warning",
+            "title": "已暂停明显落后的 A/B 版本",
+            "detail": "系统仅在样本充足且差距明确时自动暂停。",
+            "action": "保留赢家继续投放，并参考素材动作重做落后版本。",
+        })
+    if any(
+        item["performance_status"] == "winner"
+        for item in variant_analysis
+    ):
+        recommendations.append({
+            "code": "ab_winner_recommended",
+            "severity": "success",
+            "title": "已有可继续放大的 A/B 版本",
+            "detail": "赢家版本的相对表现已达到自动判断门槛。",
+            "action": "逐步增加预算，同时保留对照版本观察衰减。",
+        })
     return {
         "metrics": totals,
+        "variant_analysis": variant_analysis,
+        "asset_actions": asset_actions,
         "recommendations": recommendations,
     }

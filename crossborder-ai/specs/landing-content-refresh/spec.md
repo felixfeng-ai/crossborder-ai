@@ -2,13 +2,13 @@
 
 ## 背景
 
-平台已增加 VOC 评论洞察、图片工作台、素材中心、营销成片、字幕、AI 配音、Amazon SP-API 授权连接、积分包和有效期等能力，首页需要与线上真实能力及套餐保持一致。
+平台已增加 VOC 评论洞察、图片工作台、素材中心、营销成片、字幕、AI 配音、Amazon SP-API 授权与 Listing 发布、积分包和有效期等能力，首页需要与线上真实能力及套餐保持一致。
 
 ## 事实来源
 
 - 套餐与积分：`GET /api/v1/billing/plans`、`GET /api/v1/billing/credit-packs`
 - 平台能力：商品、Listing、图片、视频、素材、运营监控和渠道连接的实际页面
-- 发布边界：Shopify 支持草稿发布；Amazon 支持授权连接，发布尚未接通；其余平台支持 Listing 文案生成
+- 发布边界：Shopify 支持草稿发布；Amazon 支持授权连接和 Listings Items 发布（需开通对应权限）；其余平台支持 Listing 文案生成
 
 ## Requirements
 

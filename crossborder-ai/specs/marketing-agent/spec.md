@@ -245,12 +245,15 @@ A/B 两个版本。每条文案保存平台约束、标题、正文、CTA、标�
 - Then 生成活动 Listing 并调用现有 Shopify 发布服务
 - And 活动发布记录关联文案、Listing 和统一 Publication
 
-### Scenario: Amazon 能力状态
+### Scenario: Amazon 文案发布
 
-- Given Amazon Listing 发布尚未接入
-- When 用户发起 Amazon 活动发布
-- Then 返回并保存 `unavailable` 状态
-- And 显示真实的缺失能力原因
+- Given 活动有通过合规检查的 Amazon 文案、卖家连接和 product type
+- When 用户先执行 Amazon Listing 预览
+- Then 调用 SP-API Listings Items 的 VALIDATION_PREVIEW
+- And 返回 Amazon 校验问题
+- When 用户确认正式发布
+- Then 保存统一 Publication 和活动发布记录
+- And 权限或属性错误不会被标记为成功
 
 ### Scenario: 效果数据回流
 
@@ -272,8 +275,9 @@ A/B 两个版本。每条文案保存平台约束、标题、正文、CTA、标�
 - Given 活动已有曝光、点击、订单、花费或收入数据
 - When 请求活动优化建议
 - Then 根据 CTR、CVR 和 ROAS 返回有依据的建议
-- And 没有文案变体级指标时明确提示不能判断 A/B 胜负
-- And 不伪造变体暂停或放量结论
+- And 有文案变体级指标时返回每个 A/B 版本的状态
+- And 样本充足且差距明确时自动暂停落后版本并推荐赢家
+- And 没有文案变体级指标或样本不足时不判断 A/B 胜负
 
 ### Scenario: 用户隔离
 
@@ -292,4 +296,5 @@ A/B 两个版本。每条文案保存平台约束、标题、正文、CTA、标�
 - 活动支持 1/2/4 张批量图片生成，并逐变体展示和管理。
 - 营销文案按平台和 A/B 版本持久化，并可在活动素材板管理。
 - 活动发布记录和效果指标归属当前活动，Amazon 不伪造发布成功。
+- Shopify 自动同步、广告 CSV 导入和 A/B 自动状态具备独立测试。
 - 桌面和 390px 移动端完成真实截图验证。

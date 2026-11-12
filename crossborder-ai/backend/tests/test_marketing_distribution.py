@@ -33,7 +33,7 @@ async def _campaign_for_user(client, headers, db_session):
 
 
 @pytest.mark.asyncio
-async def test_amazon_publication_records_unavailable_capability(
+async def test_amazon_publication_requires_real_listing_context(
     client,
     auth_headers,
     db_session,
@@ -44,17 +44,8 @@ async def test_amazon_publication_records_unavailable_capability(
         json={"platform": "amazon"},
         headers=auth_headers,
     )
-    assert response.status_code == 201, response.text
-    assert response.json()["status"] == "unavailable"
-    assert "Amazon SP-API" in response.json()["error"]
-    record = (
-        await db_session.execute(
-            select(MarketingCampaignPublication).where(
-                MarketingCampaignPublication.campaign_id == campaign.id
-            )
-        )
-    ).scalar_one()
-    assert record.status == "unavailable"
+    assert response.status_code == 400, response.text
+    assert "product type" in response.json()["detail"]
 
 
 @pytest.mark.asyncio

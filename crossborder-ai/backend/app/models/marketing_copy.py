@@ -67,6 +67,23 @@ class MarketingCopyAsset(Base):
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="ready", server_default="ready"
     )
+    # 独立的投放表现状态，避免把合规状态和 A/B 暂停状态混在一起。
+    performance_status: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="active",
+        server_default="active",
+    )
+    performance_metrics_json: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="{}",
+        server_default="{}",
+    )
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     compliance_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pass", server_default="pass"
     )

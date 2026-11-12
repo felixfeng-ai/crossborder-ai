@@ -71,6 +71,13 @@ def serialize_marketing_copy(asset: MarketingCopyAsset) -> dict:
         "keywords": _parse_list(asset.keywords_json),
         "metadata": _parse_dict(asset.metadata_json),
         "status": asset.status,
+        "performance_status": asset.performance_status,
+        "performance_metrics": _parse_dict(asset.performance_metrics_json),
+        "last_evaluated_at": (
+            asset.last_evaluated_at.isoformat()
+            if asset.last_evaluated_at
+            else None
+        ),
         "compliance_status": asset.compliance_status,
         "violations": _parse_list(asset.violations_json),
         "source": asset.source,
@@ -211,6 +218,31 @@ async def update_marketing_copy(
     asset.status = "blocked" if violations else "ready"
     asset.version += 1
     asset.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+    await db.refresh(asset)
+    return serialize_marketing_copy(asset)
+
+
+@router.post("/{campaign_id}/copy/{copy_id}/resume")
+async def resume_marketing_copy(
+    campaign_id: str,
+    copy_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """人工恢复被自动暂停的 A/B 版本，不改变文案与合规状态。"""
+    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="营销活动不存在")
+    try:
+        parsed_id = uuid.UUID(copy_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="文案不存在")
+    asset = await _owned_copy(db, campaign.id, parsed_id, current_user.id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="文案不存在")
+    asset.performance_status = "active"
+    asset.last_evaluated_at = datetime.now(timezone.utc)
     await db.flush()
     await db.refresh(asset)
     return serialize_marketing_copy(asset)

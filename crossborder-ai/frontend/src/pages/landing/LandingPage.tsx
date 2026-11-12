@@ -190,7 +190,7 @@ export default function LandingPage() {
                   ))}
                 </motion.div>
                 <motion.p variants={item} className="text-[11px] leading-5 text-muted-foreground">
-                  11 个平台支持 Listing 文案生成；Shopify 支持草稿发布，Amazon 已完成 SP-API 授权连接。
+                  11 个平台支持 Listing 文案生成；Shopify 支持草稿发布，Amazon 支持 SP-API Listing 发布。
                 </motion.p>
               </div>
 

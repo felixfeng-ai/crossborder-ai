@@ -287,6 +287,7 @@ async def sync_shopify_operations(
                     MarketingPerformanceSnapshot.campaign_id == campaign_id,
                     MarketingPerformanceSnapshot.platform == "shopify",
                     MarketingPerformanceSnapshot.source == "shopify_orders",
+                    MarketingPerformanceSnapshot.scope_key == "",
                     MarketingPerformanceSnapshot.period_start == period_start,
                     MarketingPerformanceSnapshot.period_end == period_end,
                 )
@@ -298,10 +299,13 @@ async def sync_shopify_operations(
                 campaign_id=campaign_id,
                 platform="shopify",
                 source="shopify_orders",
+                scope_key="",
                 period_start=period_start,
                 period_end=period_end,
             )
         snapshot.impressions = 0
+        snapshot.copy_id = None
+        snapshot.scope_key = ""
         snapshot.clicks = 0
         snapshot.orders = int(values["orders"])
         snapshot.conversions = int(values["orders"])
@@ -331,3 +335,88 @@ async def sync_shopify_operations(
         "unmatched_skus": unmatched[:100],
         "synced_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+async def sync_all_shopify_operations(
+    db: AsyncSession,
+    *,
+    days: int = 30,
+) -> dict:
+    """同步所有启用店铺，并隔离单店失败。
+
+    一个失效 Token 不能阻断其他用户。失败后回滚当前事务，确保下一条
+    店铺从干净会话开始；成功记录由同步服务自行提交。
+    """
+    channel_refs = (
+        await db.execute(
+            select(
+                ShopifyChannel.id,
+                ShopifyChannel.user_id,
+                ShopifyChannel.shop_name,
+                ShopifyChannel.shop_domain,
+            )
+            .where(ShopifyChannel.is_active.is_(True))
+            .order_by(ShopifyChannel.created_at, ShopifyChannel.id)
+        )
+    ).all()
+
+    summary = {
+        "channels_scanned": len(channel_refs),
+        "channels_succeeded": 0,
+        "channels_failed": 0,
+        "orders_scanned": 0,
+        "campaign_performance_updates": 0,
+        "failures": [],
+    }
+    for channel_id, user_id, shop_name, shop_domain in channel_refs:
+        domain = (
+            str(shop_domain or "").strip()
+            or f"{str(shop_name or '').replace('.myshopify.com', '').strip()}.myshopify.com"
+        )
+        user = await db.get(User, user_id)
+        channel = await db.get(ShopifyChannel, channel_id)
+        if channel is None:
+            summary["channels_failed"] += 1
+            summary["failures"].append(
+                {
+                    "channel_id": str(channel_id),
+                    "shop_domain": domain,
+                    "error": "店铺不存在或已删除",
+                }
+            )
+            continue
+        if user is None:
+            summary["channels_failed"] += 1
+            summary["failures"].append(
+                {
+                    "channel_id": str(channel_id),
+                    "shop_domain": domain,
+                    "error": "店铺所属用户不存在",
+                }
+            )
+            continue
+        try:
+            result = await sync_shopify_operations(
+                db,
+                user=user,
+                channel=channel,
+                days=days,
+            )
+        except Exception as exc:
+            await db.rollback()
+            summary["channels_failed"] += 1
+            summary["failures"].append(
+                {
+                    "channel_id": str(channel_id),
+                    "shop_domain": domain,
+                    "error": str(exc)[:300],
+                }
+            )
+            continue
+
+        summary["channels_succeeded"] += 1
+        summary["orders_scanned"] += int(result.get("orders_scanned") or 0)
+        summary["campaign_performance_updates"] += int(
+            result.get("campaign_performance_updates") or 0
+        )
+    return summary

@@ -1,4 +1,21 @@
 export type MarketingCopyPlatform = 'tiktok' | 'amazon' | 'shopify'
+export type MarketingCopyPerformanceStatus =
+  | 'active'
+  | 'winner'
+  | 'paused'
+  | 'insufficient_data'
+
+export interface MarketingCopyPerformanceMetrics {
+  impressions?: number
+  clicks?: number
+  orders?: number
+  spend?: number
+  revenue?: number
+  ctr?: number
+  cvr?: number
+  roas?: number
+  reason?: string
+}
 
 export interface MarketingCopyAsset {
   id: string
@@ -14,6 +31,9 @@ export interface MarketingCopyAsset {
   keywords: string[]
   metadata: Record<string, unknown>
   status: string
+  performance_status: MarketingCopyPerformanceStatus
+  performance_metrics: MarketingCopyPerformanceMetrics
+  last_evaluated_at: string | null
   compliance_status: string
   violations: string[]
   source: string
@@ -42,6 +62,18 @@ const PLATFORM_LABELS: Record<MarketingCopyPlatform, string> = {
 
 export function copyPlatformLabel(platform: MarketingCopyPlatform): string {
   return PLATFORM_LABELS[platform]
+}
+
+export function performanceStatusLabel(
+  status: MarketingCopyPerformanceStatus,
+): string {
+  const labels: Record<MarketingCopyPerformanceStatus, string> = {
+    active: '持续观察',
+    winner: '推荐继续',
+    paused: '已暂停',
+    insufficient_data: '样本不足',
+  }
+  return labels[status] || '持续观察'
 }
 
 export function latestCopyByPlatform(

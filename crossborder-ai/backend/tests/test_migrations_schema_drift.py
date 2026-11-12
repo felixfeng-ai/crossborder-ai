@@ -123,7 +123,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "041_marketing_distribution"
+    assert version == "042_marketing_optimization"
     assert "provider" in _column_names(engine, "marketing_video_projects")
     assert "workspace" in _column_names(engine, "conversations")
     assert "campaign_id" in _column_names(engine, "conversations")
@@ -148,6 +148,15 @@ def test_repair_migration_restores_stamped_schema_drift(
         "marketing_campaign_publications",
         "marketing_performance_snapshots",
     } <= set(sa.inspect(engine).get_table_names())
+    assert {
+        "copy_id",
+        "scope_key",
+    } <= _column_names(engine, "marketing_performance_snapshots")
+    assert {
+        "performance_status",
+        "performance_metrics_json",
+        "last_evaluated_at",
+    } <= _column_names(engine, "marketing_copy_assets")
 
 
 def test_full_sqlite_upgrade_from_empty_database(
@@ -196,7 +205,7 @@ def test_full_sqlite_upgrade_from_empty_database(
     } <= _column_names(engine, "products")
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "041_marketing_distribution"
+    assert version == "042_marketing_optimization"
     assert "provider" in _column_names(engine, "marketing_video_projects")
     assert "workspace" in _column_names(engine, "conversations")
     assert "campaign_id" in _column_names(engine, "conversations")
@@ -221,6 +230,15 @@ def test_full_sqlite_upgrade_from_empty_database(
         "marketing_campaign_publications",
         "marketing_performance_snapshots",
     } <= set(inspector.get_table_names())
+    assert {
+        "copy_id",
+        "scope_key",
+    } <= _column_names(engine, "marketing_performance_snapshots")
+    assert {
+        "performance_status",
+        "performance_metrics_json",
+        "last_evaluated_at",
+    } <= _column_names(engine, "marketing_copy_assets")
     assert "credit_transactions" in inspector.get_table_names()
     assert {
         "credit_wallets",

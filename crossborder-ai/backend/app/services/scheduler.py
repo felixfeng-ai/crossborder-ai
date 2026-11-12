@@ -58,6 +58,14 @@ class SchedulerService:
             replace_existing=True,
         )
 
+        # 每 6 小时同步启用 Shopify 店铺的订单和活动效果快照。
+        self.scheduler.add_job(
+            self._sync_all_shopify_operations_locked,
+            IntervalTrigger(hours=6),
+            id="shopify_operations_sync",
+            replace_existing=True,
+        )
+
         # Every 5 seconds: 分发 Agent 异步任务（任务队列核心）
         # 在跨进程锁内抢占 pending 任务，锁外并发执行，多 worker 不重复消费
         self.scheduler.add_job(
@@ -165,6 +173,27 @@ class SchedulerService:
             count = await scan_all_users(db)
             await db.commit()
             print(f"[Scheduler] 运营监控完成：{count} 个用户")
+
+    async def _sync_all_shopify_operations_locked(self):
+        """多 worker 下只执行一份 Shopify 全局同步。"""
+        await self._run_with_lock(
+            "shopify_operations_sync",
+            self._sync_all_shopify_operations,
+        )
+
+    async def _sync_all_shopify_operations(self):
+        """自动同步所有启用 Shopify 店铺，并记录失败隔离结果。"""
+        from app.services.shopify_operations_sync import (
+            sync_all_shopify_operations,
+        )
+
+        async with async_session_factory() as db:
+            result = await sync_all_shopify_operations(db, days=30)
+            print(
+                "[Scheduler] Shopify 自动同步完成："
+                f"{result['channels_succeeded']}/{result['channels_scanned']} 成功，"
+                f"{result['campaign_performance_updates']} 个活动更新"
+            )
 
     async def _run_store_checks(self):
         """定时整店巡检：检查所有用户的商品，记录结果"""

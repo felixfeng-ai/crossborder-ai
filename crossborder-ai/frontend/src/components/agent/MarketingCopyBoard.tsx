@@ -6,6 +6,7 @@ import {
   Languages,
   Loader2,
   Pencil,
+  RotateCcw,
   Sparkles,
   Trash2,
   X,
@@ -21,6 +22,7 @@ import {
   copyPlatformLabel,
   formatMarketingCopy,
   latestCopyByPlatform,
+  performanceStatusLabel,
   type MarketingCopyAsset,
   type MarketingCopyPlatform,
   type MarketingCopyResponse,
@@ -132,6 +134,27 @@ export function MarketingCopyBoard({
     },
   })
 
+  const resumeMutation = useMutation({
+    mutationFn: async (assetId: string) => {
+      const response = await apiClient.post(
+        `/marketing-campaigns/${campaignId}/copy/${assetId}/resume`,
+      )
+      return response.data
+    },
+    onMutate: () => setError(''),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['marketing-copy-assets', campaignId],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-optimization', campaignId],
+      })
+    },
+    onError: (mutationError) => {
+      setError(toErrorMessage(mutationError, '恢复 A/B 版本失败'))
+    },
+  })
+
   const startEditing = (asset: MarketingCopyAsset) => {
     setEditingCopy(asset)
     setEditForm({
@@ -229,12 +252,17 @@ export function MarketingCopyBoard({
                 editForm={editForm}
                 copied={copiedId === asset.id}
                 updating={updateMutation.isPending}
+                resuming={
+                  resumeMutation.isPending
+                  && resumeMutation.variables === asset.id
+                }
                 onEditFormChange={setEditForm}
                 onStartEdit={() => startEditing(asset)}
                 onCancelEdit={() => setEditingCopy(null)}
                 onSaveEdit={() => updateMutation.mutate()}
                 onCopy={() => copyAsset(asset)}
                 onDelete={() => setDeleteTarget(asset)}
+                onResume={() => resumeMutation.mutate(asset.id)}
               />
             ))}
           </div>
@@ -271,31 +299,46 @@ function CopyCard({
   editForm,
   copied,
   updating,
+  resuming,
   onEditFormChange,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
   onCopy,
   onDelete,
+  onResume,
 }: {
   asset: MarketingCopyAsset
   editing: boolean
   editForm: EditCopyForm
   copied: boolean
   updating: boolean
+  resuming: boolean
   onEditFormChange: (form: EditCopyForm) => void
   onStartEdit: () => void
   onCancelEdit: () => void
   onSaveEdit: () => void
   onCopy: () => void
   onDelete: () => void
+  onResume: () => void
 }) {
   const angle = String(asset.metadata.angle || '')
   return (
     <article className="border border-border bg-[var(--factory-panel)] p-3">
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant="secondary">版本 {asset.variant_key}</Badge>
+          <Badge
+            variant={
+              asset.performance_status === 'paused'
+                ? 'destructive'
+                : asset.performance_status === 'winner'
+                  ? 'secondary'
+                  : 'outline'
+            }
+          >
+            {performanceStatusLabel(asset.performance_status)}
+          </Badge>
           {angle && <span className="text-[10px] text-muted-foreground">{angle}</span>}
         </div>
         <Badge variant={asset.compliance_status === 'pass' ? 'secondary' : 'destructive'}>
@@ -372,6 +415,13 @@ function CopyCard({
             {asset.body}
           </p>
           <p className="mt-2 text-xs font-medium">{asset.cta}</p>
+          {asset.last_evaluated_at && (
+            <div className="mt-2 grid grid-cols-3 gap-1.5 border border-border px-2 py-1.5 text-[9px] text-muted-foreground">
+              <span>CTR {asset.performance_metrics.ctr || 0}%</span>
+              <span>CVR {asset.performance_metrics.cvr || 0}%</span>
+              <span>ROAS {asset.performance_metrics.roas || 0}</span>
+            </div>
+          )}
           {asset.hashtags.length > 0 && (
             <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
               {asset.hashtags.join(' ')}
@@ -416,6 +466,23 @@ function CopyCard({
               >
                 <Trash2 className="h-3.5 w-3.5 text-destructive" />
               </Button>
+              {asset.performance_status === 'paused' && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  title="恢复该版本"
+                  aria-label={`恢复 ${asset.platform} ${asset.variant_key} 版本`}
+                  onClick={onResume}
+                  disabled={resuming}
+                >
+                  {resuming ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </>

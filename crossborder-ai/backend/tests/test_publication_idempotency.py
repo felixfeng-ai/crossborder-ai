@@ -143,6 +143,6 @@ async def test_platform_capabilities_are_explicit(client: AsyncClient):
     platforms = response.json()["platforms"]
     assert platforms["shopify"]["publish_supported"] is True
     assert platforms["amazon"]["auth_supported"] is True
-    assert platforms["amazon"]["publish_supported"] is False
+    assert platforms["amazon"]["publish_supported"] is True
     assert platforms["temu"]["publish_supported"] is False
     assert platforms["shein"]["publish_supported"] is False

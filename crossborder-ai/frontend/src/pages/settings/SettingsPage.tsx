@@ -312,7 +312,7 @@ function PlatformConnections() {
           <Link2 className="h-4 w-4" />Amazon 店铺
         </CardTitle>
         <CardDescription>
-          通过 Amazon SP-API 授权后，可逐步启用 Listing、库存和订单能力。
+          通过 Amazon SP-API 授权并开通 Listings Items 权限后，可预览和发布 Listing。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

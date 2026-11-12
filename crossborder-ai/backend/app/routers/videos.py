@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.access_control import check_feature_access
 from app.core.config import settings
@@ -32,6 +33,7 @@ from app.services.video_quality import (
     list_style_presets,
     resolve_quality_tier,
 )
+from app.services.video_thumbnail import ensure_video_thumbnail
 from app.services.video_task_executor import cancel_video_task, submit_video_task
 
 
@@ -55,6 +57,7 @@ class VideoTaskResponse(BaseModel):
     id: str
     status: str
     video_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     model: str
     resolution: str
     quality_tier: str
@@ -73,11 +76,20 @@ def _video_file_url(task_id) -> str:
     return f"{settings.API_V1_PREFIX}/videos/tasks/{task_id}/file"
 
 
+def _video_thumbnail_url(task_id) -> str:
+    return f"{settings.API_V1_PREFIX}/videos/tasks/{task_id}/thumbnail"
+
+
 def _serialize_task(task: VideoGenerationTask) -> VideoTaskResponse:
     return VideoTaskResponse(
         id=str(task.id),
         status=task.status,
         video_url=_video_file_url(task.id) if task.status == "succeeded" else None,
+        thumbnail_url=(
+            _video_thumbnail_url(task.id)
+            if task.status == "succeeded"
+            else None
+        ),
         model=task.model,
         resolution=task.resolution,
         quality_tier=task.quality_tier,
@@ -342,10 +354,13 @@ async def delete_video_task(
             detail="该视频属于营销成片项目，请从专业分镜或营销成片中删除",
         )
     path = _task_path(task.storage_key) if task.storage_key else None
+    cover_path = path.with_suffix(".cover.jpg") if path is not None else None
     await db.delete(task)
     await db.flush()
     if path is not None and path.is_file():
         path.unlink()
+    if cover_path is not None:
+        cover_path.unlink(missing_ok=True)
     return None
 
 
@@ -380,4 +395,36 @@ async def get_video_file(
         path,
         media_type=task.mime or "video/mp4",
         filename=f"veyaship-{task.id}.mp4",
+    )
+
+
+@router.get("/tasks/{task_id}/thumbnail")
+async def get_video_thumbnail(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """通过不可猜测任务 UUID 提供懒生成封面。"""
+    try:
+        parsed_id = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="视频封面不存在")
+    task = (
+        await db.execute(
+            select(VideoGenerationTask).where(
+                VideoGenerationTask.id == parsed_id,
+                VideoGenerationTask.status == "succeeded",
+            )
+        )
+    ).scalar_one_or_none()
+    if task is None or not task.storage_key:
+        raise HTTPException(status_code=404, detail="视频封面不存在")
+    video_path = _task_path(task.storage_key)
+    try:
+        cover_path = await run_in_threadpool(ensure_video_thumbnail, video_path)
+    except (FileNotFoundError, RuntimeError):
+        raise HTTPException(status_code=404, detail="视频封面不存在")
+    return FileResponse(
+        cover_path,
+        media_type="image/jpeg",
+        filename=f"veyaship-{task.id}.cover.jpg",
     )

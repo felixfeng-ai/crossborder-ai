@@ -58,6 +58,7 @@ export interface MarketingVideoProject {
   credits_refunded?: number
   video_available?: boolean
   final_video_url?: string | null
+  thumbnail_url?: string | null
   subtitle_url?: string | null
   subtitles_burned_in?: boolean
   error?: string | null

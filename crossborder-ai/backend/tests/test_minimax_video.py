@@ -491,6 +491,57 @@ async def test_insufficient_credits_does_not_submit_provider(
 
 
 @pytest.mark.asyncio
+async def test_single_video_exposes_cached_thumbnail(
+    client: AsyncClient,
+    auth_headers: dict,
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    user = await _professional_user(db_session)
+    monkeypatch.setattr(settings, "VIDEO_STORAGE_DIR", str(tmp_path / "videos"))
+    storage_key = f"{user.id}/single-cover.mp4"
+    video_path = tmp_path / "videos" / storage_key
+    video_path.parent.mkdir(parents=True, exist_ok=True)
+    video_path.write_bytes(b"\x00\x00\x00\x18ftypmp42single")
+    task = VideoGenerationTask(
+        user_id=user.id,
+        source_asset_id=None,
+        provider="minimax",
+        model="MiniMax-H3-Highspeed",
+        resolution="768P",
+        quality_tier="standard",
+        style_preset="premium_luxury",
+        credits_per_second=15,
+        duration=4,
+        ratio="9:16",
+        prompt="product",
+        status="succeeded",
+        storage_key=storage_key,
+    )
+    db_session.add(task)
+    await db_session.flush()
+
+    history = await client.get("/api/v1/videos/history", headers=auth_headers)
+    assert history.status_code == 200
+    item = next(item for item in history.json() if item["id"] == str(task.id))
+    assert item["thumbnail_url"].endswith("/thumbnail")
+
+    def fake_thumbnail(path):
+        cover = path.with_suffix(".cover.jpg")
+        cover.write_bytes(b"single-cover")
+        return cover
+
+    monkeypatch.setattr(
+        "app.routers.videos.ensure_video_thumbnail",
+        fake_thumbnail,
+    )
+    thumbnail = await client.get(item["thumbnail_url"])
+    assert thumbnail.status_code == 200
+    assert thumbnail.content == b"single-cover"
+
+
+@pytest.mark.asyncio
 async def test_idempotency_key_prevents_duplicate_provider_submission(
     client: AsyncClient,
     auth_headers: dict,

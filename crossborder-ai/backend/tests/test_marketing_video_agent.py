@@ -695,6 +695,7 @@ async def test_marketing_project_only_exposes_existing_video_file(
     assert available.status_code == 200
     assert available.json()["video_available"] is True
     assert available.json()["final_video_url"].endswith("/file")
+    assert available.json()["thumbnail_url"].endswith("/thumbnail")
 
     file_response = await client.get(
         f"/api/v1/marketing-videos/projects/{project.id}/file",
@@ -704,6 +705,20 @@ async def test_marketing_project_only_exposes_existing_video_file(
     disposition = file_response.headers["content-disposition"]
     assert "Terra-tiktok" in disposition
     assert ".mp4" in disposition
+
+    def fake_thumbnail(video_path):
+        cover = video_path.with_suffix(".cover.jpg")
+        cover.write_bytes(b"jpeg-cover")
+        return cover
+
+    monkeypatch.setattr(
+        "app.routers.marketing_videos.ensure_video_thumbnail",
+        fake_thumbnail,
+    )
+    thumbnail = await client.get(available.json()["thumbnail_url"])
+    assert thumbnail.status_code == 200
+    assert thumbnail.headers["content-type"] == "image/jpeg"
+    assert thumbnail.content == b"jpeg-cover"
 
     final_path.unlink()
     missing = await client.get(

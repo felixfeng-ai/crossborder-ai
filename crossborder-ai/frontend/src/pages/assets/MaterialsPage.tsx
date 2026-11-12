@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   buildImageMaterials,
   buildVideoMaterials,
+  formatMaterialDateTime,
   imageSourceLabel,
   type GeneratedImageHistoryInput,
   type ImageAssetInput,
@@ -477,6 +478,8 @@ function VideoRow({
   onSelect: () => void
   onDelete: () => void
 }) {
+  const [thumbnailFailed, setThumbnailFailed] = useState(false)
+
   return (
     <article
       className={cn(
@@ -491,17 +494,35 @@ function VideoRow({
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
         onClick={onSelect}
       >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
-          <Play className="ml-0.5 h-4 w-4" />
+        <span className="relative flex aspect-[9/16] w-12 shrink-0 items-center justify-center overflow-hidden border border-border bg-secondary">
+          {item.thumbnailUrl && !thumbnailFailed ? (
+            <img
+              src={resolveMediaUrl(item.thumbnailUrl)}
+              alt={`${item.name} 封面`}
+              loading="lazy"
+              className="h-full w-full object-cover"
+              onError={() => setThumbnailFailed(true)}
+            />
+          ) : (
+            <Video className="h-4 w-4 text-muted-foreground" />
+          )}
+          <span className="absolute inset-0 flex items-center justify-center bg-black/25">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white">
+              <Play className="ml-0.5 h-3 w-3 fill-current" />
+            </span>
+          </span>
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate pr-7 text-sm font-medium">{item.name}</span>
-          <span className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
             <span>{item.source === 'marketing' ? '营销成片' : '商品图生视频'}</span>
             <span>·</span>
             <span className="metric-number">{item.duration}s</span>
             <span>·</span>
             <span className="metric-number">{item.resolution}</span>
+          </span>
+          <span className="mt-1 block text-[10px] text-muted-foreground">
+            生成于 {formatMaterialDateTime(item.createdAt)}
           </span>
         </span>
       </button>
@@ -652,7 +673,7 @@ function VideoPreview({
             </div>
             <div className="border border-border p-2">
               <p className="text-muted-foreground">创建时间</p>
-              <p className="mt-1">{new Date(material.createdAt).toLocaleDateString('zh-CN')}</p>
+              <p className="mt-1">{formatMaterialDateTime(material.createdAt)}</p>
             </div>
             <div className="border border-border p-2">
               <p className="text-muted-foreground">文件</p>

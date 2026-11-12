@@ -28,6 +28,7 @@ export interface VideoTaskInput {
   ratio: string
   prompt: string
   credits_cost: number
+  thumbnail_url?: string | null
   created_at: string
 }
 
@@ -39,6 +40,7 @@ export interface MarketingProjectInput {
   template_id: string
   model: string
   resolution: string
+  thumbnail_url?: string | null
   created_at: string
 }
 
@@ -67,6 +69,7 @@ export interface VideoMaterial {
   duration: number
   model: string
   resolution: string
+  thumbnailUrl?: string | null
   fileEndpoint: string
   deleteEndpoint: string
 }
@@ -131,6 +134,7 @@ export function buildVideoMaterials(
       duration: task.duration,
       model: task.model,
       resolution: task.resolution,
+      thumbnailUrl: task.thumbnail_url || null,
       fileEndpoint: `/videos/tasks/${task.id}/file`,
       deleteEndpoint: `/videos/tasks/${task.id}`,
     }))
@@ -145,10 +149,21 @@ export function buildVideoMaterials(
       duration: project.duration,
       model: project.model,
       resolution: project.resolution,
+      thumbnailUrl: project.thumbnail_url || null,
       fileEndpoint: `/marketing-videos/projects/${project.id}/file`,
       deleteEndpoint: `/marketing-videos/projects/${project.id}`,
     }))
   return [...marketing, ...single].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  )
+}
+
+export function formatMaterialDateTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}`
   )
 }

@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.access_control import check_feature_access
 from app.core.config import settings
@@ -58,6 +59,7 @@ from app.services.video_quality import (
     list_style_presets,
     resolve_quality_tier,
 )
+from app.services.video_thumbnail import ensure_video_thumbnail
 
 
 router = APIRouter(prefix="/marketing-videos", tags=["AI 营销视频"])
@@ -174,6 +176,7 @@ class MarketingProjectResponse(BaseModel):
     credits_refunded: int
     video_available: bool = False
     final_video_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     subtitle_url: Optional[str] = None
     subtitles_burned_in: bool = False
     error: Optional[str] = None
@@ -473,6 +476,12 @@ async def _serialize_project(
         video_available=video_available,
         final_video_url=(
             f"{settings.API_V1_PREFIX}/marketing-videos/projects/{project.id}/file"
+            if video_available
+            else None
+        ),
+        thumbnail_url=(
+            f"{settings.API_V1_PREFIX}/marketing-videos/projects/"
+            f"{project.id}/thumbnail"
             if video_available
             else None
         ),
@@ -873,7 +882,8 @@ async def delete_marketing_project(
     ).scalars().all() if task_ids else []
     paths: list[Path] = []
     if project.final_storage_key:
-        paths.append(_project_file_path(project.final_storage_key))
+        final_path = _project_file_path(project.final_storage_key)
+        paths.extend([final_path, final_path.with_suffix(".cover.jpg")])
     for task in tasks:
         if task.storage_key:
             paths.append(_project_file_path(task.storage_key))
@@ -911,6 +921,38 @@ async def get_marketing_project_file(
         path,
         media_type=project.mime or "video/mp4",
         filename=_marketing_download_filename(project, "mp4"),
+    )
+
+
+@router.get("/projects/{project_id}/thumbnail")
+async def get_marketing_project_thumbnail(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """公开不可猜测 UUID 的封面缓存，历史成片按需提取。"""
+    try:
+        parsed_id = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="视频封面不存在")
+    project = (
+        await db.execute(
+            select(MarketingVideoProject).where(
+                MarketingVideoProject.id == parsed_id,
+                MarketingVideoProject.status == "succeeded",
+            )
+        )
+    ).scalar_one_or_none()
+    if project is None or not project.final_storage_key:
+        raise HTTPException(status_code=404, detail="视频封面不存在")
+    video_path = _project_file_path(project.final_storage_key)
+    try:
+        cover_path = await run_in_threadpool(ensure_video_thumbnail, video_path)
+    except (FileNotFoundError, RuntimeError):
+        raise HTTPException(status_code=404, detail="视频封面不存在")
+    return FileResponse(
+        cover_path,
+        media_type="image/jpeg",
+        filename=f"{_marketing_download_filename(project, 'mp4')}.cover.jpg",
     )
 
 

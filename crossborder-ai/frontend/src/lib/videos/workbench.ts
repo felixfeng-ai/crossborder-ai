@@ -31,6 +31,7 @@ export interface VideoTask {
   id: string
   status: string
   video_url?: string | null
+  thumbnail_url?: string | null
   model: string
   resolution: string
   quality_tier: string

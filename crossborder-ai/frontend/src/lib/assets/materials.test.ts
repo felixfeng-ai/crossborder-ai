@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildImageMaterials,
   buildVideoMaterials,
+  formatMaterialDateTime,
 } from './materials'
 
 
@@ -65,6 +66,7 @@ describe('material center normalization', () => {
           ratio: '9:16',
           prompt: 'single',
           credits_cost: 10,
+          thumbnail_url: '/api/v1/videos/tasks/single-1/thumbnail',
           created_at: '2026-11-11T10:00:00Z',
         },
         {
@@ -88,6 +90,7 @@ describe('material center normalization', () => {
           template_id: 'presenter_demo',
           model: 'MiniMax-H3-Lite',
           resolution: '480P',
+          thumbnail_url: '/api/v1/marketing-videos/projects/marketing-1/thumbnail',
           created_at: '2026-11-11T12:00:00Z',
         },
         {
@@ -108,12 +111,18 @@ describe('material center normalization', () => {
       type: 'video',
       source: 'marketing',
       name: 'Terra campaign',
+      thumbnailUrl: '/api/v1/marketing-videos/projects/marketing-1/thumbnail',
       deleteEndpoint: '/marketing-videos/projects/marketing-1',
     })
     expect(items[1]).toMatchObject({
       type: 'video',
       source: 'single',
+      thumbnailUrl: '/api/v1/videos/tasks/single-1/thumbnail',
       deleteEndpoint: '/videos/tasks/single-1',
     })
+  })
+
+  it('展示到分钟的生成时间', () => {
+    expect(formatMaterialDateTime('2026-11-11T10:05:00')).toBe('2026-11-11 10:05')
   })
 })

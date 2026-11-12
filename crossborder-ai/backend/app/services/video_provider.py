@@ -251,7 +251,7 @@ def get_video_capabilities_summary() -> dict[str, Any]:
         "configured": False,
     }
     models = [
-        model
+        {**model, "provider": provider["provider"]}
         for provider in providers
         for model in provider.get("models", [])
     ] or minimax["models"]

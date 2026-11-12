@@ -79,7 +79,7 @@ def test_jimeng_request_encodes_first_frame_and_official_parameters():
     request = build_jimeng_video_request(
         api_key="ark-key",
         prompt="A premium product shot",
-        model="doubao-seedance-1-5-pro-251215",
+        model="doubao-seedance-2-0-260128",
         resolution="720P",
         duration=5,
         ratio="9:16",
@@ -89,7 +89,7 @@ def test_jimeng_request_encodes_first_frame_and_official_parameters():
 
     assert request.url.endswith("/contents/generations/tasks")
     assert request.headers["Authorization"] == "Bearer ark-key"
-    assert request.body["model"] == "doubao-seedance-1-5-pro-251215"
+    assert request.body["model"] == "doubao-seedance-2-0-260128"
     assert request.body["resolution"] == "720p"
     assert request.body["duration"] == 5
     assert request.body["ratio"] == "9:16"
@@ -103,7 +103,7 @@ def test_jimeng_request_supports_reference_images_and_rejects_too_many():
     request = build_jimeng_video_request(
         api_key="ark-key",
         prompt="Keep the same product with [图1] and [图2]",
-        model="doubao-seedance-1-5-pro-251215",
+        model="doubao-seedance-2-0-260128",
         resolution="1080P",
         duration=8,
         ratio="adaptive",
@@ -120,15 +120,15 @@ def test_jimeng_request_supports_reference_images_and_rejects_too_many():
         "reference_image",
     ]
 
-    with pytest.raises(ValueError, match="最多支持 4 张"):
+    with pytest.raises(ValueError, match="最多支持 9 张"):
         build_jimeng_video_request(
             api_key="ark-key",
             prompt="product references",
-            model="doubao-seedance-1-5-pro-251215",
+            model="doubao-seedance-2-0-260128",
             resolution="720P",
             duration=5,
             ratio="9:16",
-            reference_images=[(b"image", "image/png")] * 5,
+            reference_images=[(b"image", "image/png")] * 10,
         )
 
 
@@ -166,37 +166,42 @@ def test_jimeng_capabilities_follow_configured_key():
     assert disabled["enabled"] is False
     assert enabled["enabled"] is True
     assert enabled["provider"] == "jimeng"
-    assert enabled["models"][0]["id"] == "doubao-seedance-1-5-pro-251215"
+    assert {model["id"] for model in enabled["models"]} >= {
+        "doubao-seedance-2-0-mini-260615",
+        "doubao-seedance-2-0-fast-260128",
+        "doubao-seedance-2-0-260128",
+        "doubao-seedance-2-5-260628",
+    }
 
 
 def test_jimeng_validation_and_cost_estimates():
     assert estimate_jimeng_cost_micros(
-        "doubao-seedance-1-5-pro-251215",
+        "doubao-seedance-2-0-260128",
         "720P",
         5,
-    ) == 350_000
+    ) == 4_968_000
     assert estimate_jimeng_credits(
-        "doubao-seedance-1-5-pro-251215",
+        "doubao-seedance-2-0-260128",
         "720P",
         5,
-    ) == 90
+    ) == 95
 
     with pytest.raises(ValueError, match="提示词"):
         build_jimeng_video_request(
             api_key="key",
             prompt="",
-            model="doubao-seedance-1-5-pro-251215",
+            model="doubao-seedance-2-0-260128",
             resolution="720P",
             duration=5,
             ratio="9:16",
             first_frame=b"image",
             first_frame_mime="image/png",
         )
-    with pytest.raises(ValueError, match="4-12"):
+    with pytest.raises(ValueError, match="4-15"):
         build_jimeng_video_request(
             api_key="key",
             prompt="product",
-            model="doubao-seedance-1-5-pro-251215",
+            model="doubao-seedance-2-0-260128",
             resolution="720P",
             duration=3,
             ratio="9:16",
@@ -207,11 +212,29 @@ def test_jimeng_validation_and_cost_estimates():
         build_jimeng_video_request(
             api_key="key",
             prompt="product",
-            model="doubao-seedance-1-5-pro-251215",
+            model="doubao-seedance-2-0-260128",
             resolution="720P",
             duration=5,
             ratio="9:16",
         )
+
+
+def test_seedance_25_supports_thirty_seconds_and_thirty_references():
+    request = build_jimeng_video_request(
+        api_key="key",
+        prompt="A thirty second premium product commercial",
+        model="doubao-seedance-2-5-260628",
+        resolution="1080P",
+        duration=30,
+        ratio="9:16",
+        reference_images=[
+            (b"image", "image/png")
+            for _ in range(30)
+        ],
+    )
+    assert request.body["duration"] == 30
+    assert request.body["resolution"] == "1080p"
+    assert len(request.body["content"]) == 31
 
 
 @pytest.mark.asyncio
@@ -254,7 +277,7 @@ async def test_jimeng_http_lifecycle(monkeypatch):
 
     task_id = await submit_jimeng_video(
         prompt="product video",
-        model="doubao-seedance-1-5-pro-251215",
+        model="doubao-seedance-2-0-260128",
         resolution="720P",
         duration=5,
         ratio="9:16",
@@ -310,7 +333,7 @@ async def test_jimeng_submit_maps_provider_errors(
     with pytest.raises(ValueError, match=expected):
         await submit_jimeng_video(
             prompt="product video",
-            model="doubao-seedance-1-5-pro-251215",
+            model="doubao-seedance-2-0-260128",
             resolution="720P",
             duration=5,
             ratio="9:16",
@@ -410,10 +433,10 @@ async def test_single_video_uses_jimeng_provider_without_minimax_key(
     assert response.status_code == 202, response.text
     body = response.json()
     assert body["provider"] == "jimeng"
-    assert body["model"] == "doubao-seedance-1-5-pro-251215"
+    assert body["model"] == "doubao-seedance-2-0-260128"
     assert body["resolution"] == "720P"
-    assert body["credits_cost"] == 90
-    assert submitted["model"] == "doubao-seedance-1-5-pro-251215"
+    assert body["credits_cost"] == 95
+    assert submitted["model"] == "doubao-seedance-2-0-260128"
     task = await db_session.get(
         VideoGenerationTask,
         uuid.UUID(body["id"]),
@@ -421,7 +444,7 @@ async def test_single_video_uses_jimeng_provider_without_minimax_key(
     assert task is not None
     assert task.provider == "jimeng"
     await db_session.refresh(user)
-    assert user.credits == 210
+    assert user.credits == 205
 
 
 @pytest.mark.asyncio
@@ -505,4 +528,4 @@ async def test_professional_storyboard_uses_jimeng_render_duration_and_provider(
     body = response.json()
     assert body["provider"] == "jimeng"
     assert [shot["duration"] for shot in body["shots"]] == [4, 3]
-    assert body["credits_estimated"] == 144
+    assert body["credits_estimated"] == 152

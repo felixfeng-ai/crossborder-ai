@@ -2,8 +2,12 @@
 
 from typing import Any
 
-from app.core.config import settings
-from app.services import provider_config
+from app.services.jimeng_video import (
+    SEEDANCE_2_5,
+    SEEDANCE_2_FAST,
+    SEEDANCE_2_MINI,
+    SEEDANCE_2_STANDARD,
+)
 from app.services.minimax_video import PRODUCT_LOCK_PROMPT
 
 
@@ -39,14 +43,88 @@ QUALITY_TIERS: tuple[dict[str, Any], ...] = (
         "estimated_time_multiplier": 1.7,
     },
     {
-        "id": "seedance",
-        "name": "Seedance 商用",
-        "description": "720P 即梦 Seedance，适合商品动作、人物演示和营销镜头。",
+        "id": "seedance_mini",
+        "name": "Seedance 极速草稿",
+        "description": "2.0 Mini 480P，适合低成本试镜和批量草稿。",
         "provider": "jimeng",
-        "model": "doubao-seedance-1-5-pro-251215",
+        "model": SEEDANCE_2_MINI,
+        "resolution": "480P",
+        "credits_per_second": 5,
+        "estimated_time_multiplier": 0.8,
+        "min_duration": 4,
+        "max_duration": 15,
+        "max_reference_images": 9,
+        "supports_audio": True,
+    },
+    {
+        "id": "seedance_fast",
+        "name": "Seedance 快速生成",
+        "description": "2.0 Fast 720P，适合快速产出日常营销素材。",
+        "provider": "jimeng",
+        "model": SEEDANCE_2_FAST,
         "resolution": "720P",
-        "credits_per_second": 18,
+        "credits_per_second": 15,
+        "estimated_time_multiplier": 1.0,
+        "min_duration": 4,
+        "max_duration": 15,
+        "max_reference_images": 9,
+        "supports_audio": True,
+    },
+    {
+        "id": "seedance",
+        "name": "Seedance 标准商用",
+        "description": "2.0 Standard 720P，当前默认的跨境营销主力档位。",
+        "provider": "jimeng",
+        "model": SEEDANCE_2_STANDARD,
+        "resolution": "720P",
+        "credits_per_second": 19,
         "estimated_time_multiplier": 1.2,
+        "min_duration": 4,
+        "max_duration": 15,
+        "max_reference_images": 9,
+        "supports_audio": True,
+    },
+    {
+        "id": "seedance_1080",
+        "name": "Seedance 高清",
+        "description": "2.0 Standard 1080P，适合高清商品细节和品牌素材。",
+        "provider": "jimeng",
+        "model": SEEDANCE_2_STANDARD,
+        "resolution": "1080P",
+        "credits_per_second": 44,
+        "estimated_time_multiplier": 1.5,
+        "min_duration": 4,
+        "max_duration": 15,
+        "max_reference_images": 9,
+        "supports_audio": True,
+    },
+    {
+        "id": "seedance_25",
+        "name": "Seedance 2.5 Pro",
+        "description": "2.5 Pro 720P，适合长镜头、多素材参考和高质量营销。",
+        "provider": "jimeng",
+        "model": SEEDANCE_2_5,
+        "resolution": "720P",
+        "credits_per_second": 31,
+        "estimated_time_multiplier": 1.8,
+        "min_duration": 4,
+        "max_duration": 30,
+        "max_reference_images": 30,
+        "supports_audio": True,
+    },
+    {
+        "id": "seedance_25_1080",
+        "name": "Seedance 2.5 Pro HD",
+        "description": "2.5 Pro 1080P，适合品牌广告、长视频和高精度成片。",
+        "provider": "jimeng",
+        "model": SEEDANCE_2_5,
+        "resolution": "1080P",
+        "credits_per_second": 68,
+        "estimated_time_multiplier": 2.2,
+        "min_duration": 4,
+        "max_duration": 30,
+        "max_reference_images": 30,
+        "supports_audio": True,
     },
 )
 
@@ -145,25 +223,7 @@ def resolve_quality_tier(tier_id: str) -> dict[str, Any]:
     tier = _QUALITY_BY_ID.get(tier_id)
     if tier is None:
         raise ValueError("视频质量档位不支持")
-    resolved = dict(tier)
-    if resolved["provider"] == "jimeng":
-        resolved["model"] = (
-            provider_config.get(
-                "jimeng",
-                "model",
-                settings.JIMENG_VIDEO_MODEL,
-            )
-            or settings.JIMENG_VIDEO_MODEL
-        )
-        resolved["resolution"] = (
-            provider_config.get(
-                "jimeng",
-                "resolution",
-                settings.JIMENG_VIDEO_RESOLUTION,
-            )
-            or settings.JIMENG_VIDEO_RESOLUTION
-        ).upper()
-    return resolved
+    return dict(tier)
 
 
 def get_style_preset(style_id: str) -> dict[str, str]:
@@ -188,6 +248,7 @@ def get_video_target_size(resolution: str) -> tuple[int, int]:
     sizes = {
         "480P": (480, 854),
         "720P": (720, 1280),
+        "1080P": (1080, 1920),
         "768P": (768, 1366),
         "2K": (1440, 2560),
     }

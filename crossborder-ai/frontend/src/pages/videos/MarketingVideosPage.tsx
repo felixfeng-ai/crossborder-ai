@@ -538,6 +538,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
                   styles={capabilities?.style_presets || []}
                   qualityTier={qualityTier}
                   stylePreset={stylePreset}
+                  context="marketing"
                   onQualityTierChange={setQualityTier}
                   onStylePresetChange={setStylePreset}
                 />

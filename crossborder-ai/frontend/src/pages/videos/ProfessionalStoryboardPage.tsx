@@ -411,6 +411,7 @@ export default function ProfessionalStoryboardPage() {
               styles={capabilities?.style_presets || []}
               qualityTier={qualityTier}
               stylePreset={stylePreset}
+              context="storyboard"
               onQualityTierChange={setQualityTier}
               onStylePresetChange={setStylePreset}
             />

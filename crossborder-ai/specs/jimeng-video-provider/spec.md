@@ -3,8 +3,8 @@
 ## 目标
 
 在现有统一视频 Provider 抽象下接入火山方舟 Seedance，作为 MiniMax 之后的
-第二视频供应商。首期使用 `doubao-seedance-1-5-pro-251215`，模型 ID、
-接口地址和密钥均可由管理员配置。
+第二视频供应商。当前支持 2.0 Mini、2.0 Fast、2.0 Standard 和 2.5 Pro，
+默认使用 `doubao-seedance-2-0-260128`。管理员主要配置 API Key 和接口地址。
 
 ## 能力一：方舟任务协议
 
@@ -23,11 +23,11 @@
 
 ### Scenario: 多商品参考图
 
-- Given 请求包含 1-4 张商品参考图
+- Given 请求包含模型允许范围内的商品参考图
 - When 提交即梦视频任务
 - Then 每张图片使用 `role=reference_image`
 - And 不得同时提交首帧
-- And 超过 4 张时返回明确中文错误
+- And 2.0 最多 9 张、2.5 最多 30 张
 
 ### Scenario: 查询与取消
 

@@ -46,7 +46,7 @@ interface SourceAsset {
   height: number
 }
 
-const DURATION_OPTIONS = [4, 6, 8, 10, 15]
+const DURATION_OPTIONS = [4, 6, 8, 10, 15, 20, 25, 30]
 
 export default function VideosPage({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient()
@@ -414,6 +414,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
               qualityTier={qualityTier}
               stylePreset={stylePreset}
               duration={duration}
+              context="single"
               onQualityTierChange={setQualityTier}
               onStylePresetChange={setStylePreset}
             />

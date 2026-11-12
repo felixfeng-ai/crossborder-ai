@@ -50,7 +50,7 @@ class GenerateVideoRequest(BaseModel):
     # 保留旧字段供旧客户端提交；实际模型和分辨率由质量档位决定。
     model: str = "MiniMax-H3-Lite"
     resolution: str = "480P"
-    duration: int = Field(default=4, ge=4, le=15)
+    duration: int = Field(default=4, ge=4, le=30)
     ratio: str = "9:16"
 
 

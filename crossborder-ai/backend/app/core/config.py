@@ -175,7 +175,7 @@ class Settings(BaseSettings):
     # --- 即梦 / Seedance（火山方舟）---
     JIMENG_API_KEY: Optional[str] = None
     JIMENG_VIDEO_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
-    JIMENG_VIDEO_MODEL: str = "doubao-seedance-1-5-pro-251215"
+    JIMENG_VIDEO_MODEL: str = "doubao-seedance-2-0-260128"
     JIMENG_VIDEO_RESOLUTION: str = "720P"
     VIDEO_STORAGE_DIR: str = "./storage/videos"
 

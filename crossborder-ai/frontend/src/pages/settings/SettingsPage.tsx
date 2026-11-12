@@ -118,11 +118,9 @@ const PROVIDERS = [
       { key: 'api_key', label: '方舟 API Key', secret: true },
       {
         key: 'base_url',
-        label: 'Base URL',
+        label: 'Base URL（通常无需修改）',
         secret: false,
       },
-      { key: 'model', label: 'Seedance 模型 ID', secret: false },
-      { key: 'resolution', label: '默认清晰度', secret: false },
     ],
   },
   {

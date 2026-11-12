@@ -12,20 +12,93 @@ from app.core.config import settings
 from app.services import provider_config
 
 
-DEFAULT_MODEL = "doubao-seedance-1-5-pro-251215"
+SEEDANCE_1_5_PRO = "doubao-seedance-1-5-pro-251215"
+SEEDANCE_2_MINI = "doubao-seedance-2-0-mini-260615"
+SEEDANCE_2_FAST = "doubao-seedance-2-0-fast-260128"
+SEEDANCE_2_STANDARD = "doubao-seedance-2-0-260128"
+SEEDANCE_2_5 = "doubao-seedance-2-5-260628"
+DEFAULT_MODEL = SEEDANCE_2_STANDARD
+
 MODEL_CONFIGS: dict[str, dict[str, Any]] = {
-    DEFAULT_MODEL: {
+    SEEDANCE_1_5_PRO: {
+        "label": "Seedance 1.5 Pro",
         "min_duration": 4,
         "max_duration": 12,
+        "max_reference_images": 4,
+        "supports_audio": True,
         "prices_per_second": {
-            "480P": 0.04,
-            "720P": 0.07,
-            "1080P": 0.12,
+            "480P": 0.40,
+            "720P": 0.86,
+            "1080P": 1.94,
         },
         "credits_per_second": {
             "480P": 12.0,
             "720P": 18.0,
             "1080P": 28.0,
+        },
+    },
+    SEEDANCE_2_MINI: {
+        "label": "Seedance 2.0 Mini",
+        "min_duration": 4,
+        "max_duration": 15,
+        "max_reference_images": 9,
+        "supports_audio": True,
+        "prices_per_second": {
+            "480P": 0.2311,
+            "720P": 0.4970,
+        },
+        "credits_per_second": {
+            "480P": 5.0,
+            "720P": 9.0,
+        },
+    },
+    SEEDANCE_2_FAST: {
+        "label": "Seedance 2.0 Fast",
+        "min_duration": 4,
+        "max_duration": 15,
+        "max_reference_images": 9,
+        "supports_audio": True,
+        "prices_per_second": {
+            "480P": 0.3717,
+            "720P": 0.7992,
+        },
+        "credits_per_second": {
+            "480P": 7.0,
+            "720P": 15.0,
+        },
+    },
+    SEEDANCE_2_STANDARD: {
+        "label": "Seedance 2.0 Standard",
+        "min_duration": 4,
+        "max_duration": 15,
+        "max_reference_images": 9,
+        "supports_audio": True,
+        "prices_per_second": {
+            "480P": 0.4621,
+            "720P": 0.9936,
+            "1080P": 2.2361,
+        },
+        "credits_per_second": {
+            "480P": 9.0,
+            "720P": 19.0,
+            "1080P": 44.0,
+        },
+    },
+    SEEDANCE_2_5: {
+        "label": "Seedance 2.5 Pro",
+        "min_duration": 4,
+        "max_duration": 30,
+        "max_reference_images": 30,
+        "supports_audio": True,
+        "prices_per_second": {
+            "480P": 0.6725,
+            "720P": 1.5120,
+            "1080P": 3.7422,
+        },
+        "credits_per_second": {
+            "480P": 14.0,
+            "720P": 31.0,
+            "1080P": 68.0,
         },
     },
 }
@@ -65,7 +138,7 @@ def get_jimeng_video_config() -> dict[str, str]:
 
 
 def _model_config(model: str) -> dict[str, Any]:
-    """接入点 ID 也复用 Seedance 1.5 Pro 的能力边界。"""
+    """返回模型能力；自定义接入点按默认 2.0 Standard 处理。"""
     config = MODEL_CONFIGS.get(model)
     if config is not None:
         return config
@@ -89,8 +162,11 @@ def get_jimeng_video_capabilities(api_key: str | None = None) -> dict[str, Any]:
         models.append(
             {
                 "id": model_id,
+                "label": model["label"],
                 "min_duration": model["min_duration"],
                 "max_duration": model["max_duration"],
+                "max_reference_images": model["max_reference_images"],
+                "supports_audio": model["supports_audio"],
                 "resolutions": list(model["prices_per_second"]),
                 "prices_per_second": model["prices_per_second"],
                 "credits_per_second": model["credits_per_second"],
@@ -143,7 +219,7 @@ def build_jimeng_video_request(
         raise ValueError("首帧与多参考图不能同时提交")
     if not first_frame and not references:
         raise ValueError("视频请求缺少商品图片")
-    max_references = 9 if str(model).startswith("doubao-seedance-2-") else 4
+    max_references = int(model_config["max_reference_images"])
     if len(references) > max_references:
         raise ValueError(f"当前即梦模型最多支持 {max_references} 张参考图")
 

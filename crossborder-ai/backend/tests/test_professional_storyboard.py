@@ -135,6 +135,11 @@ def test_provider_render_duration_uses_model_minimum():
         3,
         provider_name="jimeng",
     ) == 4
+    assert provider_render_duration(
+        "doubao-seedance-2-5-260628",
+        30,
+        provider_name="jimeng",
+    ) == 30
 
 
 def test_shot_prompt_contains_adjacent_shot_boundaries_and_reference_roles():

@@ -315,7 +315,7 @@ async def start_marketing_project(
                 style_preset=project.style_preset,
                 credits_per_second=project.credits_per_second,
                 template_id=project.template_id,
-                provider="minimax",
+                provider=project.provider or "minimax",
                 model=project.model,
                 resolution=project.resolution,
                 duration=provider_render_duration(project.model, shot.duration),

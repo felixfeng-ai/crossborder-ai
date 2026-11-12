@@ -159,7 +159,10 @@ async def test_failed_video_task_refunds_charged_credits_once(
     async def fake_query(provider_task_id):
         return {"status": "failed", "error": "审核失败"}
 
-    monkeypatch.setattr(video_executor, "query_minimax_video", fake_query)
+    monkeypatch.setattr(
+        "app.services.video_provider.query_minimax_video",
+        fake_query,
+    )
     await video_executor._poll_one(db_session, task)
     await video_executor._refund_video_task(db_session, task)
     await db_session.commit()

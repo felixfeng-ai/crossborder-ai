@@ -358,7 +358,7 @@ async def test_submit_video_task_deducts_credits_and_persists_provider_id(
         return "minimax-task-1"
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.submit_minimax_video",
+        "app.services.video_provider.submit_minimax_video",
         fake_submit,
     )
 
@@ -412,7 +412,7 @@ async def test_single_video_uses_quality_tier_and_structured_prompt(
         return "minimax-quality-task"
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.submit_minimax_video",
+        "app.services.video_provider.submit_minimax_video",
         fake_submit,
     )
 
@@ -468,7 +468,7 @@ async def test_insufficient_credits_does_not_submit_provider(
         return "should-not-run"
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.submit_minimax_video",
+        "app.services.video_provider.submit_minimax_video",
         fake_submit,
     )
 
@@ -561,7 +561,7 @@ async def test_idempotency_key_prevents_duplicate_provider_submission(
         return "minimax-idempotent"
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.submit_minimax_video",
+        "app.services.video_provider.submit_minimax_video",
         fake_submit,
     )
     headers = {**auth_headers, "Idempotency-Key": "video-request-1"}
@@ -655,7 +655,7 @@ async def test_provider_submission_failure_marks_task_failed(
         raise ValueError("供应商拒绝任务")
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.submit_minimax_video",
+        "app.services.video_provider.submit_minimax_video",
         fake_submit,
     )
     response = await client.post(
@@ -784,7 +784,7 @@ async def test_cancel_video_task_uses_provider_and_marks_canceled(
         return True
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.cancel_minimax_video",
+        "app.services.video_provider.cancel_minimax_video",
         fake_cancel,
     )
     response = await client.post(
@@ -836,7 +836,7 @@ async def test_cancel_rejects_finished_or_remote_finished_task(
         return False
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.cancel_minimax_video",
+        "app.services.video_provider.cancel_minimax_video",
         fake_cancel,
     )
     already_finished = await client.post(
@@ -947,7 +947,7 @@ async def test_poll_video_task_pending_and_failure_states(
         return {"status": "failed", "error": "审核失败"}
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.query_minimax_video",
+        "app.services.video_provider.query_minimax_video",
         fake_query,
     )
 
@@ -990,7 +990,7 @@ async def test_poll_failure_limit_marks_task_failed(
         raise ValueError("查询超时")
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.query_minimax_video",
+        "app.services.video_provider.query_minimax_video",
         fake_query,
     )
 
@@ -1042,11 +1042,11 @@ async def test_poll_video_task_downloads_and_saves_mp4(
         return b"\x00\x00\x00\x18ftypmp42" + b"video"
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.query_minimax_video",
+        "app.services.video_provider.query_minimax_video",
         fake_query,
     )
     monkeypatch.setattr(
-        "app.services.video_task_executor.download_minimax_video",
+        "app.services.video_provider.download_minimax_video",
         fake_download,
     )
 

@@ -23,6 +23,7 @@ def test_quality_tiers_control_model_resolution_and_credits():
     standard = resolve_quality_tier("standard")
     assert standard["model"] == "MiniMax-H3-Highspeed"
     assert standard["resolution"] == "768P"
+    assert standard["provider"] == "minimax"
     assert standard["credits_per_second"] == 15
 
     cinematic = resolve_quality_tier("cinematic")

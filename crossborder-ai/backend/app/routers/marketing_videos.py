@@ -163,6 +163,7 @@ class MarketingProjectResponse(BaseModel):
     continuity_mode: str = "natural"
     quality_tier: str = "draft"
     style_preset: str = "premium_luxury"
+    provider: str = "minimax"
     credits_per_second: int = 0
     script_text: Optional[str] = None
     continuity: dict = Field(default_factory=dict)
@@ -462,6 +463,7 @@ async def _serialize_project(
         ),
         quality_tier=project.quality_tier,
         style_preset=project.style_preset,
+        provider=project.provider or "minimax",
         credits_per_second=project.credits_per_second,
         script_text=project.script_text,
         continuity=continuity if isinstance(continuity, dict) else {},
@@ -615,6 +617,7 @@ async def create_professional_storyboard_project(
         continuity_json=json.dumps(continuity, ensure_ascii=False),
         quality_tier=payload.quality_tier,
         style_preset=payload.style_preset,
+        provider=str(quality_tier["provider"]),
         credits_per_second=int(quality_tier["credits_per_second"]),
         model=str(quality_tier["model"]),
         resolution=str(quality_tier["resolution"]),
@@ -747,6 +750,7 @@ async def create_marketing_project(
         continuity_json="{}",
         quality_tier=payload.quality_tier,
         style_preset=payload.style_preset,
+        provider=str(quality_tier["provider"]),
         credits_per_second=int(quality_tier["credits_per_second"]),
         model=str(quality_tier["model"]),
         resolution=str(quality_tier["resolution"]),

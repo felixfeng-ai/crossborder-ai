@@ -2,6 +2,7 @@ export interface VideoQualityTier {
   id: string
   name: string
   description: string
+  provider: string
   model: string
   resolution: string
   credits_per_second: number

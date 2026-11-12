@@ -60,6 +60,7 @@ class VideoTaskResponse(BaseModel):
     thumbnail_url: Optional[str] = None
     model: str
     resolution: str
+    provider: str
     quality_tier: str
     style_preset: str
     credits_per_second: int
@@ -92,6 +93,7 @@ def _serialize_task(task: VideoGenerationTask) -> VideoTaskResponse:
         ),
         model=task.model,
         resolution=task.resolution,
+        provider=task.provider,
         quality_tier=task.quality_tier,
         style_preset=task.style_preset,
         credits_per_second=task.credits_per_second,
@@ -252,7 +254,7 @@ async def generate_video(
         user_id=current_user.id,
         source_asset_id=uuid.UUID(payload.source_asset_id),
         template_id=payload.template_id,
-        provider="minimax",
+        provider=str(quality_tier["provider"]),
         model=model,
         resolution=resolution,
         quality_tier=payload.quality_tier,

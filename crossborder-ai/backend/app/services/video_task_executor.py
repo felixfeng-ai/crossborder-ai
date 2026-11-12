@@ -1,4 +1,4 @@
-"""MiniMax 视频任务执行器。
+"""统一视频任务执行器。
 
 提交阶段只负责把用户首帧交给供应商并持久化远端任务 ID；
 轮询阶段负责对账、下载成片并落入本地视频素材目录。
@@ -18,12 +18,11 @@ from app.models.image_asset import ImageAsset
 from app.models.user import User
 from app.models.video_generation_task import VideoGenerationTask
 from app.services.credit_service import add_credits
-from app.services.minimax_video import (
-    cancel_minimax_video,
-    download_minimax_video,
-    query_minimax_video,
-    submit_minimax_video,
-    video_sha256,
+from app.services.minimax_video import video_sha256
+from app.services.video_provider import (
+    VideoImagePayload,
+    VideoProviderRequest,
+    get_video_provider,
 )
 
 
@@ -58,6 +57,7 @@ async def submit_video_task(
     """提交视频任务；成功后回写 provider task id 与运行状态。"""
     if task.source_asset_id is None:
         raise ValueError("缺少商品首帧")
+    provider = get_video_provider(task.provider)
 
     asset = (
         await db.execute(
@@ -81,7 +81,7 @@ async def submit_video_task(
     if not isinstance(reference_items, list):
         reference_items = []
 
-    reference_images: list[tuple[bytes, str]] | None = None
+    reference_images: list[VideoImagePayload] = []
     if len(reference_items) > 1:
         reference_ids = []
         for item in reference_items:
@@ -100,26 +100,31 @@ async def submit_video_task(
         asset_by_id = {item.id: item for item in reference_assets}
         if len(asset_by_id) != len(reference_ids):
             raise ValueError("商品参考图不存在或已被删除")
-        reference_images = []
         for reference_id in reference_ids:
             reference_asset = asset_by_id[reference_id]
             reference_path = _image_path(reference_asset.storage_key)
             if not reference_path.is_file():
                 raise ValueError("商品参考图文件不存在")
             reference_images.append(
-                (reference_path.read_bytes(), reference_asset.content_type)
+                VideoImagePayload(
+                    data=reference_path.read_bytes(),
+                    mime=reference_asset.content_type,
+                )
             )
 
-    provider_task_id = await submit_minimax_video(
+    provider_task_id = await provider.submit(VideoProviderRequest(
         prompt=task.prompt,
         model=task.model,
         resolution=task.resolution,
         duration=task.duration,
         ratio=task.ratio,
-        first_frame=path.read_bytes() if reference_images is None else None,
-        first_frame_mime=asset.content_type if reference_images is None else None,
+        first_frame=(
+            None
+            if reference_images
+            else VideoImagePayload(path.read_bytes(), asset.content_type)
+        ),
         reference_images=reference_images,
-    )
+    ))
     now = datetime.now(timezone.utc)
     task.provider_task_id = provider_task_id
     task.provider_status = "queued"
@@ -160,7 +165,8 @@ async def _poll_one(db: AsyncSession, task: VideoGenerationTask) -> bool:
         return True
 
     try:
-        result = await query_minimax_video(task.provider_task_id)
+        provider = get_video_provider(task.provider)
+        result = await provider.query(task.provider_task_id)
         status = result["status"]
         task.provider_status = status
 
@@ -188,7 +194,7 @@ async def _poll_one(db: AsyncSession, task: VideoGenerationTask) -> bool:
             video_url = result.get("video_url")
             if not video_url:
                 raise ValueError("视频服务没有返回成片地址")
-            data = await download_minimax_video(str(video_url))
+            data = await provider.download(str(video_url))
             await _save_video(task, data)
             task.remote_video_url = str(video_url)
             task.status = "succeeded"
@@ -283,7 +289,8 @@ async def cancel_video_task(
     try:
         remote_canceled = True
         if task.provider_task_id:
-            remote_canceled = await cancel_minimax_video(task.provider_task_id)
+            provider = get_video_provider(task.provider)
+            remote_canceled = await provider.cancel(task.provider_task_id)
         if not remote_canceled:
             return False
 

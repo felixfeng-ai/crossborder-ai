@@ -1,4 +1,4 @@
-"""MiniMax AI 视频生成任务。"""
+"""统一视频生成任务，供应商通过 Provider 快照固定。"""
 
 import uuid
 from datetime import datetime

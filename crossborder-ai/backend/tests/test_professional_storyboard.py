@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.models.image_asset import ImageAsset
+from app.models.marketing_video import MarketingVideoProject
 from app.models.user import User
 from app.models.video_generation_task import VideoGenerationTask
 from app.services import provider_config
@@ -375,7 +376,7 @@ async def test_storyboard_render_uses_provider_minimum_for_three_second_shots(
         return f"provider-{len(submitted)}"
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.submit_minimax_video",
+        "app.services.video_provider.submit_minimax_video",
         fake_submit,
     )
     rendered = await client.post(
@@ -432,7 +433,7 @@ async def test_storyboard_render_passes_product_reference_images_to_provider(
         return f"provider-ref-{len(submitted)}"
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.submit_minimax_video",
+        "app.services.video_provider.submit_minimax_video",
         fake_submit,
     )
     rendered = await client.post(
@@ -484,11 +485,18 @@ async def test_storyboard_project_uses_quality_tier_and_official_prompt(
     body = created.json()
     assert body["quality_tier"] == "standard"
     assert body["style_preset"] == "festive_warmth"
+    assert body["provider"] == "minimax"
     assert body["model"] == "MiniMax-H3-Highspeed"
     assert body["resolution"] == "768P"
     assert body["credits_estimated"] == 480
     assert "subject_definitions:" in body["shots"][0]["prompt"]
     assert "retention_analysis:" in body["shots"][0]["prompt"]
+    stored_project = await db_session.get(
+        MarketingVideoProject,
+        uuid.UUID(body["id"]),
+    )
+    assert stored_project is not None
+    assert stored_project.provider == "minimax"
 
     submitted = []
 
@@ -497,7 +505,7 @@ async def test_storyboard_project_uses_quality_tier_and_official_prompt(
         return f"quality-shot-{len(submitted)}"
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.submit_minimax_video",
+        "app.services.video_provider.submit_minimax_video",
         fake_submit,
     )
     rendered = await client.post(

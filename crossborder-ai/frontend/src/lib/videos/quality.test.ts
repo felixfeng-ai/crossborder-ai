@@ -12,6 +12,7 @@ const tiers: VideoQualityTier[] = [
     id: 'standard',
     name: '标准商用',
     description: '768P',
+    provider: 'minimax',
     model: 'MiniMax-H3-Highspeed',
     resolution: '768P',
     credits_per_second: 15,

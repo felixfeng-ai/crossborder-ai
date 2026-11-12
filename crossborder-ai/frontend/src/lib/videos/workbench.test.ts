@@ -36,6 +36,7 @@ const capabilities: VideoCapabilities = {
       id: 'draft',
       name: '快速草稿',
       description: '预览',
+      provider: 'minimax',
       model: 'MiniMax-H3-Lite',
       resolution: '480P',
       credits_per_second: 8,

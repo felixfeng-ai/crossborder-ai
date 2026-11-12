@@ -442,7 +442,7 @@ async def test_render_marketing_project_creates_shot_tasks_and_deducts_credits(
         return f"provider-shot-{len(submitted)}"
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.submit_minimax_video",
+        "app.services.video_provider.submit_minimax_video",
         fake_submit,
     )
     rendered = await client.post(
@@ -502,7 +502,7 @@ async def test_render_rejects_insufficient_credits_without_provider_call(
         return "should-not-run"
 
     monkeypatch.setattr(
-        "app.services.video_task_executor.submit_minimax_video",
+        "app.services.video_provider.submit_minimax_video",
         fake_submit,
     )
     response = await client.post(

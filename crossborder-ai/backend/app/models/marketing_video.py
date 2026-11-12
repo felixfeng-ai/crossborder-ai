@@ -60,6 +60,13 @@ class MarketingVideoProject(Base):
         default="draft",
         server_default="draft",
     )
+    provider: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="minimax",
+        server_default="minimax",
+        index=True,
+    )
     style_preset: Mapped[str] = mapped_column(
         String(50),
         nullable=False,

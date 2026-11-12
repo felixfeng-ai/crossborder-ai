@@ -319,6 +319,7 @@ async def test_agent_video_requires_confirmation_and_submits_after_confirmation(
         )
     ).scalar_one()
     assert task.provider_task_id == "provider-agent-video"
+    assert task.provider == "minimax"
     await db_session.refresh(user)
     assert user.credits == 200 - task.credits_cost
     assert created["links"][0]["href"] == "/app/videos?tab=single"

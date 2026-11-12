@@ -39,6 +39,7 @@ MODEL_CONFIGS: dict[str, dict[str, Any]] = {
         "credits_per_second": {"480P": 8.0, "768P": 12.5},
     },
 }
+MAX_MULTI_IMAGE_PAYLOAD_BYTES = 60 * 1024 * 1024
 
 VIDEO_TEMPLATES = (
     {
@@ -165,25 +166,66 @@ def build_minimax_video_request(
     resolution: str,
     duration: int,
     ratio: str,
-    first_frame: bytes,
-    first_frame_mime: str,
+    first_frame: bytes | None = None,
+    first_frame_mime: str | None = None,
+    reference_images: list[tuple[bytes, str]] | None = None,
     base_url: str | None = None,
 ) -> MiniMaxVideoRequest:
+    """构造 H3 视频请求，首帧与多参考图使用互斥的官方角色。"""
     prompt = prompt.strip()
     if not prompt:
         raise ValueError("缺少视频提示词")
     if len(prompt) > 7000:
         raise ValueError("视频提示词不能超过 7000 字符")
     _validate_selection(model, resolution, duration)
-    if first_frame_mime not in {"image/png", "image/jpeg", "image/webp"}:
-        raise ValueError("首帧格式不支持")
-    if not first_frame or len(first_frame) > 30 * 1024 * 1024:
-        raise ValueError("首帧不能为空且不能超过 30MB")
+    references = reference_images or []
+    if references and first_frame:
+        raise ValueError("首帧与多参考图不能同时提交")
+    if len(references) > 9:
+        raise ValueError("商品参考图最多支持 9 张")
+    if not first_frame and not references:
+        raise ValueError("视频请求缺少商品图片")
 
-    data_uri = (
-        f"data:{first_frame_mime};base64,"
-        f"{base64.b64encode(first_frame).decode('ascii')}"
-    )
+    def image_data_uri(data: bytes, mime: str) -> str:
+        if mime not in {"image/png", "image/jpeg", "image/webp"}:
+            raise ValueError("图片格式不支持")
+        if not data or len(data) > 30 * 1024 * 1024:
+            raise ValueError("图片不能为空且不能超过 30MB")
+        return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
+
+    if references:
+        if ratio == "adaptive" and model == "MiniMax-H3-Lite":
+            raise ValueError("H3 Lite 多参考图模式必须指定明确画幅")
+        image_urls = [
+            image_data_uri(data, mime)
+            for data, mime in references
+        ]
+        # Base64 会膨胀约 33%，提前限制总载荷，避免供应商直接返回 64MB 超限。
+        if sum(len(url) for url in image_urls) > MAX_MULTI_IMAGE_PAYLOAD_BYTES:
+            raise ValueError("商品参考图总大小过大，请压缩后重试")
+        image_content = [
+            {
+                "type": "image_url",
+                "image_url": {"url": image_url},
+                "role": "reference_image",
+            }
+            for image_url in image_urls
+        ]
+        effective_ratio = ratio
+    else:
+        assert first_frame is not None
+        assert first_frame_mime is not None
+        image_content = [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": image_data_uri(first_frame, first_frame_mime)
+                },
+                "role": "first_frame",
+            }
+        ]
+        effective_ratio = "adaptive"
+
     base = (base_url or settings.MINIMAX_VIDEO_BASE_URL).rstrip("/")
     return MiniMaxVideoRequest(
         url=f"{base}/v2/video_generation",
@@ -195,15 +237,11 @@ def build_minimax_video_request(
             "model": model,
             "content": [
                 {"type": "text", "text": prompt},
-                {
-                    "type": "image_url",
-                    "image_url": {"url": data_uri},
-                    "role": "first_frame",
-                },
+                *image_content,
             ],
             "resolution": resolution,
             "duration": int(duration),
-            "ratio": "adaptive",
+            "ratio": effective_ratio,
             "aigc_watermark": False,
         },
     )
@@ -269,8 +307,9 @@ async def submit_minimax_video(
     resolution: str,
     duration: int,
     ratio: str,
-    first_frame: bytes,
-    first_frame_mime: str,
+    first_frame: bytes | None = None,
+    first_frame_mime: str | None = None,
+    reference_images: list[tuple[bytes, str]] | None = None,
 ) -> str:
     config = get_minimax_video_config()
     if not config["api_key"]:
@@ -284,6 +323,7 @@ async def submit_minimax_video(
         ratio=ratio,
         first_frame=first_frame,
         first_frame_mime=first_frame_mime,
+        reference_images=reference_images,
         base_url=config["base_url"],
     )
     async with httpx.AsyncClient(timeout=60) as client:

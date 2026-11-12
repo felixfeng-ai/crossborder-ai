@@ -35,6 +35,13 @@ class VideoGenerationTask(Base):
         nullable=True,
         index=True,
     )
+    # 快照保存本镜头使用的商品参考图，避免项目后续编辑影响已提交任务。
+    reference_assets_json: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="[]",
+        server_default="[]",
+    )
     template_id: Mapped[str] = mapped_column(String(50), nullable=False, default="clean_product")
     provider: Mapped[str] = mapped_column(String(30), nullable=False, default="minimax")
     model: Mapped[str] = mapped_column(String(100), nullable=False)

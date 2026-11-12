@@ -16,6 +16,7 @@ from app.models.user import User
 from app.models.video_generation_task import VideoGenerationTask
 from app.services import provider_config
 from app.services.professional_storyboard import (
+    build_shot_prompt,
     parse_professional_storyboard,
     provider_render_duration,
 )
@@ -130,6 +131,33 @@ def test_provider_render_duration_uses_model_minimum():
     assert provider_render_duration("MiniMax-H3-Lite", 7) == 7
 
 
+def test_shot_prompt_contains_adjacent_shot_boundaries_and_reference_roles():
+    storyboard = parse_professional_storyboard(SCRIPT)
+    prompt = build_shot_prompt(
+        storyboard.shots[1],
+        product_name="DONMIS 圣诞香薰礼盒",
+        global_constraints=storyboard.global_constraints,
+        no_dialogue=storyboard.no_dialogue,
+        no_subtitles=storyboard.no_subtitles,
+        no_watermark=storyboard.no_watermark,
+        previous_shot=storyboard.shots[0],
+        next_shot=storyboard.shots[2],
+        reference_assets=[
+            {"asset_id": "primary", "role": "front", "is_primary": True},
+            {"asset_id": "package", "role": "package", "is_primary": False},
+            {"asset_id": "detail", "role": "detail", "is_primary": False},
+        ],
+    )
+
+    assert "PREVIOUS SHOT BOUNDARY" in prompt
+    assert "NEXT SHOT BOUNDARY" in prompt
+    assert "门口的快递" in prompt
+    assert "取出礼盒端详" in prompt
+    assert "PRODUCT REFERENCE IMAGE MAP" in prompt
+    assert "package" in prompt
+    assert "Reference image 3" in prompt
+
+
 def test_trim_video_segment_uses_exact_target_duration(tmp_path, monkeypatch):
     source = tmp_path / "source.mp4"
     output = tmp_path / "trimmed.mp4"
@@ -151,6 +179,20 @@ def test_trim_video_segment_uses_exact_target_duration(tmp_path, monkeypatch):
     assert calls
     assert "3" in calls[0]
     assert "-t" in calls[0]
+
+
+def test_trim_video_segment_rejects_missing_file_and_zero_duration(tmp_path):
+    with pytest.raises(ValueError, match="不存在"):
+        trim_video_segment(
+            tmp_path / "missing.mp4",
+            tmp_path / "output.mp4",
+            3,
+        )
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    with pytest.raises(ValueError, match="大于 0"):
+        trim_video_segment(source, tmp_path / "output.mp4", 0)
 
 
 @pytest.mark.asyncio
@@ -203,6 +245,103 @@ async def test_storyboard_preview_and_create_preserve_shots_without_plan_charge(
 
 
 @pytest.mark.asyncio
+async def test_storyboard_project_accepts_nine_product_reference_images(
+    client,
+    db_session,
+    auth_headers,
+    tmp_path,
+    monkeypatch,
+):
+    primary = await _seed_asset(db_session, tmp_path, monkeypatch)
+    references = []
+    roles = [
+        "front",
+        "back",
+        "detail",
+        "package",
+        "structure",
+        "logo",
+        "scale",
+        "lifestyle",
+    ]
+    for index, role in enumerate(roles):
+        asset = await _seed_asset(db_session, tmp_path, monkeypatch)
+        asset.name = f"商品参考图 {index + 1}"
+        references.append({"asset_id": str(asset.id), "role": role})
+    await _professional_user(db_session)
+    monkeypatch.setattr(settings, "MINIMAX_API_KEY", "video-key")
+    provider_config.clear_cache()
+
+    created = await client.post(
+        "/api/v1/marketing-videos/storyboards/projects",
+        json={
+            "source_asset_id": str(primary.id),
+            "reference_assets": references,
+            "product_name": "DONMIS 圣诞香薰礼盒",
+            "script": SCRIPT,
+            "platform": "tiktok",
+            "market": "US",
+            "language": "en",
+            "model": "MiniMax-H3-Lite",
+            "resolution": "480P",
+        },
+        headers=auth_headers,
+    )
+
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert len(body["reference_assets"]) == 9
+    assert body["reference_assets"][0] == {
+        "asset_id": str(primary.id),
+        "role": "front",
+        "is_primary": True,
+    }
+    assert body["reference_assets"][1] == {
+        "asset_id": references[0]["asset_id"],
+        "role": "front",
+        "is_primary": False,
+    }
+    assert {item["role"] for item in body["reference_assets"]} == set(roles)
+
+
+@pytest.mark.asyncio
+async def test_storyboard_project_rejects_more_than_nine_product_images(
+    client,
+    db_session,
+    auth_headers,
+    tmp_path,
+    monkeypatch,
+):
+    primary = await _seed_asset(db_session, tmp_path, monkeypatch)
+    references = []
+    for _ in range(9):
+        asset = await _seed_asset(db_session, tmp_path, monkeypatch)
+        references.append({"asset_id": str(asset.id), "role": "detail"})
+    await _professional_user(db_session)
+    monkeypatch.setattr(settings, "MINIMAX_API_KEY", "video-key")
+    provider_config.clear_cache()
+
+    rejected = await client.post(
+        "/api/v1/marketing-videos/storyboards/projects",
+        json={
+            "source_asset_id": str(primary.id),
+            "reference_assets": references,
+            "product_name": "DONMIS 圣诞香薰礼盒",
+            "script": SCRIPT,
+            "platform": "tiktok",
+            "market": "US",
+            "language": "en",
+            "model": "MiniMax-H3-Lite",
+            "resolution": "480P",
+        },
+        headers=auth_headers,
+    )
+
+    assert rejected.status_code == 400
+    assert "9" in rejected.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_storyboard_render_uses_provider_minimum_for_three_second_shots(
     client,
     db_session,
@@ -251,3 +390,57 @@ async def test_storyboard_render_uses_provider_minimum_for_three_second_shots(
         await db_session.execute(select(VideoGenerationTask))
     ).scalars().all()
     assert [task.duration for task in tasks] == [4, 4, 4, 4, 4, 4, 4, 4]
+
+
+@pytest.mark.asyncio
+async def test_storyboard_render_passes_product_reference_images_to_provider(
+    client,
+    db_session,
+    auth_headers,
+    tmp_path,
+    monkeypatch,
+):
+    primary = await _seed_asset(db_session, tmp_path, monkeypatch)
+    front = await _seed_asset(db_session, tmp_path, monkeypatch)
+    detail = await _seed_asset(db_session, tmp_path, monkeypatch)
+    await _professional_user(db_session)
+    monkeypatch.setattr(settings, "MINIMAX_API_KEY", "video-key")
+    provider_config.clear_cache()
+    created = await client.post(
+        "/api/v1/marketing-videos/storyboards/projects",
+        json={
+            "source_asset_id": str(primary.id),
+            "reference_assets": [
+                {"asset_id": str(front.id), "role": "front"},
+                {"asset_id": str(detail.id), "role": "detail"},
+            ],
+            "product_name": "DONMIS 圣诞香薰礼盒",
+            "script": SCRIPT,
+            "platform": "tiktok",
+            "market": "US",
+            "language": "en",
+            "model": "MiniMax-H3-Lite",
+            "resolution": "480P",
+        },
+        headers=auth_headers,
+    )
+    assert created.status_code == 201, created.text
+    submitted: list[dict] = []
+
+    async def fake_submit(**kwargs):
+        submitted.append(kwargs)
+        return f"provider-ref-{len(submitted)}"
+
+    monkeypatch.setattr(
+        "app.services.video_task_executor.submit_minimax_video",
+        fake_submit,
+    )
+    rendered = await client.post(
+        f"/api/v1/marketing-videos/projects/{created.json()['id']}/render",
+        headers=auth_headers,
+    )
+
+    assert rendered.status_code == 202, rendered.text
+    assert len(submitted) == 8
+    assert all(len(item["reference_images"]) == 3 for item in submitted)
+    assert all(item["first_frame"] is None for item in submitted)

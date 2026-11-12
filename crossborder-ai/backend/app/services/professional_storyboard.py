@@ -214,8 +214,19 @@ def build_shot_prompt(
     no_dialogue: bool,
     no_subtitles: bool,
     no_watermark: bool,
+    previous_shot: StoryboardShot | None = None,
+    next_shot: StoryboardShot | None = None,
+    reference_assets: list[dict[str, Any]] | None = None,
 ) -> str:
     """构造供应商提示词，同时把用户原文完整保留在提示词内。"""
+    def first_sentence(value: str) -> str:
+        parts = [item.strip() for item in re.split(r"(?<=[。！？.!?])\s*", value) if item.strip()]
+        return (parts[0] if parts else value.strip())[:180]
+
+    def last_sentence(value: str) -> str:
+        parts = [item.strip() for item in re.split(r"(?<=[。！？.!?])\s*", value) if item.strip()]
+        return (parts[-1] if parts else value.strip())[:180]
+
     policy = [
         "- No dialogue or narration text." if no_dialogue else "",
         "- No burned-in subtitles or captions." if no_subtitles else "",
@@ -223,6 +234,31 @@ def build_shot_prompt(
     ]
     policy_text = "\n".join(item for item in policy if item)
     constraints = global_constraints.strip() or "Keep character, product and scene continuity."
+    boundary_text = ""
+    if previous_shot is not None or next_shot is not None:
+        boundary_lines = ["SHOT BOUNDARY CONTINUITY:"]
+        if previous_shot is not None:
+            boundary_lines.extend(
+                [
+                    "PREVIOUS SHOT BOUNDARY",
+                    f'- Title: {previous_shot.title}',
+                    f"- Ending action: {last_sentence(previous_shot.source_text)}",
+                    "- Start from the same subject, object state, lighting, color and scene logic.",
+                ]
+            )
+        if next_shot is not None:
+            boundary_lines.extend(
+                [
+                    "NEXT SHOT BOUNDARY",
+                    f'- Title: {next_shot.title}',
+                    f"- Opening action: {first_sentence(next_shot.source_text)}",
+                    "- End with a compatible action direction and composition for the next shot.",
+                ]
+            )
+        boundary_text = "\n".join(boundary_lines)
+
+    reference_text = build_reference_asset_prompt(reference_assets or [])
+
     return (
         f"PROFESSIONAL SCRIPT SHOT {shot.position}\n"
         f"Product reference: {product_name}\n"
@@ -230,12 +266,31 @@ def build_shot_prompt(
         f"Target duration: {shot.duration} seconds\n"
         f"Original user direction (do not rewrite or invent):\n{shot.source_text}\n\n"
         f"Project continuity constraints:\n{constraints}\n\n"
+        f"{boundary_text}\n\n"
+        f"{reference_text}\n\n"
         "Only render information explicitly present in the original direction. "
         "Do not invent people, brands, product details, locations, dialogue, text, "
         "prices or performance claims.\n"
         f"{policy_text}\n\n"
         f"{PRODUCT_LOCK_PROMPT}"
     ).strip()
+
+
+def build_reference_asset_prompt(reference_assets: list[dict[str, Any]]) -> str:
+    """把商品图的顺序和用途写成供应商可理解的参考图映射。"""
+    if not reference_assets:
+        return ""
+    lines = ["PRODUCT REFERENCE IMAGE MAP:"]
+    for index, item in enumerate(reference_assets, start=1):
+        role = str(item.get("role") or "detail")
+        lines.append(
+            f"- Reference image {index} ({role}): preserve the exact product "
+            "shape, color, material, label, logo and package structure shown in this image."
+        )
+    lines.append(
+        "- Use the images as complementary product evidence; do not morph one view into another."
+    )
+    return "\n".join(lines)
 
 
 def provider_render_duration(model: str, target_duration: int) -> int:

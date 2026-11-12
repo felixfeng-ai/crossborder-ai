@@ -5,7 +5,7 @@ import math
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import FileResponse, Response
@@ -45,6 +45,7 @@ from app.services.minimax_video import (
 )
 from app.services.professional_storyboard import (
     MAX_SCRIPT_CHARS,
+    build_reference_asset_prompt,
     build_shot_prompt,
     estimate_storyboard_credits,
     parse_professional_storyboard,
@@ -55,10 +56,44 @@ from app.services.professional_storyboard import (
 router = APIRouter(prefix="/marketing-videos", tags=["AI 营销视频"])
 
 SUPPORTED_DURATIONS = {15, 20, 30}
+REFERENCE_ROLES = {
+    "front",
+    "back",
+    "detail",
+    "package",
+    "structure",
+    "logo",
+    "scale",
+    "lifestyle",
+}
+
+
+class ProductReferenceAssetInput(BaseModel):
+    """商品参考图及用途，供供应商多图参考提示词使用。"""
+
+    asset_id: str
+    role: Literal[
+        "front",
+        "back",
+        "detail",
+        "package",
+        "structure",
+        "logo",
+        "scale",
+        "lifestyle",
+    ] = "detail"
+
+
+class ProductReferenceAssetResponse(BaseModel):
+    asset_id: str
+    role: str
+    is_primary: bool
 
 
 class CreateMarketingProjectRequest(BaseModel):
     source_asset_id: str
+    reference_assets: list[ProductReferenceAssetInput] = Field(default_factory=list)
+    continuity_mode: Literal["natural"] = "natural"
     idea: str = Field(..., min_length=3, max_length=3000)
     product_name: str = Field(..., min_length=1, max_length=255)
     platform: str = "tiktok"
@@ -76,6 +111,8 @@ class StoryboardPreviewRequest(BaseModel):
 
 class CreateStoryboardProjectRequest(StoryboardPreviewRequest):
     source_asset_id: str
+    reference_assets: list[ProductReferenceAssetInput] = Field(default_factory=list)
+    continuity_mode: Literal["natural"] = "natural"
     product_name: str = Field(..., min_length=1, max_length=255)
     platform: str = "tiktok"
     market: str = Field("US", min_length=2, max_length=50)
@@ -109,6 +146,8 @@ class MarketingProjectResponse(BaseModel):
     duration: int
     template_id: str
     mode: str = "creative"
+    reference_assets: list[ProductReferenceAssetResponse] = Field(default_factory=list)
+    continuity_mode: str = "natural"
     script_text: Optional[str] = None
     continuity: dict = Field(default_factory=dict)
     model: str
@@ -150,6 +189,61 @@ async def _asset_owned(
     return asset
 
 
+async def _normalize_reference_assets(
+    db: AsyncSession,
+    primary_asset_id: str,
+    references: list[ProductReferenceAssetInput],
+    user_id,
+) -> list[dict]:
+    """校验主图与参考图归属、数量和用途，并生成稳定的发送顺序。"""
+    try:
+        primary_id = uuid.UUID(primary_asset_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="商品主图不存在")
+
+    reference_ids: list[uuid.UUID] = []
+    for item in references:
+        try:
+            reference_ids.append(uuid.UUID(item.asset_id))
+        except ValueError:
+            raise HTTPException(status_code=404, detail="商品参考图不存在")
+    if primary_id in reference_ids:
+        raise HTTPException(status_code=400, detail="主图不能重复作为参考图")
+    if len({str(asset_id) for asset_id in reference_ids}) != len(reference_ids):
+        raise HTTPException(status_code=400, detail="商品参考图不能重复")
+    if len(reference_ids) + 1 > 9:
+        raise HTTPException(status_code=400, detail="商品主图和参考图合计最多支持 9 张")
+
+    if reference_ids:
+        assets = (
+            await db.execute(
+                select(ImageAsset).where(
+                    ImageAsset.id.in_(reference_ids),
+                    ImageAsset.user_id == user_id,
+                )
+            )
+        ).scalars().all()
+        if len(assets) != len(reference_ids):
+            raise HTTPException(status_code=404, detail="商品参考图不存在")
+
+    normalized = [
+        {
+            "asset_id": str(primary_id),
+            "role": "front",
+            "is_primary": True,
+        }
+    ]
+    normalized.extend(
+        {
+            "asset_id": str(item.asset_id),
+            "role": item.role,
+            "is_primary": False,
+        }
+        for item in references
+    )
+    return normalized
+
+
 async def _owned_project(
     db: AsyncSession,
     project_id: str,
@@ -186,6 +280,15 @@ def _parse_brief(project: MarketingVideoProject) -> dict:
         return value if isinstance(value, dict) else {}
     except (json.JSONDecodeError, TypeError):
         return {}
+
+
+def _parse_reference_assets(project: MarketingVideoProject) -> list[dict]:
+    """读取项目商品参考图；损坏或空值回退为空列表。"""
+    try:
+        value = json.loads(project.reference_assets_json or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return value if isinstance(value, list) else []
 
 
 async def _serialize_project(
@@ -254,6 +357,10 @@ async def _serialize_project(
         duration=project.duration,
         template_id=project.template_id,
         mode=project.mode or "creative",
+        reference_assets=_parse_reference_assets(project),
+        continuity_mode=(
+            "strict" if continuity.get("mode") == "strict" else "natural"
+        ),
         script_text=project.script_text,
         continuity=continuity if isinstance(continuity, dict) else {},
         model=project.model,
@@ -337,6 +444,12 @@ async def create_professional_storyboard_project(
         raise HTTPException(status_code=400, detail=str(exc))
 
     await _asset_owned(db, payload.source_asset_id, current_user.id)
+    reference_assets = await _normalize_reference_assets(
+        db,
+        payload.source_asset_id,
+        payload.reference_assets,
+        current_user.id,
+    )
     await db.execute(
         select(User).where(User.id == current_user.id).with_for_update()
     )
@@ -354,6 +467,7 @@ async def create_professional_storyboard_project(
             return await _serialize_project(db, existing)
 
     continuity = {
+        "mode": payload.continuity_mode,
         "global_constraints": storyboard.global_constraints,
         "no_dialogue": storyboard.no_dialogue,
         "no_subtitles": storyboard.no_subtitles,
@@ -376,6 +490,7 @@ async def create_professional_storyboard_project(
     project = MarketingVideoProject(
         user_id=current_user.id,
         source_asset_id=uuid.UUID(payload.source_asset_id),
+        reference_assets_json=json.dumps(reference_assets, ensure_ascii=False),
         title=title[:255],
         product_name=payload.product_name,
         idea=f"专业脚本分镜 · {storyboard.shot_count} 个镜头",
@@ -396,7 +511,7 @@ async def create_professional_storyboard_project(
     )
     db.add(project)
     await db.flush()
-    for shot in storyboard.shots:
+    for index, shot in enumerate(storyboard.shots):
         db.add(
             MarketingVideoShot(
                 project_id=project.id,
@@ -410,6 +525,13 @@ async def create_professional_storyboard_project(
                     no_dialogue=storyboard.no_dialogue,
                     no_subtitles=storyboard.no_subtitles,
                     no_watermark=storyboard.no_watermark,
+                    previous_shot=storyboard.shots[index - 1] if index > 0 else None,
+                    next_shot=(
+                        storyboard.shots[index + 1]
+                        if index + 1 < storyboard.shot_count
+                        else None
+                    ),
+                    reference_assets=reference_assets,
                 ),
                 source_text=shot.source_text,
                 duration=shot.duration,
@@ -442,6 +564,12 @@ async def create_marketing_project(
         raise HTTPException(status_code=402, detail="积分不足，生成营销方案需要 1 积分")
 
     await _asset_owned(db, payload.source_asset_id, current_user.id)
+    reference_assets = await _normalize_reference_assets(
+        db,
+        payload.source_asset_id,
+        payload.reference_assets,
+        current_user.id,
+    )
     (
         await db.execute(
             select(User).where(User.id == current_user.id).with_for_update()
@@ -472,6 +600,10 @@ async def create_marketing_project(
         template_id=payload.template_id,
         brand_context=brand_context,
     )
+    reference_prompt = build_reference_asset_prompt(reference_assets)
+    if reference_prompt:
+        for item in plan["shots"]:
+            item["prompt"] = f"{item['prompt']}\n\n{reference_prompt}"
     try:
         credits = estimate_marketing_plan_credits(
             plan,
@@ -484,6 +616,7 @@ async def create_marketing_project(
     project = MarketingVideoProject(
         user_id=current_user.id,
         source_asset_id=uuid.UUID(payload.source_asset_id),
+        reference_assets_json=json.dumps(reference_assets, ensure_ascii=False),
         title=plan["title"],
         product_name=payload.product_name,
         idea=payload.idea,

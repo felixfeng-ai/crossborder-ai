@@ -112,6 +112,61 @@ def test_image_to_video_request_uses_data_uri():
     assert "storage" not in image_content["image_url"]["url"]
 
 
+def test_reference_video_request_supports_multiple_product_images():
+    request = build_minimax_video_request(
+        api_key="secret",
+        prompt="Keep the same gift box from every angle",
+        model="MiniMax-H3-Lite",
+        resolution="480P",
+        duration=4,
+        ratio="9:16",
+        reference_images=[
+            (_image_bytes(), "image/png"),
+            (_image_bytes(), "image/png"),
+            (_image_bytes(), "image/png"),
+        ],
+    )
+
+    image_items = [
+        item for item in request.body["content"] if item["type"] == "image_url"
+    ]
+    assert request.body["ratio"] == "9:16"
+    assert len(image_items) == 3
+    assert all(item["role"] == "reference_image" for item in image_items)
+    assert not any(item["role"] == "first_frame" for item in image_items)
+
+
+def test_reference_video_request_rejects_mixed_frame_and_reference_images():
+    with pytest.raises(ValueError, match="不能同时"):
+        build_minimax_video_request(
+            api_key="secret",
+            prompt="Product shot",
+            model="MiniMax-H3-Lite",
+            resolution="480P",
+            duration=4,
+            ratio="9:16",
+            first_frame=_image_bytes(),
+            first_frame_mime="image/png",
+            reference_images=[(_image_bytes(), "image/png")],
+        )
+
+
+def test_reference_video_request_rejects_more_than_nine_images():
+    with pytest.raises(ValueError, match="9"):
+        build_minimax_video_request(
+            api_key="secret",
+            prompt="Product shot",
+            model="MiniMax-H3-Lite",
+            resolution="480P",
+            duration=4,
+            ratio="9:16",
+            reference_images=[
+                (_image_bytes(), "image/png")
+                for _ in range(10)
+            ],
+        )
+
+
 def test_invalid_video_selection_and_submission_payload():
     with pytest.raises(ValueError, match="缺少视频提示词"):
         build_minimax_video_request(

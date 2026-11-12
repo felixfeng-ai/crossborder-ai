@@ -47,6 +47,13 @@ class MarketingVideoProject(Base):
         nullable=True,
         index=True,
     )
+    # 同时保存主图和额外参考图，JSON 中记录用途与顺序，兼容历史单图项目。
+    reference_assets_json: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="[]",
+        server_default="[]",
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     idea: Mapped[str] = mapped_column(Text, nullable=False)

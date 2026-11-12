@@ -5,7 +5,6 @@ import json
 import logging
 import shutil
 import subprocess
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -45,15 +44,6 @@ def _video_path(storage_key: str) -> Path:
     if target != base and base not in target.parents:
         raise ValueError("视频路径非法")
     return target
-
-
-def _ffmpeg_concat_file(paths: list[Path], manifest: Path) -> None:
-    """输出 concat demuxer 清单，并转义路径中的单引号。"""
-    lines = []
-    for path in paths:
-        escaped = str(path.resolve()).replace("'", "'\\''")
-        lines.append(f"file '{escaped}'")
-    manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _subtitle_filter_path(path: Path) -> str:
@@ -103,11 +93,13 @@ def assemble_marketing_video(
     segment_paths: list[Path],
     output_path: Path,
     subtitle_path: Path | None = None,
+    segment_durations: list[int] | None = None,
+    transition_duration: float = 0.20,
 ) -> bool:
-    """拼接镜头并统一转为 H.264/AAC，确保浏览器可直接播放。
+    """使用交叉转场合成镜头，并统一转为 H.264/AAC。
 
-    供应商可能返回 H.265、混合帧率或不带音轨的 MP4。即使状态显示成功，
-    浏览器也可能无法解码；因此最终成片不能依赖 ``-c copy``。
+    多镜头不再使用 concat 首尾硬拼：每个输入先统一画幅、帧率和音频参数，
+    再通过 xfade/acrossfade 保留动作与声音的连续性。
     """
     if not segment_paths:
         raise ValueError("没有可合成的视频镜头")
@@ -118,52 +110,103 @@ def assemble_marketing_video(
         raise ValueError("营销视频字幕文件不存在")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        suffix=".txt",
-        prefix="veyaship-concat-",
-        dir=str(output_path.parent),
-        delete=False,
-        encoding="utf-8",
-    ) as handle:
-        manifest = Path(handle.name)
-    _ffmpeg_concat_file(segment_paths, manifest)
-
     # 先写入独立的标准化文件，成功后再原子替换正式成片，避免失败时破坏旧文件。
     target_path = output_path.with_name(
         f"{output_path.stem}.standardized{output_path.suffix}"
     )
-    normalize_command = [
-        _ffmpeg_executable(),
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        str(manifest),
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a?",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "20",
-        "-pix_fmt",
-        "yuv420p",
-        "-vf",
-        "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-movflags",
-        "+faststart",
-        str(target_path),
-    ]
+    ffmpeg = _ffmpeg_executable()
+    if len(segment_paths) == 1:
+        normalize_command = [
+            ffmpeg,
+            "-y",
+            "-i",
+            str(segment_paths[0]),
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a?",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-vf",
+            "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
+            str(target_path),
+        ]
+    else:
+        durations = [int(value) for value in (segment_durations or [])]
+        if len(durations) != len(segment_paths) or any(value <= 0 for value in durations):
+            raise ValueError("多镜头合成缺少有效的镜头时长")
+        transition = max(0.12, min(float(transition_duration), min(durations) / 6))
+        command = [ffmpeg, "-y"]
+        for path in segment_paths:
+            command.extend(["-i", str(path)])
+
+        filters: list[str] = []
+        for index in range(len(segment_paths)):
+            filters.append(
+                f"[{index}:v]scale=720:1280:force_original_aspect_ratio=decrease,"
+                f"pad=720:1280:(ow-iw)/2:(oh-ih)/2,fps=30,settb=AVTB,"
+                f"format=yuv420p[v{index}]"
+            )
+            filters.append(
+                f"[{index}:a]aresample=48000,"
+                f"aformat=sample_fmts=fltp:channel_layouts=stereo[a{index}]"
+            )
+
+        current_video = "v0"
+        current_audio = "a0"
+        current_duration = durations[0]
+        for index in range(1, len(segment_paths)):
+            next_video = f"vx{index}"
+            next_audio = f"ax{index}"
+            offset = max(0.0, current_duration - transition)
+            filters.append(
+                f"[{current_video}][v{index}]xfade=transition=fade:"
+                f"duration={transition:.2f}:offset={offset:.2f}[{next_video}]"
+            )
+            filters.append(
+                f"[{current_audio}][a{index}]acrossfade=d={transition:.2f}:"
+                f"c1=tri:c2=tri[{next_audio}]"
+            )
+            current_video = next_video
+            current_audio = next_audio
+            current_duration += durations[index] - transition
+
+        normalize_command = [
+            *command,
+            "-filter_complex",
+            ";".join(filters),
+            "-map",
+            f"[{current_video}]",
+            "-map",
+            f"[{current_audio}]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
+            str(target_path),
+        ]
     burned_in = False
     try:
         normalized = subprocess.run(
@@ -215,7 +258,6 @@ def assemble_marketing_video(
         else:
             target_path.replace(output_path)
     finally:
-        manifest.unlink(missing_ok=True)
         target_path.unlink(missing_ok=True)
     if not output_path.is_file():
         raise ValueError("营销视频合成失败")
@@ -258,6 +300,7 @@ async def start_marketing_project(
             task = VideoGenerationTask(
                 user_id=project.user_id,
                 source_asset_id=project.source_asset_id,
+                reference_assets_json=project.reference_assets_json,
                 template_id=project.template_id,
                 provider="minimax",
                 model=project.model,
@@ -462,6 +505,7 @@ async def sync_marketing_video_projects(
                     render_paths,
                     output_path,
                     subtitle_path=subtitle_path,
+                    segment_durations=[shot.duration for shot in shots],
                 )
             finally:
                 if subtitle_path is not None:

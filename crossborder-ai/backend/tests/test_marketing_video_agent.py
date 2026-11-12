@@ -217,7 +217,7 @@ def test_assemble_marketing_video_normalizes_for_browser_playback(
         "app.services.marketing_video_executor.subprocess.run",
         fake_run,
     )
-    assemble_marketing_video(segments, output)
+    assemble_marketing_video(segments, output, segment_durations=[4, 4])
 
     assert output.is_file()
     assert len(calls) == 1
@@ -226,6 +226,41 @@ def test_assemble_marketing_video_normalizes_for_browser_playback(
     assert "aac" in calls[0]
     assert "copy" not in calls[0]
     assert not list(tmp_path.glob("veyaship-concat-*.txt"))
+
+
+def test_assemble_marketing_video_uses_visual_and_audio_crossfade(
+    tmp_path,
+    monkeypatch,
+):
+    segments = []
+    for index in range(3):
+        path = tmp_path / f"shot-{index}.mp4"
+        path.write_bytes(b"\x00\x00\x00\x18ftypmp42" + bytes([index]))
+        segments.append(path)
+    output = tmp_path / "final-crossfade.mp4"
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        Path(command[-1]).write_bytes(b"\x00\x00\x00\x18ftypmp42crossfade")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(
+        "app.services.marketing_video_executor.subprocess.run",
+        fake_run,
+    )
+    assemble_marketing_video(
+        segments,
+        output,
+        segment_durations=[4, 4, 3],
+    )
+
+    assert output.is_file()
+    assert len(calls) == 1
+    command = " ".join(calls[0])
+    assert "xfade=transition=fade" in command
+    assert "acrossfade=d=0.20" in command
+    assert "concat" not in command
 
 
 def test_assemble_marketing_video_rejects_failed_normalization(
@@ -251,6 +286,64 @@ def test_assemble_marketing_video_rejects_failed_normalization(
     assert len(calls) == 1
     assert "libx264" in calls[0]
     assert not output.exists()
+
+
+def test_assemble_marketing_video_requires_durations_for_multiple_shots(
+    tmp_path,
+):
+    segments = []
+    for index in range(2):
+        path = tmp_path / f"shot-{index}.mp4"
+        path.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+        segments.append(path)
+
+    with pytest.raises(ValueError, match="镜头时长"):
+        assemble_marketing_video(segments, tmp_path / "final.mp4")
+
+
+def test_assemble_marketing_video_burns_valid_subtitles(
+    tmp_path,
+    monkeypatch,
+):
+    segment = tmp_path / "shot.mp4"
+    segment.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    subtitle = tmp_path / "shot.srt"
+    subtitle.write_text("1\n00:00:00,000 --> 00:00:02,000\n产品展示\n", encoding="utf-8")
+    output = tmp_path / "final-subtitle.mp4"
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        Path(command[-1]).write_bytes(b"\x00\x00\x00\x18ftypmp42subtitle")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(
+        "app.services.marketing_video_executor.subprocess.run",
+        fake_run,
+    )
+
+    assert assemble_marketing_video(
+        [segment],
+        output,
+        subtitle_path=subtitle,
+    ) is True
+    assert output.is_file()
+    assert len(calls) == 2
+    assert "subtitles=" in " ".join(calls[1])
+
+
+def test_assemble_marketing_video_rejects_missing_subtitle(
+    tmp_path,
+):
+    segment = tmp_path / "shot.mp4"
+    segment.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+
+    with pytest.raises(ValueError, match="字幕文件不存在"):
+        assemble_marketing_video(
+            [segment],
+            tmp_path / "final.mp4",
+            subtitle_path=tmp_path / "missing.srt",
+        )
 
 
 def test_assemble_marketing_video_rejects_bad_inputs(tmp_path, monkeypatch):
@@ -527,9 +620,15 @@ async def test_sync_marketing_project_assembles_completed_shots(
         )
     await db_session.flush()
 
-    def fake_assemble(segment_paths, output_path, subtitle_path=None):
+    def fake_assemble(
+        segment_paths,
+        output_path,
+        subtitle_path=None,
+        segment_durations=None,
+    ):
         assert len(segment_paths) == 3
         assert subtitle_path is not None
+        assert segment_durations == [5, 5, 5]
         assert subtitle_path.is_file()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"\x00\x00\x00\x18ftypmp42final")

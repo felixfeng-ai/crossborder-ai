@@ -8,7 +8,6 @@ import {
   CircleAlert,
   Download,
   Film,
-  Image as ImageIcon,
   Loader2,
   Mic2,
   Play,
@@ -17,11 +16,11 @@ import {
   WandSparkles,
 } from 'lucide-react'
 import apiClient from '@/api/client'
-import { resolveMediaUrl } from '@/lib/apiUrl'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ProductReferencePicker } from '@/components/videos/ProductReferencePicker'
 import {
   buildMarketingPipeline,
   downloadFilename,
@@ -33,6 +32,10 @@ import {
   type MarketingCapabilities,
   type MarketingVideoProject,
 } from '@/lib/videos/marketing'
+import {
+  buildReferenceAssetsPayload,
+  type ProductReferenceRole,
+} from '@/lib/videos/references'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { cn } from '@/utils/cn'
 
@@ -68,6 +71,10 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
   const [searchParams] = useSearchParams()
   const projectFromQuery = searchParams.get('project') || ''
   const [selectedAssetId, setSelectedAssetId] = useState('')
+  const [selectedReferenceIds, setSelectedReferenceIds] = useState<string[]>([])
+  const [referenceRoles, setReferenceRoles] = useState<
+    Record<string, ProductReferenceRole>
+  >({})
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [activeProject, setActiveProject] = useState<MarketingVideoProject | null>(null)
   const [idea, setIdea] = useState('')
@@ -157,13 +164,26 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
   useEffect(() => {
     if (!assets.length) {
       if (selectedAssetId) setSelectedAssetId('')
+      if (selectedReferenceIds.length) setSelectedReferenceIds([])
       return
     }
-    if (!assets.some((asset) => asset.id === selectedAssetId)) {
-      setSelectedAssetId(assets[0].id)
+    const validIds = selectedReferenceIds.filter((id) =>
+      assets.some((asset) => asset.id === id),
+    )
+    if (!validIds.length) {
+      const first = assets[0].id
+      setSelectedAssetId(first)
+      setSelectedReferenceIds([first])
       if (!productName.trim()) setProductName(assets[0].name)
+      return
     }
-  }, [assets, productName, selectedAssetId])
+    if (validIds.length !== selectedReferenceIds.length) {
+      setSelectedReferenceIds(validIds)
+    }
+    if (!validIds.includes(selectedAssetId)) {
+      setSelectedAssetId(validIds[0])
+    }
+  }, [assets, productName, selectedAssetId, selectedReferenceIds])
 
   useEffect(() => {
     if (selectedProjectId || !history.length) return
@@ -188,6 +208,12 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
         '/marketing-videos/projects',
         {
           source_asset_id: selectedAsset.id,
+          reference_assets: buildReferenceAssetsPayload(
+            selectedAsset.id,
+            selectedReferenceIds,
+            referenceRoles,
+          ),
+          continuity_mode: 'natural',
           idea,
           product_name: productName,
           platform,
@@ -332,7 +358,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
 
           <div className="p-4">
             <div className="flex items-center justify-between gap-2">
-              <Label>商品首帧</Label>
+              <Label>商品主图与参考图</Label>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span>{assets.length} 张素材</span>
                 <a href="/app/images" className="text-foreground underline underline-offset-2">
@@ -340,48 +366,26 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
                 </a>
               </div>
             </div>
-            {assets.length > 0 ? (
-              <div className="mt-2 grid grid-cols-5 gap-2">
-                {assets.slice(0, 5).map((asset) => (
-                  <button
-                    key={asset.id}
-                    type="button"
-                    title={asset.name}
-                    aria-label={`选择 ${asset.name}`}
-                    aria-pressed={selectedAssetId === asset.id}
-                    className={cn(
-                      'aspect-square overflow-hidden border bg-[#d9dad5] transition-colors',
-                      selectedAssetId === asset.id
-                        ? 'border-[color:var(--factory-accent)] ring-1 ring-[color:var(--factory-accent)]'
-                        : 'border-border hover:border-[color:var(--factory-ink)]/30',
-                    )}
-                    onClick={() => {
-                      setSelectedAssetId(asset.id)
-                      if (!productName.trim()) setProductName(asset.name)
-                    }}
-                  >
-                    <img
-                      src={resolveMediaUrl(asset.image_url)}
-                      alt={asset.name}
-                      className="h-full w-full object-contain p-1"
-                    />
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <a
-                href="/app/images"
-                className="mt-2 flex min-h-16 items-center justify-center gap-2 border border-dashed border-border text-xs text-muted-foreground hover:text-foreground"
-              >
-                <ImageIcon className="h-4 w-4" />
-                去图片工作台上传商品图
-              </a>
-            )}
-            {assets.length > 0 && (
-              <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
-                首帧来自图片工作台的上传图和白底图。点击缩略图即可更换当前首帧。
-              </p>
-            )}
+            <ProductReferencePicker
+              assets={assets}
+              selectedIds={selectedReferenceIds}
+              primaryId={selectedAssetId}
+              roleByAsset={referenceRoles}
+              onSelectedIdsChange={(ids) => {
+                setSelectedReferenceIds(ids)
+                if (!productName.trim() && ids[0]) {
+                  const nextAsset = assets.find((asset) => asset.id === ids[0])
+                  if (nextAsset) setProductName(nextAsset.name)
+                }
+              }}
+              onPrimaryIdChange={setSelectedAssetId}
+              onRoleChange={(assetId, role) => {
+                setReferenceRoles((current) => ({ ...current, [assetId]: role }))
+              }}
+            />
+            <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
+              主图控制首帧；额外参考图用于多角度商品一致性，合计最多 9 张。
+            </p>
             <div className="mt-3 space-y-1.5">
               <Label htmlFor="marketing-product-name">商品名称</Label>
               <Input

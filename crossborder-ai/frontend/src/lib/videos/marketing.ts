@@ -22,6 +22,12 @@ export interface MarketingVideoShot {
   error?: string | null
 }
 
+export interface MarketingProductReference {
+  asset_id: string
+  role: string
+  is_primary: boolean
+}
+
 export interface MarketingVideoProject {
   id: string
   title: string
@@ -33,6 +39,8 @@ export interface MarketingVideoProject {
   duration: number
   template_id: string
   mode?: 'creative' | 'script' | string
+  reference_assets?: MarketingProductReference[]
+  continuity_mode?: 'natural' | string
   script_text?: string | null
   continuity?: Record<string, unknown>
   model: string

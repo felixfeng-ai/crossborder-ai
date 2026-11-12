@@ -5,7 +5,6 @@ import {
   CircleAlert,
   FileText,
   Film,
-  Image as ImageIcon,
   Loader2,
   Play,
   ScanLine,
@@ -16,7 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { resolveMediaUrl } from '@/lib/apiUrl'
+import { ProductReferencePicker } from '@/components/videos/ProductReferencePicker'
 import {
   projectStatusLabel,
   shotStatusLabel,
@@ -29,6 +28,10 @@ import {
   storyboardSummary,
   type StoryboardContinuity,
 } from '@/lib/videos/storyboard'
+import {
+  buildReferenceAssetsPayload,
+  type ProductReferenceRole,
+} from '@/lib/videos/references'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { cn } from '@/utils/cn'
 import { MarketingVideoPreview } from './MarketingVideosPage'
@@ -69,6 +72,10 @@ export default function ProfessionalStoryboardPage() {
   const [script, setScript] = useState('')
   const [parsed, setParsed] = useState<ParsedStoryboard | null>(null)
   const [selectedAssetId, setSelectedAssetId] = useState('')
+  const [selectedReferenceIds, setSelectedReferenceIds] = useState<string[]>([])
+  const [referenceRoles, setReferenceRoles] = useState<
+    Record<string, ProductReferenceRole>
+  >({})
   const [productName, setProductName] = useState('')
   const [platform, setPlatform] = useState('tiktok')
   const [market, setMarket] = useState('US')
@@ -159,13 +166,26 @@ export default function ProfessionalStoryboardPage() {
   useEffect(() => {
     if (!assets.length) {
       if (selectedAssetId) setSelectedAssetId('')
+      if (selectedReferenceIds.length) setSelectedReferenceIds([])
       return
     }
-    if (!assets.some((asset) => asset.id === selectedAssetId)) {
-      setSelectedAssetId(assets[0].id)
+    const validIds = selectedReferenceIds.filter((id) =>
+      assets.some((asset) => asset.id === id),
+    )
+    if (!validIds.length) {
+      const first = assets[0].id
+      setSelectedAssetId(first)
+      setSelectedReferenceIds([first])
       if (!productName.trim()) setProductName(assets[0].name)
+      return
     }
-  }, [assets, productName, selectedAssetId])
+    if (validIds.length !== selectedReferenceIds.length) {
+      setSelectedReferenceIds(validIds)
+    }
+    if (!validIds.includes(selectedAssetId)) {
+      setSelectedAssetId(validIds[0])
+    }
+  }, [assets, productName, selectedAssetId, selectedReferenceIds])
 
   useEffect(() => {
     if (selectedProjectId || !history.length) return
@@ -193,6 +213,12 @@ export default function ProfessionalStoryboardPage() {
         '/marketing-videos/storyboards/projects',
         {
           source_asset_id: selectedAsset.id,
+          reference_assets: buildReferenceAssetsPayload(
+            selectedAsset.id,
+            selectedReferenceIds,
+            referenceRoles,
+          ),
+          continuity_mode: 'natural',
           product_name: productName,
           script,
           platform,
@@ -316,7 +342,7 @@ export default function ProfessionalStoryboardPage() {
           <div className="space-y-4 p-4">
             <div>
               <div className="flex items-center justify-between gap-2">
-                <Label>商品首帧</Label>
+                <Label>商品主图与参考图</Label>
                 <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                   <span>{assets.length} 张素材</span>
                   <a href="/app/images" className="text-foreground underline underline-offset-2">
@@ -324,48 +350,26 @@ export default function ProfessionalStoryboardPage() {
                   </a>
                 </div>
               </div>
-              {assets.length ? (
-                <div className="mt-2 grid grid-cols-5 gap-2">
-                  {assets.slice(0, 5).map((asset) => (
-                    <button
-                      key={asset.id}
-                      type="button"
-                      title={asset.name}
-                      aria-label={`选择 ${asset.name}`}
-                      aria-pressed={selectedAssetId === asset.id}
-                      onClick={() => {
-                        setSelectedAssetId(asset.id)
-                        if (!productName.trim()) setProductName(asset.name)
-                      }}
-                      className={cn(
-                        'aspect-square overflow-hidden border bg-[#d9dad5]',
-                        selectedAssetId === asset.id
-                          ? 'border-[color:var(--factory-accent)] ring-1 ring-[color:var(--factory-accent)]'
-                          : 'border-border',
-                      )}
-                    >
-                      <img
-                        src={resolveMediaUrl(asset.image_url)}
-                        alt={asset.name}
-                        className="h-full w-full object-contain p-1"
-                      />
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <a
-                  href="/app/images"
-                  className="mt-2 flex min-h-16 items-center justify-center gap-2 border border-dashed border-border text-xs text-muted-foreground hover:text-foreground"
-                >
-                  <ImageIcon className="h-4 w-4" />
-                  去图片工作台上传商品首帧
-                </a>
-              )}
-              {assets.length > 0 && (
-                <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
-                  首帧取自图片工作台的上传图或白底图，点击缩略图切换。
-                </p>
-              )}
+              <ProductReferencePicker
+                assets={assets}
+                selectedIds={selectedReferenceIds}
+                primaryId={selectedAssetId}
+                roleByAsset={referenceRoles}
+                onSelectedIdsChange={(ids) => {
+                  setSelectedReferenceIds(ids)
+                  if (!productName.trim() && ids[0]) {
+                    const nextAsset = assets.find((asset) => asset.id === ids[0])
+                    if (nextAsset) setProductName(nextAsset.name)
+                  }
+                }}
+                onPrimaryIdChange={setSelectedAssetId}
+                onRoleChange={(assetId, role) => {
+                  setReferenceRoles((current) => ({ ...current, [assetId]: role }))
+                }}
+              />
+              <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
+                主图控制首帧；额外参考图用于多角度商品一致性，合计最多 9 张。
+              </p>
             </div>
 
             <div className="space-y-1.5">

@@ -4,6 +4,7 @@
 轮询阶段负责对账、下载成片并落入本地视频素材目录。
 """
 
+import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -73,14 +74,51 @@ async def submit_video_task(
     if not path.is_file():
         raise ValueError("商品首帧文件不存在")
 
+    try:
+        reference_items = json.loads(task.reference_assets_json or "[]")
+    except (json.JSONDecodeError, TypeError):
+        reference_items = []
+    if not isinstance(reference_items, list):
+        reference_items = []
+
+    reference_images: list[tuple[bytes, str]] | None = None
+    if len(reference_items) > 1:
+        reference_ids = []
+        for item in reference_items:
+            try:
+                reference_ids.append(uuid.UUID(str(item.get("asset_id"))))
+            except (AttributeError, ValueError):
+                raise ValueError("商品参考图配置无效")
+        reference_assets = (
+            await db.execute(
+                select(ImageAsset).where(
+                    ImageAsset.id.in_(reference_ids),
+                    ImageAsset.user_id == task.user_id,
+                )
+            )
+        ).scalars().all()
+        asset_by_id = {item.id: item for item in reference_assets}
+        if len(asset_by_id) != len(reference_ids):
+            raise ValueError("商品参考图不存在或已被删除")
+        reference_images = []
+        for reference_id in reference_ids:
+            reference_asset = asset_by_id[reference_id]
+            reference_path = _image_path(reference_asset.storage_key)
+            if not reference_path.is_file():
+                raise ValueError("商品参考图文件不存在")
+            reference_images.append(
+                (reference_path.read_bytes(), reference_asset.content_type)
+            )
+
     provider_task_id = await submit_minimax_video(
         prompt=task.prompt,
         model=task.model,
         resolution=task.resolution,
         duration=task.duration,
         ratio=task.ratio,
-        first_frame=path.read_bytes(),
-        first_frame_mime=asset.content_type,
+        first_frame=path.read_bytes() if reference_images is None else None,
+        first_frame_mime=asset.content_type if reference_images is None else None,
+        reference_images=reference_images,
     )
     now = datetime.now(timezone.utc)
     task.provider_task_id = provider_task_id

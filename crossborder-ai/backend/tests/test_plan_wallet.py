@@ -182,6 +182,40 @@ async def test_same_active_plan_does_not_refill_spent_plan_credits(db_session):
 
 
 @pytest.mark.asyncio
+async def test_legacy_excess_plan_credits_are_reclassified_as_purchased(
+    db_session,
+):
+    now = datetime(2026, 11, 12, tzinfo=timezone.utc)
+    user, wallet = await _user_with_wallet(
+        db_session,
+        plan="professional",
+        plan_credits=99_998,
+        purchased_credits=0,
+    )
+    user.credit_period_start = now
+    db_session.add(
+        UserSubscription(
+            user_id=user.id,
+            plan="professional",
+            status="active",
+            starts_at=now - timedelta(days=2),
+            expires_at=now + timedelta(days=28),
+            source="migration_grandfather",
+        )
+    )
+    await db_session.flush()
+
+    transaction = await apply_monthly_allowance(db_session, user, now=now)
+    await db_session.refresh(wallet)
+
+    assert transaction is not None
+    assert transaction.feature == "legacy_plan_credit_reclassification"
+    assert wallet.plan_credits == 2_000
+    assert wallet.purchased_credits == 97_998
+    assert user.credits == 99_998
+
+
+@pytest.mark.asyncio
 async def test_expired_subscription_downgrades_but_keeps_purchased(db_session):
     now = datetime(2026, 11, 11, tzinfo=timezone.utc)
     user, wallet = await _user_with_wallet(

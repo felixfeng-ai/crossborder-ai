@@ -102,6 +102,44 @@ def wallet_total(wallet: CreditWallet) -> int:
     return int(wallet.plan_credits or 0) + int(wallet.purchased_credits or 0)
 
 
+async def _reclassify_excess_plan_credits(
+    db: AsyncSession,
+    user: User,
+    wallet: CreditWallet,
+    allowance: int,
+) -> CreditTransaction | None:
+    """历史积分超出当前套餐额度时转成购买积分，保证总额不丢失。"""
+    if user.plan not in {"standard", "professional"}:
+        return None
+    excess = int(wallet.plan_credits or 0) - allowance
+    if excess <= 0:
+        return None
+    wallet.plan_credits = allowance
+    wallet.purchased_credits = int(wallet.purchased_credits or 0) + excess
+    user.credits = wallet_total(wallet)
+    transaction = CreditTransaction(
+        user_id=user.id,
+        delta=0,
+        balance_after=user.credits,
+        wallet_type="purchased",
+        feature="legacy_plan_credit_reclassification",
+        reference_type="plan",
+        reference_id=user.plan,
+        description="历史套餐积分超出月度额度，差额转为购买积分",
+        metadata_json=json.dumps(
+            {
+                "plan": user.plan,
+                "plan_allowance": allowance,
+                "reclassified_credits": excess,
+            },
+            ensure_ascii=False,
+        ),
+    )
+    db.add(transaction)
+    await db.flush()
+    return transaction
+
+
 async def apply_monthly_allowance(
     db: AsyncSession,
     user: User,
@@ -152,12 +190,22 @@ async def apply_monthly_allowance(
         and user.credit_period_start.month == current.month
     )
     if not force and same_period and not reconciled:
-        return None
+        allowance = int(
+            PLAN_CATALOG.get(user.plan, PLAN_CATALOG["free"])["monthly_credits"]
+        )
+        wallet = await get_or_create_wallet(db, user, lock=True)
+        return await _reclassify_excess_plan_credits(
+            db,
+            user,
+            wallet,
+            allowance,
+        )
 
     wallet = await get_or_create_wallet(db, user, lock=True)
     allowance = int(
         PLAN_CATALOG.get(user.plan, PLAN_CATALOG["free"])["monthly_credits"]
     )
+    await _reclassify_excess_plan_credits(db, user, wallet, allowance)
     previous_total = wallet_total(wallet)
     wallet.plan_credits = allowance
     user.credit_period_start = current

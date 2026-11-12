@@ -29,6 +29,7 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.models.image_generation_task import ImageGenerationTask
 from app.models.image_asset import ImageAsset
+from app.models.marketing_campaign import MarketingCampaign
 from app.services.image_task_executor import (
     execute_image_generation_task,
     run_image_generation,
@@ -62,6 +63,7 @@ def image_generation_credits(num_outputs: int) -> int:
 class GenerateImageRequest(BaseModel):
     prompt: str = Field(..., min_length=5, description="图片描述词")
     num_outputs: int = Field(default=1, ge=1, le=4)
+    campaign_id: Optional[str] = Field(None, description="营销活动 ID")
 
 
 class TaskResponse(BaseModel):
@@ -106,6 +108,10 @@ class ImageAssetListResponse(BaseModel):
 
 class ProcessImageRequest(BaseModel):
     preset_id: str = Field(..., min_length=1)
+
+
+class RenameImageAssetRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
 
 
 class PlatformPresetItem(BaseModel):
@@ -326,6 +332,23 @@ async def process_image_asset(
     return _serialize_asset(asset)
 
 
+@router.patch("/assets/{asset_id}", response_model=ImageAssetItem)
+async def rename_image_asset(
+    asset_id: str,
+    payload: RenameImageAssetRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """重命名当前用户的素材变体。"""
+    asset = await _get_owned_asset(db, asset_id, current_user.id)
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="素材名称不能为空")
+    asset.name = name
+    await db.flush()
+    return _serialize_asset(asset)
+
+
 @router.delete("/assets/{asset_id}", status_code=204)
 async def delete_image_asset(
     asset_id: str,
@@ -335,8 +358,23 @@ async def delete_image_asset(
     """删除当前用户素材及本地文件。"""
     asset = await _get_owned_asset(db, asset_id, current_user.id)
     path = _asset_path(asset.storage_key)
+    generation_task_id = asset.generation_task_id
     await db.delete(asset)
     await db.flush()
+    if generation_task_id is not None:
+        remaining = (
+            await db.execute(
+                select(ImageAsset.id).where(
+                    ImageAsset.generation_task_id == generation_task_id
+                )
+            )
+        ).scalars().all()
+        if not remaining:
+            task = await db.get(ImageGenerationTask, generation_task_id)
+            if task is not None:
+                # 最后一个变体删除后清空远端结果，避免活动素材板重新出现。
+                task.image_urls = "[]"
+                await db.flush()
     if path.is_file():
         path.unlink()
     return None
@@ -369,11 +407,18 @@ async def _execute_image_task(task_id: str, prompt: str, num_outputs: int) -> No
     await execute_image_generation_task(tid)
 
 
-async def schedule_image_task(db: AsyncSession, user_id, prompt: str, num_outputs: int = 1) -> str:
+async def schedule_image_task(
+    db: AsyncSession,
+    user_id,
+    prompt: str,
+    num_outputs: int = 1,
+    campaign_id: Optional[uuid.UUID] = None,
+) -> str:
     """建 pending 记录并后台调度生成；返回 task_id（供 POST /generate 与 content 主图复用）。"""
     credits_cost = image_generation_credits(num_outputs)
     task = ImageGenerationTask(
         user_id=user_id,
+        campaign_id=campaign_id,
         prompt=prompt,
         num_outputs=num_outputs,
         status="pending",
@@ -405,6 +450,23 @@ async def generate_image(
     if not check_feature_access(current_user, "ai_image"):
         raise HTTPException(status_code=403, detail="图片生成功能仅限专业版套餐使用，请升级套餐")
 
+    campaign_uuid = None
+    if payload.campaign_id:
+        try:
+            campaign_uuid = uuid.UUID(payload.campaign_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="营销活动不存在")
+        campaign = (
+            await db.execute(
+                select(MarketingCampaign).where(
+                    MarketingCampaign.id == campaign_uuid,
+                    MarketingCampaign.user_id == current_user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if campaign is None:
+            raise HTTPException(status_code=404, detail="营销活动不存在")
+
     credits_cost = image_generation_credits(payload.num_outputs)
     if current_user.credits < credits_cost:
         raise HTTPException(
@@ -429,7 +491,13 @@ async def generate_image(
         if kit.get("brand_name"):
             enhanced_prompt = f"{enhanced_prompt}, {kit['brand_name']} brand identity"
 
-    task_id = await schedule_image_task(db, current_user.id, enhanced_prompt, payload.num_outputs)
+    task_id = await schedule_image_task(
+        db,
+        current_user.id,
+        enhanced_prompt,
+        payload.num_outputs,
+        campaign_uuid,
+    )
     return TaskResponse(task_id=task_id, status="pending")
 
 

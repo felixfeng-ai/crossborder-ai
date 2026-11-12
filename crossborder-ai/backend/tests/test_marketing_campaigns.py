@@ -216,6 +216,7 @@ async def test_campaign_assets_include_bound_media(
     body = response.json()
     assert body["counts"] == {
         "images": 1,
+        "image_tasks": 1,
         "videos": 1,
         "marketing_videos": 1,
         "total": 3,

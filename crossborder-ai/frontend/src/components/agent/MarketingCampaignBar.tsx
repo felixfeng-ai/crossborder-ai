@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, Film, Plus, Target } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { ChevronDown, Plus, Sparkles, Target } from 'lucide-react'
 import apiClient from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { resolveMediaUrl } from '@/lib/apiUrl'
+import type { CampaignAssetsResponse } from '@/lib/agent/campaignAssets'
 import { toErrorMessage } from '@/utils/errorMessage'
+import { MarketingAssetBoard } from './MarketingAssetBoard'
+import { MarketingImageBatchPanel } from './MarketingImageBatchPanel'
 
 interface Campaign {
   id: string
@@ -26,30 +27,6 @@ interface Product {
   id: string
   title: string | null
   url: string
-}
-
-type CampaignAssetKind = 'image' | 'video' | 'marketing_video'
-
-interface CampaignAsset {
-  id: string
-  kind: CampaignAssetKind
-  status: string
-  prompt: string
-  urls: string[]
-  thumbnail_url: string | null
-  image_asset_id?: string | null
-  credits: number
-  created_at: string
-}
-
-interface CampaignAssetsResponse {
-  counts: {
-    images: number
-    videos: number
-    marketing_videos: number
-    total: number
-  }
-  items: CampaignAsset[]
 }
 
 interface MarketingCampaignBarProps {
@@ -71,36 +48,13 @@ const PLATFORMS = [
   { id: 'shopify', label: 'Shopify' },
 ]
 
-const RUNNING_ASSET_STATUSES = new Set([
-  'pending',
-  'processing',
-  'queued',
-  'running',
-  'rendering',
-])
-
-const ASSET_KIND_LABELS: Record<CampaignAssetKind, string> = {
-  image: '图片',
-  video: '商品视频',
-  marketing_video: '营销成片',
-}
-
-function assetStatusLabel(asset: CampaignAsset): string {
-  if (RUNNING_ASSET_STATUSES.has(asset.status)) {
-    return `${ASSET_KIND_LABELS[asset.kind]}生成中`
-  }
-  if (['failed', 'canceled'].includes(asset.status)) {
-    return '生成失败'
-  }
-  return ASSET_KIND_LABELS[asset.kind]
-}
-
 export function MarketingCampaignBar({
   campaignId,
   onCampaignChange,
 }: MarketingCampaignBarProps) {
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
+  const [batchOpen, setBatchOpen] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     title: '',
@@ -140,13 +94,26 @@ export function MarketingCampaignBar({
     enabled: Boolean(campaignId),
     refetchInterval: (query) => {
       const items = query.state.data?.items || []
-      return items.some((item) => RUNNING_ASSET_STATUSES.has(item.status))
+      return items.some((item) =>
+        ['pending', 'processing', 'queued', 'running', 'rendering'].includes(item.status)
+      )
         ? 5000
         : false
     },
   })
 
   const selected = campaigns.find((item) => item.id === campaignId)
+  const refreshAssets = () => {
+    if (campaignId) {
+      queryClient.invalidateQueries({
+        queryKey: ['marketing-campaign-assets', campaignId],
+      })
+    }
+    queryClient.invalidateQueries({ queryKey: ['image-assets'] })
+    queryClient.invalidateQueries({ queryKey: ['image-generation-history'] })
+    queryClient.invalidateQueries({ queryKey: ['material-image-assets'] })
+    queryClient.invalidateQueries({ queryKey: ['material-image-history'] })
+  }
   const createMutation = useMutation({
     mutationFn: async () => {
       const response = await apiClient.post('/marketing-campaigns', {
@@ -183,7 +150,10 @@ export function MarketingCampaignBar({
           <select
             aria-label="选择营销活动"
             value={campaignId}
-            onChange={(event) => onCampaignChange(event.target.value)}
+            onChange={(event) => {
+              setBatchOpen(false)
+              onCampaignChange(event.target.value)
+            }}
             className="h-8 w-full appearance-none border border-input bg-background px-2.5 pr-8 text-[11px] outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">临时对话（不绑定活动）</option>
@@ -221,62 +191,31 @@ export function MarketingCampaignBar({
         </p>
       )}
 
-      {selected && assets && assets.counts.total > 0 && (
-        <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
-          <span className="shrink-0 text-[10px] text-muted-foreground">
-            活动素材{' '}
-            {[
-              assets.counts.images > 0 ? `图片 ${assets.counts.images}` : '',
-              assets.counts.videos > 0 ? `视频 ${assets.counts.videos}` : '',
-              assets.counts.marketing_videos > 0
-                ? `成片 ${assets.counts.marketing_videos}`
-                : '',
-            ].filter(Boolean).join(' · ')}
-          </span>
-          {assets.items.slice(0, 8).map((asset) => {
-            const thumbnailUrl = asset.thumbnail_url
-              ? resolveMediaUrl(asset.thumbnail_url)
-              : ''
-            const isVideo = asset.kind !== 'image'
-            return (
-              <div
-                key={`${asset.kind}-${asset.id}`}
-                className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-border bg-muted"
-                title={asset.prompt}
-                aria-label={`${ASSET_KIND_LABELS[asset.kind]}：${asset.prompt}`}
-              >
-                {thumbnailUrl ? (
-                  <img
-                    src={thumbnailUrl}
-                    alt={`${ASSET_KIND_LABELS[asset.kind]}缩略图`}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <span className="px-1 text-center text-[8px] leading-3 text-muted-foreground">
-                    {assetStatusLabel(asset)}
-                  </span>
-                )}
-                {isVideo && (
-                  <span className="absolute bottom-0.5 right-0.5 bg-background/85 p-0.5 text-foreground">
-                    <Film className="h-2.5 w-2.5" />
-                  </span>
-                )}
-                {!isVideo && asset.image_asset_id && (
-                  <Link
-                    to={`/app/videos?tab=single&source_asset=${asset.image_asset_id}`}
-                    title="用此图生成视频"
-                    aria-label={`用图片“${asset.prompt}”生成视频`}
-                    className="absolute inset-0 flex items-end justify-end p-0.5 text-white transition-colors hover:bg-background/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <span className="bg-background/85 p-0.5 text-foreground">
-                      <Film className="h-2.5 w-2.5" />
-                    </span>
-                  </Link>
-                )}
-              </div>
-            )
-          })}
+      {selected && (
+        <div className="mt-2 border-t border-border pt-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] text-muted-foreground">
+              批量创建图片变体并直接复用
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1 text-[11px]"
+              onClick={() => setBatchOpen((current) => !current)}
+            >
+              <Sparkles className="h-3 w-3" />
+              批量生成
+            </Button>
+          </div>
+          {batchOpen && (
+            <MarketingImageBatchPanel
+              campaignId={campaignId}
+              onCreated={refreshAssets}
+              onClose={() => setBatchOpen(false)}
+            />
+          )}
+          <MarketingAssetBoard assets={assets} onChanged={refreshAssets} />
         </div>
       )}
 

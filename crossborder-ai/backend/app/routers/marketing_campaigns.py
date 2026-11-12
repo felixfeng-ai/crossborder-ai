@@ -192,7 +192,7 @@ async def list_campaign_assets(
     generated_by_task: dict = {}
     for asset in generated_assets:
         if asset.generation_task_id is not None:
-            generated_by_task.setdefault(asset.generation_task_id, asset)
+            generated_by_task.setdefault(asset.generation_task_id, []).append(asset)
     video_tasks = (
         await db.execute(
             select(VideoGenerationTask)
@@ -217,27 +217,51 @@ async def list_campaign_assets(
     ).scalars().all()
 
     items = []
+    image_task_count = 0
+    image_variant_count = 0
     for task in image_tasks:
         try:
             urls = json.loads(task.image_urls or "[]")
         except (json.JSONDecodeError, TypeError):
             urls = []
-        generated_asset = generated_by_task.get(task.id)
+        if not isinstance(urls, list):
+            urls = []
+        task_assets = generated_by_task.get(task.id, [])
+        if task.status == "completed" and not task_assets and not urls:
+            continue
+        image_task_count += 1
+        image_variant_count += max(1, len(task_assets))
+        generated_asset = task_assets[0] if task_assets else None
         thumbnail_url = (
             f"{settings.API_V1_PREFIX}/images/assets/{generated_asset.id}/file"
             if generated_asset is not None
-            else urls[0] if isinstance(urls, list) and urls else None
+            else urls[0] if urls else None
         )
         items.append({
             "id": str(task.id),
             "kind": "image",
             "status": task.status,
             "prompt": task.prompt,
-            "urls": urls if isinstance(urls, list) else [],
+            "urls": urls,
             "thumbnail_url": thumbnail_url,
             "image_asset_id": (
                 str(generated_asset.id) if generated_asset is not None else None
             ),
+            "variants": [
+                {
+                    "asset_id": str(asset.id),
+                    "name": asset.name,
+                    "variant_index": int(asset.variant_index or 0),
+                    "thumbnail_url": (
+                        f"{settings.API_V1_PREFIX}/images/assets/{asset.id}/file"
+                    ),
+                    "download_url": (
+                        f"{settings.API_V1_PREFIX}/images/assets/{asset.id}/file"
+                    ),
+                    "created_at": str(asset.created_at),
+                }
+                for asset in task_assets
+            ],
             "credits": task.credits_charged or task.credits_cost,
             "created_at": str(task.created_at),
         })
@@ -288,7 +312,8 @@ async def list_campaign_assets(
     items.sort(key=lambda item: item["created_at"], reverse=True)
     return {
         "counts": {
-            "images": len(image_tasks),
+            "images": image_variant_count,
+            "image_tasks": image_task_count,
             "videos": len(video_tasks),
             "marketing_videos": len(projects),
             "total": len(items),

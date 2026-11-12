@@ -3,6 +3,8 @@ import {
   FALLBACK_CREDIT_PACKS,
   FALLBACK_PLANS,
   LANDING_FEATURES,
+  LANDING_VIDEO_MODES,
+  LANDING_VIDEO_STYLES,
   SUPPORTED_COPY_PLATFORMS,
   planDisplayName,
   planValidityLabel,
@@ -24,6 +26,18 @@ describe('landing content facts', () => {
     expect(text).toContain('配音')
     expect(text).toContain('素材中心')
     expect(text).toContain('Amazon')
+  })
+
+  it('首页视频能力覆盖三种真实工作流和结构化风格', () => {
+    expect(LANDING_VIDEO_MODES.map((item) => item.id)).toEqual([
+      'marketing',
+      'storyboard',
+      'single',
+    ])
+    expect(LANDING_VIDEO_MODES.every((item) => item.title && item.desc)).toBe(true)
+    expect(LANDING_VIDEO_STYLES).toEqual(
+      expect.arrayContaining(['高端静奢', '真实生活', '电影叙事', '节日氛围']),
+    )
   })
 
   it('套餐回退值与线上接口一致', () => {

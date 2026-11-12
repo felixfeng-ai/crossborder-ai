@@ -110,6 +110,33 @@ export const LANDING_AGENT_EXAMPLES = [
   },
 ]
 
+export const LANDING_VIDEO_MODES = [
+  {
+    id: 'marketing',
+    title: '营销成片',
+    desc: '给出商品和一个营销想法，Agent 自动生成创意、分镜并合成可投放成片。',
+  },
+  {
+    id: 'storyboard',
+    title: '专业分镜',
+    desc: '粘贴完整脚本，逐镜锁定商品参考图、时长、动作衔接和画面风格。',
+  },
+  {
+    id: 'single',
+    title: '商品图生视频',
+    desc: '一张商品图快速生成单镜头动态，适合主图视频、卖点展示和广告素材。',
+  },
+] as const
+
+export const LANDING_VIDEO_STYLES = [
+  '高端静奢',
+  '真实生活',
+  '电影叙事',
+  '电商展示',
+  '节日氛围',
+  '参考图匹配',
+] as const
+
 export const FALLBACK_CREDIT_PACKS: LandingCreditPack[] = [
   { id: 'pack_trial_50', name: '首购体验包', credits: 50, price: 9.9, trial_once: true },
   { id: 'pack_200', name: '入门积分包', credits: 200, price: 19 },

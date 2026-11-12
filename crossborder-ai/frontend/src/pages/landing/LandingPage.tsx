@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   Sparkles, Globe, ShoppingBag, Bot, DollarSign, ShieldCheck, TrendingUp, ImageIcon,
   ArrowRight, CheckCircle2, Zap, MessageSquareQuote, Clapperboard, FolderOpen,
+  Play, Video,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { BrandMark } from '@/components/brand/BrandMark'
@@ -19,6 +20,8 @@ import {
   LANDING_FEATURES,
   LANDING_FLOW,
   LANDING_PIPELINE,
+  LANDING_VIDEO_MODES,
+  LANDING_VIDEO_STYLES,
   SUPPORTED_COPY_PLATFORMS,
   planDisplayName,
   planPriceLabel,
@@ -91,6 +94,10 @@ export default function LandingPage() {
     navigate(isLoggedIn ? '/app/dashboard' : '/register')
   }
 
+  const openVideoWorkspace = () => {
+    navigate(isLoggedIn ? '/app/videos?tab=marketing' : '/register')
+  }
+
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-[var(--factory-ground)] text-foreground">
       {/* ── 导航 ────────────────────────────────────────── */}
@@ -138,7 +145,7 @@ export default function LandingPage() {
                     <span className="block">的一体化 AI 运营台</span>
                   </h1>
                   <p className="max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    输入品类、商品链接或买家评论，AI Agent 串起市场判断、VOC、Listing、合规、商品素材、SKU 与店铺执行，并把每一步结果留成可复核记录。
+                    输入品类、商品链接或买家评论，AI Agent 串起市场判断、VOC、Listing、合规、商品图片与视频、SKU 与店铺执行，并把每一步结果留成可复核记录。
                   </p>
                 </motion.div>
 
@@ -157,6 +164,16 @@ export default function LandingPage() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">Free 每月含 30 积分 · 注册后运行真实 AI 市场分析</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={openVideoWorkspace}
+                    className="h-9 gap-2 border-[color:var(--factory-accent)]/35 px-3 text-xs"
+                  >
+                    <Clapperboard className="h-3.5 w-3.5" />
+                    用商品图生成视频
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
                 </motion.div>
 
                 <motion.div variants={item} className="flex flex-wrap items-center gap-5 text-xs text-muted-foreground">
@@ -208,6 +225,112 @@ export default function LandingPage() {
               </motion.div>
             </motion.div>
           </div>
+        </section>
+
+        {/* ── 视频工作台 ─────────────────────────────────── */}
+        <section
+          className="max-w-6xl mx-auto px-4 py-14 sm:py-16"
+          aria-labelledby="landing-video-title"
+        >
+          <motion.div
+            initial={false}
+            className="grid overflow-hidden border border-border bg-[var(--factory-panel)] lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]"
+          >
+            <div className="relative min-h-[460px] overflow-hidden border-b border-border bg-[var(--factory-ground)] lg:min-h-[560px] lg:border-b-0 lg:border-r">
+              <img
+                src="/demo/terra-body-oil.webp"
+                alt="Terra 身体油商品视频预览"
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,9,9,0.08)_0%,rgba(8,9,9,0.22)_42%,rgba(8,9,9,0.94)_100%)]" />
+
+              <div className="absolute left-5 right-5 top-5 flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-2 border border-white/15 bg-black/45 px-3 py-1.5 text-xs text-white backdrop-blur-sm">
+                  <Clapperboard className="h-3.5 w-3.5" />
+                  视频工作台
+                </span>
+                <span className="border border-white/15 bg-black/45 px-2.5 py-1 font-mono text-[10px] text-white/75">
+                  9:16 · 768P
+                </span>
+              </div>
+
+              <div className="absolute inset-x-5 bottom-5">
+                <div className="mb-3 flex items-end justify-between gap-4">
+                  <div>
+                    <p className="text-xs text-white/65">标准商用 · 节日氛围</p>
+                    <p className="mt-1 text-lg font-medium text-white">商品使用场景成片</p>
+                  </div>
+                  <span className="font-mono text-xs text-white/65">00:15</span>
+                </div>
+                <div className="h-1 overflow-hidden bg-white/20">
+                  <div className="h-full w-[62%] bg-[var(--factory-accent)]" />
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white">
+                    <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-right text-[10px] text-white/55">
+                    多商品图参考 · 三入口统一质量引擎
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 sm:p-8 lg:p-10">
+              <p className="micro-label text-[var(--factory-accent)]">商品视频生产</p>
+              <h2
+                id="landing-video-title"
+                className="mt-3 max-w-xl text-2xl font-semibold leading-tight text-foreground sm:text-3xl"
+              >
+                一张商品图，直接进入可投放视频
+              </h2>
+              <p className="mt-3 max-w-xl text-sm leading-7 text-muted-foreground">
+                从营销创意到专业脚本，再到单镜头商品动态，三个入口共用商品参考图、质量档位、画面风格和成片素材中心。
+              </p>
+
+              <div className="mt-6 border-t border-border">
+                {LANDING_VIDEO_MODES.map((mode, index) => {
+                  const Icon = index === 0 ? Bot : index === 1 ? Clapperboard : Video
+                  return (
+                    <div
+                      key={mode.id}
+                      className="grid grid-cols-[30px_34px_minmax(0,1fr)] gap-3 border-b border-border py-4"
+                    >
+                      <span className="font-mono text-[10px] leading-7 text-muted-foreground">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <Icon className="mt-1 h-4 w-4 text-[var(--factory-accent)]" />
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-medium text-foreground">{mode.title}</h3>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{mode.desc}</p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-1.5">
+                {LANDING_VIDEO_STYLES.map((style) => (
+                  <span
+                    key={style}
+                    className="border border-border bg-background px-2.5 py-1 text-[10px] text-muted-foreground"
+                  >
+                    {style}
+                  </span>
+                ))}
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
+                <p className="text-[11px] leading-5 text-muted-foreground">
+                  自动封面 · 商品名下载 · 逐镜进度 · 历史素材可追溯
+                </p>
+                <Button onClick={openVideoWorkspace} className="h-9 gap-2 px-4 text-xs">
+                  进入视频工作台
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </motion.div>
         </section>
 
         {/* ── 流程 ────────────────────────────────────────── */}

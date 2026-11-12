@@ -22,7 +22,7 @@ from app.core.observability import (
     setup_logging,
 )
 from app.models.user import InsufficientCreditsError
-from app.routers import auth, users, products, content, images, videos, marketing_videos, marketing_campaigns, billing, shopify, batch, radar, ledger, analytics, agent, listings, platforms, product_variants, catalog, operations, voc
+from app.routers import auth, users, products, content, images, videos, marketing_videos, marketing_campaigns, marketing_copy, billing, shopify, batch, radar, ledger, analytics, agent, listings, platforms, product_variants, catalog, operations, voc
 from app.routers import settings as settings_router
 
 # ── 日志配置（可观测性：所有日志自动携带 request_id）──────────
@@ -195,6 +195,7 @@ app.include_router(images.router, prefix=API_PREFIX)
 app.include_router(videos.router, prefix=API_PREFIX)
 app.include_router(marketing_videos.router, prefix=API_PREFIX)
 app.include_router(marketing_campaigns.router, prefix=API_PREFIX)
+app.include_router(marketing_copy.router, prefix=API_PREFIX)
 app.include_router(billing.router, prefix=API_PREFIX)
 app.include_router(shopify.router, prefix=API_PREFIX)
 app.include_router(batch.router, prefix=API_PREFIX)

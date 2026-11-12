@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import type { CampaignAssetsResponse } from '@/lib/agent/campaignAssets'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { MarketingAssetBoard } from './MarketingAssetBoard'
+import { MarketingCopyBoard } from './MarketingCopyBoard'
 import { MarketingImageBatchPanel } from './MarketingImageBatchPanel'
 
 interface Campaign {
@@ -55,6 +56,7 @@ export function MarketingCampaignBar({
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
   const [batchOpen, setBatchOpen] = useState(false)
+  const [assetTab, setAssetTab] = useState<'images' | 'copy'>('images')
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     title: '',
@@ -152,6 +154,7 @@ export function MarketingCampaignBar({
             value={campaignId}
             onChange={(event) => {
               setBatchOpen(false)
+              setAssetTab('images')
               onCampaignChange(event.target.value)
             }}
             className="h-8 w-full appearance-none border border-input bg-background px-2.5 pr-8 text-[11px] outline-none focus:ring-2 focus:ring-ring"
@@ -194,28 +197,72 @@ export function MarketingCampaignBar({
       {selected && (
         <div className="mt-2 border-t border-border pt-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] text-muted-foreground">
-              批量创建图片变体并直接复用
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1 text-[11px]"
-              onClick={() => setBatchOpen((current) => !current)}
+            <div
+              role="tablist"
+              aria-label="活动素材类型"
+              className="flex border border-border p-0.5"
             >
-              <Sparkles className="h-3 w-3" />
-              批量生成
-            </Button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={assetTab === 'images'}
+                className={`px-3 py-1.5 text-[11px] ${
+                  assetTab === 'images'
+                    ? 'bg-secondary font-medium text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setAssetTab('images')}
+              >
+                图片素材
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={assetTab === 'copy'}
+                className={`px-3 py-1.5 text-[11px] ${
+                  assetTab === 'copy'
+                    ? 'bg-secondary font-medium text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => {
+                  setBatchOpen(false)
+                  setAssetTab('copy')
+                }}
+              >
+                文案素材
+              </button>
+            </div>
+            {assetTab === 'images' && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1 text-[11px]"
+                onClick={() => setBatchOpen((current) => !current)}
+              >
+                <Sparkles className="h-3 w-3" />
+                批量生成
+              </Button>
+            )}
           </div>
-          {batchOpen && (
-            <MarketingImageBatchPanel
+          {assetTab === 'images' ? (
+            <>
+              {batchOpen && (
+                <MarketingImageBatchPanel
+                  campaignId={campaignId}
+                  onCreated={refreshAssets}
+                  onClose={() => setBatchOpen(false)}
+                />
+              )}
+              <MarketingAssetBoard assets={assets} onChanged={refreshAssets} />
+            </>
+          ) : (
+            <MarketingCopyBoard
               campaignId={campaignId}
-              onCreated={refreshAssets}
-              onClose={() => setBatchOpen(false)}
+              language={selected.language}
+              market={selected.market}
             />
           )}
-          <MarketingAssetBoard assets={assets} onChanged={refreshAssets} />
         </div>
       )}
 

@@ -17,6 +17,7 @@
 - get_listing / edit_listing(listing_id) → 回查与编辑 Listing
 - generate_product_image / generate_product_video → 提交异步素材任务
 - create_marketing_video_plan → 生成营销方案与分镜
+- generate_marketing_copy → 生成多平台 A/B 文案资产
 - list_materials → 查询用户素材
 - check_compliance(text) → 合规审查
 - calculate_profit(params) → 净利计算
@@ -38,7 +39,7 @@ from app.services.listing_service import (
     serialize_listing,
     update_listing_content,
 )
-from app.services import agent_capability_service, provider_config
+from app.services import agent_capability_service, marketing_copy_service, provider_config
 from app.services.scraper import scrape_1688
 from app.services.shopify_publish_service import (
     ShopifyPublishError,
@@ -443,6 +444,37 @@ class AgentOrchestrator:
         {
             "type": "function",
             "function": {
+                "name": "generate_marketing_copy",
+                "description": (
+                    "为当前营销活动生成 TikTok、Amazon 和 Shopify 文案，"
+                    "每个平台包含 A/B 两个版本，并持久化为活动文案资产。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "platforms": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": ["tiktok", "amazon", "shopify"],
+                            },
+                        },
+                        "language": {
+                            "type": "string",
+                            "description": "文案语言，如 en、zh",
+                        },
+                        "instructions": {
+                            "type": "string",
+                            "description": "本次文案的补充要求",
+                        },
+                    },
+                    "required": ["platforms"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "push_to_shopify",
                 "description": "发布一个已通过合规审查的 Listing 到 Shopify",
                 "parameters": {
@@ -839,6 +871,7 @@ class AgentOrchestrator:
 - 用户提到图片、主图、场景图 → 用 generate_product_image
 - 用户明确要求生成商品视频并接受积分 → 用 generate_product_video
 - 用户提到营销视频想法、分镜或方案 → 用 create_marketing_video_plan
+- 用户提到广告文案、TikTok/Amazon/Shopify 文案或 A/B 测试 → 用 generate_marketing_copy
 - 用户提到素材、最近图片/视频 → 用 list_materials
 - 用户提到同步 Shopify 销量/库存 → 用 sync_shopify_operations
 - 用户提到利润/成本/计算 → 用 calculate_profit
@@ -908,10 +941,14 @@ class AgentOrchestrator:
    参数: {"source_asset_id": "...", "product_name": "...", "idea": "...", "duration": 15}
    注意: 只生成方案，不自动渲染
 
-18. sync_shopify_operations — 同步 Shopify 订单销量和库存
+18. generate_marketing_copy — 生成多平台 A/B 文案资产
+   参数: {"platforms": ["tiktok", "amazon", "shopify"], "language": "en", "instructions": "..."}
+   注意: 必须在已选择营销活动时使用
+
+19. sync_shopify_operations — 同步 Shopify 订单销量和库存
    参数: {"channel_id": "Shopify 渠道 ID", "days": 30}
 
-19. answer — 【仅当其他工具都不适用时】回答用户问题
+20. answer — 【仅当其他工具都不适用时】回答用户问题
    参数: {"message": "回答内容"}
    注意: 这是最后选项，优先用上面的工具
 
@@ -966,6 +1003,8 @@ class AgentOrchestrator:
                 return await self._do_generate_product_video(params)
             elif action == "create_marketing_video_plan":
                 return await self._do_create_marketing_video_plan(params)
+            elif action == "generate_marketing_copy":
+                return await self._do_generate_marketing_copy(params)
             elif action == "compliance_check":
                 return await self._do_compliance(params)
             elif action == "compliance_fix":
@@ -1358,6 +1397,64 @@ class AgentOrchestrator:
                 }
             ],
             "summary": f"营销方案已生成，预计渲染消耗 {credits} 积分，尚未开始渲染",
+        }
+
+    async def _do_generate_marketing_copy(self, params: dict) -> dict:
+        """生成多平台 A/B 文案并保存到当前活动。"""
+        if not self.campaign_id:
+            return {
+                "action": "generate_marketing_copy",
+                "status": "failed",
+                "error": "请先选择营销活动",
+            }
+        platforms = params.get("platforms") or [
+            "tiktok",
+            "amazon",
+            "shopify",
+        ]
+        if not isinstance(platforms, list):
+            return {
+                "action": "generate_marketing_copy",
+                "status": "failed",
+                "error": "平台参数必须是数组",
+            }
+        try:
+            assets = await marketing_copy_service.generate_marketing_copy_batch(
+                self.db,
+                self.user,
+                campaign_id=UUID(str(self.campaign_id)),
+                platforms=[str(item) for item in platforms],
+                language=str(params.get("language") or "en"),
+                instructions=str(params.get("instructions") or ""),
+            )
+        except (ValueError, PermissionError) as exc:
+            return {
+                "action": "generate_marketing_copy",
+                "status": "failed",
+                "error": str(exc),
+            }
+        return {
+            "action": "generate_marketing_copy",
+            "status": "success",
+            "data": {
+                "batch_id": str(assets[0].batch_id),
+                "count": len(assets),
+                "platforms": sorted({asset.platform for asset in assets}),
+                "variants": sorted({asset.variant_key for asset in assets}),
+                "blocked": sum(
+                    1 for asset in assets if asset.compliance_status == "block"
+                ),
+            },
+            "links": [
+                {
+                    "label": "查看活动文案",
+                    "href": f"/app/marketing-agent?campaign={self.campaign_id}",
+                }
+            ],
+            "summary": (
+                f"已生成 {len(assets)} 条多平台 A/B 文案，"
+                "可在活动文案素材板查看和编辑"
+            ),
         }
 
     async def _do_select_products(self, params: dict) -> dict:

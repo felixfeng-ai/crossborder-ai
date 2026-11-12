@@ -32,6 +32,7 @@ from app.models.operation_alert import OperationAlert
 from app.models.video_generation_task import VideoGenerationTask
 from app.models.marketing_video import MarketingVideoProject, MarketingVideoShot
 from app.models.marketing_campaign import MarketingCampaign
+from app.models.marketing_copy import MarketingCopyAsset
 from app.models.data_retention import DataRetentionRun
 from app.models.shopify_compliance_event import ShopifyComplianceEvent
 from app.models.credit_transaction import CreditTransaction
@@ -74,6 +75,7 @@ __all__ = [
     "MarketingVideoProject",
     "MarketingVideoShot",
     "MarketingCampaign",
+    "MarketingCopyAsset",
     "DataRetentionRun",
     "ShopifyComplianceEvent",
     "CreditTransaction",

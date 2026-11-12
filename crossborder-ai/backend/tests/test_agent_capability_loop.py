@@ -10,6 +10,8 @@ from app.core.config import settings
 from app.models.image_asset import ImageAsset
 from app.models.image_generation_task import ImageGenerationTask
 from app.models.listing_draft import ListingDraft
+from app.models.marketing_campaign import MarketingCampaign
+from app.models.marketing_copy import MarketingCopyAsset
 from app.models.marketing_video import MarketingVideoProject, MarketingVideoShot
 from app.models.product import Product
 from app.models.user import User
@@ -73,10 +75,88 @@ def test_agent_tools_cover_creation_and_material_loop():
         "generate_product_image",
         "generate_product_video",
         "create_marketing_video_plan",
+        "generate_marketing_copy",
         "get_listing",
         "edit_listing",
         "sync_shopify_operations",
     } <= names
+
+
+@pytest.mark.asyncio
+async def test_agent_generates_multi_platform_copy_assets(db_session, monkeypatch):
+    user = await _make_user(db_session, email="agent-loop-copy@test.com")
+    product = Product(
+        user_id=user.id,
+        url="https://detail.1688.com/offer/agent-copy.html",
+        title="DONMIS Holiday Fragrance Gift",
+        description="A factual product description for holiday gifting.",
+        brand_name="DONMIS",
+    )
+    db_session.add(product)
+    await db_session.flush()
+    campaign = MarketingCampaign(
+        user_id=user.id,
+        product_id=product.id,
+        title="Agent copy campaign",
+        objective="conversion",
+        platform="tiktok",
+        market="US",
+        language="en",
+        budget_credits=200,
+        brief_json='{"audience":"holiday gift shoppers"}',
+    )
+    db_session.add(campaign)
+    await db_session.flush()
+
+    async def fake_generate(self, system_prompt, user_prompt, **kwargs):
+        return json.dumps({
+            "items": [
+                {
+                    "platform": platform,
+                    "variant_key": variant,
+                    "headline": f"{platform} headline {variant}",
+                    "body": "Factual holiday gift copy.",
+                    "cta": "Shop now",
+                    "hashtags": ["#HolidayGift"],
+                    "keywords": ["holiday gift"],
+                    "angle": "benefit" if variant == "A" else "emotion",
+                }
+                for platform in ("tiktok", "amazon", "shopify")
+                for variant in ("A", "B")
+            ],
+        })
+
+    monkeypatch.setattr(DeepSeekService, "generate", fake_generate)
+    orchestrator = AgentOrchestrator(
+        user=user,
+        db=db_session,
+        campaign_id=str(campaign.id),
+    )
+
+    result = await orchestrator._execute_step(
+        "generate_marketing_copy",
+        {
+            "platforms": ["tiktok", "amazon", "shopify"],
+            "language": "en",
+            "instructions": "A/B test benefit versus emotion",
+        },
+    )
+
+    assert result["status"] == "success"
+    assert result["data"]["count"] == 6
+    assets = (
+        await db_session.execute(
+            select(MarketingCopyAsset).where(
+                MarketingCopyAsset.campaign_id == campaign.id
+            )
+        )
+    ).scalars().all()
+    assert len(assets) == 6
+    assert {asset.platform for asset in assets} == {
+        "tiktok",
+        "amazon",
+        "shopify",
+    }
 
 
 @pytest.mark.asyncio

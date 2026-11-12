@@ -29,6 +29,12 @@ const LANGUAGES = [
   { code: 'ru', label: 'Русский' },
 ]
 
+interface BillingWalletSummary {
+  plan_credits: number
+  purchased_credits: number
+  total_credits: number
+}
+
 export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
@@ -55,6 +61,20 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
   })
 
   const currentLang = LANGUAGES.find((l) => l.code === i18n.language) || LANGUAGES[0]
+  const walletQuery = useQuery<BillingWalletSummary>({
+    queryKey: ['header-billing-wallet'],
+    queryFn: async () => {
+      const response = await apiClient.get('/billing/wallet')
+      return response.data
+    },
+    enabled: Boolean(user),
+    staleTime: 30_000,
+    retry: false,
+  })
+  const displayedCredits = walletQuery.data?.total_credits ?? user?.credits ?? 0
+  const creditTitle = walletQuery.data
+    ? `套餐积分 ${walletQuery.data.plan_credits.toLocaleString('zh-CN')}，购买积分 ${walletQuery.data.purchased_credits.toLocaleString('zh-CN')}。点击查看账单`
+    : '点击查看套餐与积分明细'
 
   const switchLanguage = (code: string) => {
     i18n.changeLanguage(code)
@@ -149,11 +169,19 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
 
         {/* Credits badge */}
         {user && (
-          <Badge variant="secondary" className="metric-number gap-1 px-2 py-1 text-xs">
-            <CreditCard className="h-3 w-3" />
-            <span>{user.credits}</span>
-            <span className="hidden sm:inline">{t('header.credits')}</span>
-          </Badge>
+          <button
+            type="button"
+            onClick={() => navigate('/app/billing')}
+            title={creditTitle}
+            aria-label={`${displayedCredits} 积分，${creditTitle}`}
+            className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Badge variant="secondary" className="metric-number gap-1 px-2 py-1 text-xs">
+              <CreditCard className="h-3 w-3" />
+              <span>{displayedCredits.toLocaleString('zh-CN')}</span>
+              <span className="hidden sm:inline">{t('header.credits')}</span>
+            </Badge>
+          </button>
         )}
 
         {/* User menu */}

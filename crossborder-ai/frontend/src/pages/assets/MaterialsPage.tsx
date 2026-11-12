@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   Clock3,
   Download,
   FolderOpen,
+  ExternalLink,
   Image as ImageIcon,
   Loader2,
   Play,
+  Trash2,
   Video,
 } from 'lucide-react'
 import apiClient from '@/api/client'
 import { resolveMediaUrl } from '@/lib/apiUrl'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import ConfirmDialog from '@/components/common/ConfirmDialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   buildImageMaterials,
@@ -26,6 +29,7 @@ import {
   type VideoMaterial,
   type VideoTaskInput,
 } from '@/lib/assets/materials'
+import { formatFileSize } from '@/lib/images/workbench'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { cn } from '@/utils/cn'
 
@@ -34,10 +38,14 @@ type ImageFilter = 'all' | ImageMaterial['source']
 type VideoFilter = 'all' | VideoMaterial['source']
 
 export default function MaterialsPage() {
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState('images')
   const [imageFilter, setImageFilter] = useState<ImageFilter>('all')
   const [videoFilter, setVideoFilter] = useState<VideoFilter>('all')
+  const [selectedImageId, setSelectedImageId] = useState('')
   const [selectedVideoId, setSelectedVideoId] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<ImageMaterial | VideoMaterial | null>(null)
+  const [actionError, setActionError] = useState('')
 
   const assetsQuery = useQuery<ImageAssetInput[]>({
     queryKey: ['material-image-assets'],
@@ -92,12 +100,42 @@ export default function MaterialsPage() {
     ? videos
     : videos.filter((item) => item.source === videoFilter)
   const selectedVideo = videos.find((item) => item.id === selectedVideoId) || null
+  const selectedImage = images.find((item) => item.id === selectedImageId) || null
 
   useEffect(() => {
     if (selectedVideoId && !videos.some((item) => item.id === selectedVideoId)) {
       setSelectedVideoId('')
     }
   }, [selectedVideoId, videos])
+
+  useEffect(() => {
+    if (!images.length) {
+      if (selectedImageId) setSelectedImageId('')
+      return
+    }
+    if (!images.some((item) => item.id === selectedImageId)) {
+      setSelectedImageId(images[0].id)
+    }
+  }, [images, selectedImageId])
+
+  const deleteMutation = useMutation({
+    mutationFn: async (target: ImageMaterial | VideoMaterial) => {
+      await apiClient.delete(target.deleteEndpoint)
+    },
+    onMutate: () => setActionError(''),
+    onSuccess: () => {
+      setDeleteTarget(null)
+      setSelectedImageId('')
+      setSelectedVideoId('')
+      queryClient.invalidateQueries({ queryKey: ['material-image-assets'] })
+      queryClient.invalidateQueries({ queryKey: ['material-image-history'] })
+      queryClient.invalidateQueries({ queryKey: ['material-single-videos'] })
+      queryClient.invalidateQueries({ queryKey: ['material-marketing-videos'] })
+      queryClient.invalidateQueries({ queryKey: ['image-assets'] })
+      queryClient.invalidateQueries({ queryKey: ['video-history'] })
+    },
+    onError: (error) => setActionError(toErrorMessage(error, '删除素材失败')),
+  })
 
   const loading =
     assetsQuery.isLoading ||
@@ -130,6 +168,12 @@ export default function MaterialsPage() {
           </Badge>
         </div>
       </div>
+
+      {actionError && (
+        <div className="border border-destructive/35 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {actionError}
+        </div>
+      )}
 
       <section className="border border-border bg-[var(--factory-panel)]">
         <Tabs value={tab} onValueChange={setTab}>
@@ -167,7 +211,20 @@ export default function MaterialsPage() {
                     </FilterButton>
                   ))}
                 </div>
-                <ImageGrid items={visibleImages} />
+                <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_360px]">
+                  <div className="border-b border-border p-4 xl:border-b-0 xl:border-r">
+                    <ImageGrid
+                      items={visibleImages}
+                      selectedId={selectedImageId}
+                      onSelect={setSelectedImageId}
+                      onDelete={setDeleteTarget}
+                    />
+                  </div>
+                  <ImageDetail
+                    material={selectedImage}
+                    onDelete={setDeleteTarget}
+                  />
+                </div>
               </TabsContent>
 
               <TabsContent value="videos" className="m-0">
@@ -201,6 +258,7 @@ export default function MaterialsPage() {
                             item={videoItem}
                             selected={selectedVideoId === videoItem.id}
                             onSelect={() => setSelectedVideoId(videoItem.id)}
+                            onDelete={() => setDeleteTarget(videoItem)}
                           />
                         ))}
                       </div>
@@ -208,19 +266,49 @@ export default function MaterialsPage() {
                       <EmptyMaterials label="当前分类还没有视频素材" />
                     )}
                   </div>
-                  <VideoPreview material={selectedVideo} />
+                  <VideoPreview
+                    material={selectedVideo}
+                    onDelete={setDeleteTarget}
+                  />
                 </div>
               </TabsContent>
             </>
           )}
         </Tabs>
       </section>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={deleteTarget?.type === 'video' ? '删除视频素材？' : '删除图片素材？'}
+        description={
+          deleteTarget
+            ? `将永久删除“${deleteTarget.name}”${
+                deleteTarget.type === 'video' ? '及其本地视频文件' : '及对应素材记录'
+              }，此操作不可恢复。`
+            : ''
+        }
+        pending={deleteMutation.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget)
+        }}
+      />
     </motion.div>
   )
 }
 
 
-function ImageGrid({ items }: { items: ImageMaterial[] }) {
+function ImageGrid({
+  items,
+  selectedId,
+  onSelect,
+  onDelete,
+}: {
+  items: ImageMaterial[]
+  selectedId: string
+  onSelect: (id: string) => void
+  onDelete: (item: ImageMaterial) => void
+}) {
   if (!items.length) {
     return <EmptyMaterials label="当前分类还没有图片素材" />;
   }
@@ -229,47 +317,149 @@ function ImageGrid({ items }: { items: ImageMaterial[] }) {
       {items.map((item) => (
         <article
           key={item.id}
-          className="overflow-hidden border border-border bg-background"
+          className={cn(
+            'relative overflow-hidden border bg-background',
+            selectedId === item.id
+              ? 'border-[color:var(--factory-accent)] ring-1 ring-[color:var(--factory-accent)]'
+              : 'border-border',
+          )}
         >
-          <a
-            href={resolveMediaUrl(item.url)}
-            target="_blank"
-            rel="noreferrer"
-            className="group block aspect-square overflow-hidden bg-[#d9dad5]"
+          <button
+            type="button"
+            className="group block w-full text-left"
+            onClick={() => onSelect(item.id)}
           >
-            <img
-              src={resolveMediaUrl(item.url)}
-              alt={item.name}
-              loading="lazy"
-              className="h-full w-full object-contain p-2 transition-transform duration-200 group-hover:scale-[1.02]"
-            />
-          </a>
-          <div className="space-y-1.5 p-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <p className="truncate text-xs font-medium">{item.name}</p>
-              <Badge variant="outline" className="shrink-0 text-[10px]">
-                {imageSourceLabel(item.source)}
-              </Badge>
+            <span className="group block aspect-square overflow-hidden bg-[#d9dad5]">
+              <img
+                src={resolveMediaUrl(item.url)}
+                alt={item.name}
+                loading="lazy"
+                className="h-full w-full object-contain p-2 transition-transform duration-200 group-hover:scale-[1.02]"
+              />
+            </span>
+            <div className="space-y-1.5 p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-xs font-medium">{item.name}</p>
+                <Badge variant="outline" className="shrink-0 text-[10px]">
+                  {imageSourceLabel(item.source)}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                <span className="metric-number truncate">
+                  {item.width && item.height
+                    ? `${item.width} × ${item.height}`
+                    : item.model || '图片素材'}
+                </span>
+                <ExternalLink className="h-3 w-3 shrink-0" />
+              </div>
             </div>
-            <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-              <span className="metric-number truncate">
-                {item.width && item.height
-                  ? `${item.width} × ${item.height}`
-                  : item.model || '图片素材'}
-              </span>
-              <a
-                href={resolveMediaUrl(item.url)}
-                download
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center hover:text-foreground"
-                aria-label={`下载 ${item.name}`}
-                title="下载图片"
-              >
-                <Download className="h-3.5 w-3.5" />
-              </a>
-            </div>
-          </div>
+          </button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-2 top-2 z-10 h-8 w-8 bg-background/90"
+            aria-label={`删除 ${item.name}`}
+            title="删除素材"
+            onClick={() => onDelete(item)}
+          >
+            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+          </Button>
         </article>
       ))}
+    </div>
+  )
+}
+
+
+function ImageDetail({
+  material,
+  onDelete,
+}: {
+  material: ImageMaterial | null
+  onDelete: (item: ImageMaterial) => void
+}) {
+  return (
+    <div className="p-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="micro-label">图片详情</p>
+        {material && (
+          <div className="flex items-center gap-1">
+            <a
+              href={resolveMediaUrl(material.url)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-8 w-8 items-center justify-center text-muted-foreground hover:text-foreground"
+              aria-label="打开原图"
+              title="打开原图"
+            >
+              <ExternalLink className="h-4 w-4" />
+            </a>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="删除图片素材"
+              title="删除素材"
+              onClick={() => onDelete(material)}
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
+        )}
+      </div>
+      <div className="mt-3 flex min-h-[360px] items-center justify-center border border-border bg-[#d9dad5]">
+        {material ? (
+          <img
+            src={resolveMediaUrl(material.url)}
+            alt={material.name}
+            className="max-h-[520px] w-full object-contain p-3"
+          />
+        ) : (
+          <div className="text-center text-xs text-muted-foreground">
+            <ImageIcon className="mx-auto mb-2 h-6 w-6" />
+            选择一个图片素材
+          </div>
+        )}
+      </div>
+      {material && (
+        <div className="mt-3 space-y-3">
+          <div>
+            <p className="truncate text-sm font-medium">{material.name}</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {imageSourceLabel(material.source)}
+            </p>
+          </div>
+          <dl className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="border border-border p-2">
+              <dt className="text-muted-foreground">尺寸</dt>
+              <dd className="metric-number mt-1">
+                {material.width && material.height
+                  ? `${material.width} × ${material.height}`
+                  : '-'}
+              </dd>
+            </div>
+            <div className="border border-border p-2">
+              <dt className="text-muted-foreground">文件</dt>
+              <dd className="metric-number mt-1">
+                {formatFileSize(material.fileSize)}
+              </dd>
+            </div>
+            <div className="border border-border p-2">
+              <dt className="text-muted-foreground">模型</dt>
+              <dd className="mt-1 truncate">{material.model || '-'}</dd>
+            </div>
+            <div className="border border-border p-2">
+              <dt className="text-muted-foreground">创建时间</dt>
+              <dd className="mt-1">{new Date(material.createdAt).toLocaleDateString('zh-CN')}</dd>
+            </div>
+          </dl>
+          {material.prompt && (
+            <div className="border border-border bg-background p-2.5">
+              <p className="text-[10px] text-muted-foreground">生成提示词</p>
+              <p className="mt-1 whitespace-pre-wrap text-xs leading-5">{material.prompt}</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -279,41 +469,63 @@ function VideoRow({
   item,
   selected,
   onSelect,
+  onDelete,
 }: {
   item: VideoMaterial
   selected: boolean
   onSelect: () => void
+  onDelete: () => void
 }) {
   return (
-    <button
-      type="button"
+    <article
       className={cn(
-        'flex min-h-24 items-center gap-3 border p-3 text-left transition-colors',
+        'relative flex min-h-24 items-center gap-3 border p-3 text-left transition-colors',
         selected
           ? 'border-[color:var(--factory-accent)] bg-[color:var(--factory-accent)]/5'
           : 'border-border hover:bg-accent/50',
       )}
-      onClick={onSelect}
     >
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
-        <Play className="ml-0.5 h-4 w-4" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{item.name}</span>
-        <span className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-          <span>{item.source === 'marketing' ? '营销成片' : '商品图生视频'}</span>
-          <span>·</span>
-          <span className="metric-number">{item.duration}s</span>
-          <span>·</span>
-          <span className="metric-number">{item.resolution}</span>
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        onClick={onSelect}
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
+          <Play className="ml-0.5 h-4 w-4" />
         </span>
-      </span>
-    </button>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate pr-7 text-sm font-medium">{item.name}</span>
+          <span className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+            <span>{item.source === 'marketing' ? '营销成片' : '商品图生视频'}</span>
+            <span>·</span>
+            <span className="metric-number">{item.duration}s</span>
+            <span>·</span>
+            <span className="metric-number">{item.resolution}</span>
+          </span>
+        </span>
+      </button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute right-2 top-2 h-8 w-8"
+        aria-label={`删除 ${item.name}`}
+        title="删除视频"
+        onClick={onDelete}
+      >
+        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+      </Button>
+    </article>
   )
 }
 
 
-function VideoPreview({ material }: { material: VideoMaterial | null }) {
+function VideoPreview({
+  material,
+  onDelete,
+}: {
+  material: VideoMaterial | null
+  onDelete: (item: VideoMaterial) => void
+}) {
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
   const [downloading, setDownloading] = useState(false)
@@ -370,18 +582,29 @@ function VideoPreview({ material }: { material: VideoMaterial | null }) {
       <div className="flex items-center justify-between gap-2">
         <p className="micro-label">视频预览</p>
         {material && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={download}
-            disabled={downloading}
-            aria-label="下载视频"
-            title="下载视频"
-          >
-            {downloading
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <Download className="h-4 w-4" />}
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={download}
+              disabled={downloading}
+              aria-label="下载视频"
+              title="下载视频"
+            >
+              {downloading
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Download className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onDelete(material)}
+              aria-label="删除视频素材"
+              title="删除视频"
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
         )}
       </div>
       <div className="mt-3 flex min-h-[360px] items-center justify-center border border-border bg-[var(--factory-ground)]">
@@ -405,12 +628,34 @@ function VideoPreview({ material }: { material: VideoMaterial | null }) {
         )}
       </div>
       {material && (
-        <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-          <span className="truncate">{material.name}</span>
-          <span className="metric-number shrink-0 flex items-center gap-1">
-            <Clock3 className="h-3 w-3" />
-            {material.duration}s · {material.resolution}
-          </span>
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+            <span className="truncate">{material.name}</span>
+            <span className="metric-number shrink-0 flex items-center gap-1">
+              <Clock3 className="h-3 w-3" />
+              {material.duration}s · {material.resolution}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="border border-border p-2">
+              <p className="text-muted-foreground">素材来源</p>
+              <p className="mt-1">
+                {material.source === 'marketing' ? '营销成片项目' : '商品图生视频任务'}
+              </p>
+            </div>
+            <div className="border border-border p-2">
+              <p className="text-muted-foreground">模型</p>
+              <p className="mt-1 truncate">{material.model}</p>
+            </div>
+            <div className="border border-border p-2">
+              <p className="text-muted-foreground">创建时间</p>
+              <p className="mt-1">{new Date(material.createdAt).toLocaleDateString('zh-CN')}</p>
+            </div>
+            <div className="border border-border p-2">
+              <p className="text-muted-foreground">文件</p>
+              <p className="mt-1">MP4</p>
+            </div>
+          </div>
         </div>
       )}
     </div>

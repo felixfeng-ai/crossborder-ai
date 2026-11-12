@@ -6,6 +6,7 @@ export interface ImageAssetInput {
   width: number
   height: number
   file_size: number
+  platform?: string | null
   created_at: string
 }
 
@@ -52,6 +53,9 @@ export interface ImageMaterial {
   height?: number
   prompt?: string
   model?: string
+  fileSize?: number
+  platform?: string | null
+  deleteEndpoint: string
 }
 
 export interface VideoMaterial {
@@ -64,6 +68,7 @@ export interface VideoMaterial {
   model: string
   resolution: string
   fileEndpoint: string
+  deleteEndpoint: string
 }
 
 const IMAGE_SOURCE_LABELS: Record<ImageMaterial['source'], string> = {
@@ -89,6 +94,9 @@ export function buildImageMaterials(
     createdAt: asset.created_at,
     width: asset.width,
     height: asset.height,
+    fileSize: asset.file_size,
+    platform: asset.platform,
+    deleteEndpoint: `/images/assets/${asset.id}`,
   }))
   const generated: ImageMaterial[] = history.flatMap((task) =>
     (task.image_urls || []).map((url, index) => ({
@@ -100,6 +108,7 @@ export function buildImageMaterials(
       createdAt: task.created_at,
       prompt: task.prompt,
       model: task.model_used,
+      deleteEndpoint: `/images/history/${task.task_id}`,
     })),
   )
   return [...local, ...generated].sort(
@@ -123,6 +132,7 @@ export function buildVideoMaterials(
       model: task.model,
       resolution: task.resolution,
       fileEndpoint: `/videos/tasks/${task.id}/file`,
+      deleteEndpoint: `/videos/tasks/${task.id}`,
     }))
   const marketing: VideoMaterial[] = marketingProjects
     .filter((project) => project.status === 'succeeded')
@@ -136,6 +146,7 @@ export function buildVideoMaterials(
       model: project.model,
       resolution: project.resolution,
       fileEndpoint: `/marketing-videos/projects/${project.id}/file`,
+      deleteEndpoint: `/marketing-videos/projects/${project.id}`,
     }))
   return [...marketing, ...single].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),

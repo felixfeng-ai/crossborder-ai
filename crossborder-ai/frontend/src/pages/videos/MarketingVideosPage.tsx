@@ -332,7 +332,12 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
           <div className="p-4">
             <div className="flex items-center justify-between gap-2">
               <Label>商品首帧</Label>
-              <span className="text-xs text-muted-foreground">{assets.length} 张素材</span>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>{assets.length} 张素材</span>
+                <a href="/app/images" className="text-foreground underline underline-offset-2">
+                  管理素材
+                </a>
+              </div>
             </div>
             {assets.length > 0 ? (
               <div className="mt-2 grid grid-cols-5 gap-2">
@@ -370,6 +375,11 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
                 <ImageIcon className="h-4 w-4" />
                 去图片工作台上传商品图
               </a>
+            )}
+            {assets.length > 0 && (
+              <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
+                首帧来自图片工作台的上传图和白底图。点击缩略图即可更换当前首帧。
+              </p>
             )}
             <div className="mt-3 space-y-1.5">
               <Label htmlFor="marketing-product-name">商品名称</Label>

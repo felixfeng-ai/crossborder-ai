@@ -476,3 +476,31 @@ async def list_history(
         )
         for t in tasks
     ]
+
+
+@router.delete("/history/{task_id}", status_code=204)
+async def delete_history_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除已完成或失败的 AI 图片生成记录。"""
+    try:
+        parsed_id = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="图片任务不存在")
+    task = (
+        await db.execute(
+            select(ImageGenerationTask).where(
+                ImageGenerationTask.id == parsed_id,
+                ImageGenerationTask.user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="图片任务不存在")
+    if task.status in {"pending", "processing"}:
+        raise HTTPException(status_code=409, detail="图片任务仍在运行，暂时不能删除")
+    await db.delete(task)
+    await db.flush()
+    return None

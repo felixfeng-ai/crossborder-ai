@@ -11,11 +11,13 @@ import {
   Play,
   Sparkles,
   Square,
+  Trash2,
   Video,
 } from 'lucide-react'
 import apiClient from '@/api/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import ConfirmDialog from '@/components/common/ConfirmDialog'
 import { Label } from '@/components/ui/label'
 import {
   estimateVideoCredits,
@@ -51,6 +53,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
   const [duration, setDuration] = useState(4)
   const [prompt, setPrompt] = useState('')
   const [actionError, setActionError] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<VideoTask | null>(null)
 
   const capabilitiesQuery = useQuery<VideoCapabilities>({
     queryKey: ['video-capabilities'],
@@ -164,6 +167,20 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['video-history'] }),
     onError: (error) => setActionError(toErrorMessage(error, '取消任务失败')),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (task: VideoTask) => {
+      await apiClient.delete(`/videos/tasks/${task.id}`)
+    },
+    onMutate: () => setActionError(''),
+    onSuccess: () => {
+      setDeleteTarget(null)
+      setSelectedTaskId('')
+      queryClient.invalidateQueries({ queryKey: ['video-history'] })
+      queryClient.invalidateQueries({ queryKey: ['material-single-videos'] })
+    },
+    onError: (error) => setActionError(toErrorMessage(error, '删除视频失败')),
   })
 
   const downloadVideo = async () => {
@@ -307,7 +324,12 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <Label>商品首帧</Label>
-                <span className="text-xs text-muted-foreground">{assets.length} 张素材</span>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{assets.length} 张素材</span>
+                  <a href="/app/images" className="text-foreground underline underline-offset-2">
+                    管理素材
+                  </a>
+                </div>
               </div>
               {assets.length > 0 ? (
                 <div className="grid grid-cols-4 gap-2">
@@ -342,6 +364,11 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
                   <ImageIcon className="h-4 w-4" />
                   先到图片工作台上传商品图
                 </a>
+              )}
+              {assets.length > 0 && (
+                <p className="text-[10px] leading-4 text-muted-foreground">
+                  首帧来自图片工作台的上传图和白底图。点击缩略图即可更换。
+                </p>
               )}
             </div>
 
@@ -475,42 +502,58 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
         {history.length > 0 ? (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
             {history.map((task) => (
-              <button
+              <article
                 key={task.id}
-                type="button"
                 className={cn(
-                  'overflow-hidden border text-left transition-colors',
+                  'relative overflow-hidden border text-left transition-colors',
                   selectedTaskId === task.id
                     ? 'border-[color:var(--factory-accent)] bg-[color:var(--factory-accent)]/5'
                     : 'border-border bg-[var(--factory-panel)] hover:bg-accent/50',
                 )}
-                onClick={() => setSelectedTaskId(task.id)}
               >
-                <div className="relative flex aspect-[9/12] items-center justify-center overflow-hidden bg-[var(--factory-ground)]">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-secondary">
-                    {task.status === 'running' || task.status === 'queued' ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-[color:var(--factory-accent)]" />
-                    ) : task.status === 'succeeded' ? (
-                      <Play className="ml-0.5 h-5 w-5" />
-                    ) : (
-                      <CircleAlert className="h-5 w-5 text-[color:var(--factory-coral)]" />
-                    )}
+                <button
+                  type="button"
+                  className="block w-full text-left"
+                  onClick={() => setSelectedTaskId(task.id)}
+                >
+                  <div className="relative flex aspect-[9/12] items-center justify-center overflow-hidden bg-[var(--factory-ground)]">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-secondary">
+                      {task.status === 'running' || task.status === 'queued' ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-[color:var(--factory-accent)]" />
+                      ) : task.status === 'succeeded' ? (
+                        <Play className="ml-0.5 h-5 w-5" />
+                      ) : (
+                        <CircleAlert className="h-5 w-5 text-[color:var(--factory-coral)]" />
+                      )}
+                    </div>
+                    <Badge
+                      variant="secondary"
+                      className="absolute left-2 top-2 border border-border bg-background/90 text-[10px]"
+                    >
+                      {videoStatusLabel(task.status)}
+                    </Badge>
                   </div>
-                  <Badge
-                    variant="secondary"
-                    className="absolute left-2 top-2 border border-border bg-background/90 text-[10px]"
+                  <div className="space-y-1 p-2.5">
+                    <p className="truncate pr-7 text-xs font-medium">{task.model}</p>
+                    <p className="metric-number flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Clock3 className="h-3 w-3" />
+                      {task.duration}s · {task.resolution}
+                    </p>
+                  </div>
+                </button>
+                {!hasActiveTask(task) && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-2 top-2 h-8 w-8 bg-background/90"
+                    aria-label={`删除视频 ${task.id}`}
+                    title="删除视频素材"
+                    onClick={() => setDeleteTarget(task)}
                   >
-                    {videoStatusLabel(task.status)}
-                  </Badge>
-                </div>
-                <div className="space-y-1 p-2.5">
-                  <p className="truncate text-xs font-medium">{task.model}</p>
-                  <p className="metric-number flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <Clock3 className="h-3 w-3" />
-                    {task.duration}s · {task.resolution}
-                  </p>
-                </div>
-              </button>
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
+                )}
+              </article>
             ))}
           </div>
         ) : (
@@ -520,6 +563,17 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
           </div>
         )}
       </section>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="删除视频素材？"
+        description={`将删除视频任务“${deleteTarget?.id.slice(0, 8) || ''}”及其本地 MP4，此操作不可恢复。营销项目镜头请从素材中心删除整个项目。`}
+        pending={deleteMutation.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget)
+        }}
+      />
     </motion.div>
   )
 }

@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.models.image_asset import ImageAsset
+from app.models.marketing_video import MarketingVideoShot
 from app.models.user import User
 from app.models.video_generation_task import VideoGenerationTask
 from app.services.minimax_video import (
@@ -269,10 +270,16 @@ async def list_video_history(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    marketing_task_ids = select(MarketingVideoShot.video_task_id).where(
+        MarketingVideoShot.video_task_id.is_not(None)
+    )
     tasks = (
         await db.execute(
             select(VideoGenerationTask)
-            .where(VideoGenerationTask.user_id == current_user.id)
+            .where(
+                VideoGenerationTask.user_id == current_user.id,
+                VideoGenerationTask.id.not_in(marketing_task_ids),
+            )
             .order_by(
                 desc(VideoGenerationTask.created_at),
                 desc(VideoGenerationTask.id),
@@ -281,6 +288,36 @@ async def list_video_history(
         )
     ).scalars().all()
     return [_serialize_task(task) for task in tasks]
+
+
+@router.delete("/tasks/{task_id}", status_code=204)
+async def delete_video_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除终态单镜头视频；营销项目镜头必须随项目一起删除。"""
+    task = await _get_owned_task(db, task_id, current_user.id)
+    if task.status in {"queued", "running"}:
+        raise HTTPException(status_code=409, detail="视频任务仍在运行，暂时不能删除")
+    used_by_marketing = (
+        await db.execute(
+            select(MarketingVideoShot.id).where(
+                MarketingVideoShot.video_task_id == task.id
+            )
+        )
+    ).scalar_one_or_none()
+    if used_by_marketing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="该视频属于营销成片项目，请从专业分镜或营销成片中删除",
+        )
+    path = _task_path(task.storage_key) if task.storage_key else None
+    await db.delete(task)
+    await db.flush()
+    if path is not None and path.is_file():
+        path.unlink()
+    return None
 
 
 @router.post("/tasks/{task_id}/cancel", response_model=VideoTaskResponse)

@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import ConfirmDialog from '@/components/common/ConfirmDialog'
 import apiClient from '@/api/client'
 import { waitForImageTask, type ImageTaskStatus } from '@/lib/images/taskPolling'
 import {
@@ -52,6 +53,7 @@ export default function ImagesPage() {
   const [prompt, setPrompt] = useState('')
   const [actionError, setActionError] = useState('')
   const [dragging, setDragging] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<WorkbenchLibraryItem | null>(null)
 
   const assetsQuery = useQuery<WorkbenchAsset[]>({
     queryKey: ['image-assets'],
@@ -135,13 +137,19 @@ export default function ImagesPage() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedAsset) return
-      await apiClient.delete(`/images/assets/${selectedAsset.id}`)
+    mutationFn: async (item: WorkbenchLibraryItem) => {
+      if (item.kind === 'generated') {
+        if (!item.taskId) throw new Error('AI 图片记录缺少任务 ID')
+        await apiClient.delete(`/images/history/${item.taskId}`)
+        return
+      }
+      await apiClient.delete(`/images/assets/${item.id}`)
     },
     onSuccess: () => {
       setSelectedId('')
+      setDeleteTarget(null)
       queryClient.invalidateQueries({ queryKey: ['image-assets'] })
+      queryClient.invalidateQueries({ queryKey: ['image-generation-history'] })
     },
     onError: (error) => setActionError(toErrorMessage(error, '删除失败')),
   })
@@ -297,29 +305,71 @@ export default function ImagesPage() {
                 >
                   <Download className="h-4 w-4" />
                 </a>
-                {selectedAsset && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    title="删除素材"
-                    aria-label="删除素材"
-                    disabled={deleteMutation.isPending}
-                    onClick={() => deleteMutation.mutate()}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="删除素材"
+                  aria-label="删除素材"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => setDeleteTarget(selected)}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
               </div>
             )}
           </CardHeader>
           <CardContent className="p-3 sm:p-5">
             {selected ? (
-              <div className="flex min-h-[360px] items-center justify-center rounded-md border border-border bg-[#d9dad5] p-4 sm:min-h-[520px]">
-                <img
-                  src={resolveMediaUrl(selected.image_url)}
-                  alt={selected.name}
-                  className="max-h-[500px] max-w-full object-contain"
-                />
+              <div className="space-y-3">
+                <div className="flex min-h-[360px] items-center justify-center rounded-md border border-border bg-[#d9dad5] p-4 sm:min-h-[520px]">
+                  <img
+                    src={resolveMediaUrl(selected.image_url)}
+                    alt={selected.name}
+                    className="max-h-[500px] max-w-full object-contain"
+                  />
+                </div>
+                <dl className="grid gap-3 border border-border bg-background p-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <dt className="text-muted-foreground">素材来源</dt>
+                    <dd className="mt-1 font-medium">
+                      {selected.kind === 'upload'
+                        ? '图片工作台上传'
+                        : selected.kind === 'processed'
+                          ? '白底图处理'
+                          : 'AI 生成记录'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">尺寸</dt>
+                    <dd className="metric-number mt-1 font-medium">
+                      {selected.width && selected.height
+                        ? `${selected.width} × ${selected.height}`
+                        : '-'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">文件大小</dt>
+                    <dd className="metric-number mt-1 font-medium">
+                      {formatFileSize(selected.file_size)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">创建时间</dt>
+                    <dd className="mt-1 font-medium">
+                      {new Date(selected.created_at).toLocaleString('zh-CN')}
+                    </dd>
+                  </div>
+                </dl>
+                {(selected.prompt || selected.model) && (
+                  <div className="border border-border bg-background px-3 py-2.5">
+                    <p className="text-[11px] text-muted-foreground">
+                      {selected.model || 'AI 图片'}
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap text-xs leading-6">
+                      {selected.prompt || '无提示词记录'}
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <button
@@ -454,6 +504,7 @@ export default function ImagesPage() {
                 item={item}
                 selected={item.id === selectedId}
                 onSelect={() => setSelectedId(item.id)}
+                onDelete={() => setDeleteTarget(item)}
               />
             ))}
           </div>
@@ -470,6 +521,21 @@ export default function ImagesPage() {
           </Card>
         )}
       </section>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={deleteTarget?.kind === 'generated' ? '删除 AI 图片记录？' : '删除这张图片？'}
+        description={
+          deleteTarget?.kind === 'generated'
+            ? `将删除“${deleteTarget.prompt || deleteTarget.name}”对应的整条生成记录和全部结果，此操作不可恢复。`
+            : `将删除“${deleteTarget?.name || '当前素材'}”及其存储文件，引用该素材的视频任务会失去首帧关联。`
+        }
+        pending={deleteMutation.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget)
+        }}
+      />
     </motion.div>
   )
 }
@@ -478,38 +544,53 @@ function AssetCard({
   item,
   selected,
   onSelect,
+  onDelete,
 }: {
   item: WorkbenchLibraryItem
   selected: boolean
   onSelect: () => void
+  onDelete: () => void
 }) {
   const kindLabel = item.kind === 'upload' ? '原图' : item.kind === 'processed' ? '白底图' : 'AI 生成'
 
   return (
-    <button
-      type="button"
-      className={`group overflow-hidden rounded-lg border text-left transition-colors ${
+    <article
+      className={`group relative overflow-hidden rounded-lg border text-left transition-colors ${
         selected ? 'border-primary bg-primary/5' : 'border-border bg-card hover:bg-accent/40'
       }`}
-      onClick={onSelect}
     >
-      <div className="relative aspect-square bg-[#d9dad5]">
-        <img
-          src={resolveMediaUrl(item.image_url)}
-          alt={item.name}
-          loading="lazy"
-          className="h-full w-full object-contain p-2 transition-transform duration-200 group-hover:scale-[1.02]"
-        />
-        <Badge variant="secondary" className="absolute left-2 top-2 border border-black/10 bg-white/90 text-[10px] text-black">
-          {kindLabel}
-        </Badge>
-      </div>
-      <div className="space-y-1 p-2.5">
-        <p className="truncate text-xs font-medium">{item.name}</p>
-        <p className="truncate text-[11px] text-muted-foreground">
-          {item.width && item.height ? `${item.width} × ${item.height}` : item.platform || '-'}
-        </p>
-      </div>
-    </button>
+      <button type="button" className="block w-full text-left" onClick={onSelect}>
+        <div className="relative aspect-square bg-[#d9dad5]">
+          <img
+            src={resolveMediaUrl(item.image_url)}
+            alt={item.name}
+            loading="lazy"
+            className="h-full w-full object-contain p-2 transition-transform duration-200 group-hover:scale-[1.02]"
+          />
+          <Badge variant="secondary" className="absolute left-2 top-2 border border-black/10 bg-white/90 text-[10px] text-black">
+            {kindLabel}
+          </Badge>
+        </div>
+        <div className="space-y-1 p-2.5">
+          <p className="truncate text-xs font-medium">{item.name}</p>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {item.width && item.height ? `${item.width} × ${item.height}` : item.platform || '-'}
+          </p>
+        </div>
+      </button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute right-2 top-2 z-10 h-8 w-8 bg-background/90"
+        title="删除素材"
+        aria-label={`删除 ${item.name}`}
+        onClick={(event) => {
+          event.stopPropagation()
+          onDelete()
+        }}
+      >
+        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+      </Button>
+    </article>
   )
 }

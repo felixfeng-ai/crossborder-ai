@@ -317,7 +317,12 @@ export default function ProfessionalStoryboardPage() {
             <div>
               <div className="flex items-center justify-between gap-2">
                 <Label>商品首帧</Label>
-                <span className="text-[11px] text-muted-foreground">{assets.length} 张素材</span>
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <span>{assets.length} 张素材</span>
+                  <a href="/app/images" className="text-foreground underline underline-offset-2">
+                    管理素材
+                  </a>
+                </div>
               </div>
               {assets.length ? (
                 <div className="mt-2 grid grid-cols-5 gap-2">
@@ -355,6 +360,11 @@ export default function ProfessionalStoryboardPage() {
                   <ImageIcon className="h-4 w-4" />
                   去图片工作台上传商品首帧
                 </a>
+              )}
+              {assets.length > 0 && (
+                <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
+                  首帧取自图片工作台的上传图或白底图，点击缩略图切换。
+                </p>
               )}
             </div>
 

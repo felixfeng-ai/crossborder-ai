@@ -47,6 +47,8 @@ describe('material center normalization', () => {
       type: 'image',
       source: 'generated',
       name: 'AI 生成图',
+      deleteEndpoint: '/images/history/ai-1',
+      prompt: 'studio product photo',
     })
     expect(items.every((item) => item.type === 'image')).toBe(true)
   })
@@ -106,10 +108,12 @@ describe('material center normalization', () => {
       type: 'video',
       source: 'marketing',
       name: 'Terra campaign',
+      deleteEndpoint: '/marketing-videos/projects/marketing-1',
     })
     expect(items[1]).toMatchObject({
       type: 'video',
       source: 'single',
+      deleteEndpoint: '/videos/tasks/single-1',
     })
   })
 })

@@ -30,6 +30,9 @@ export interface WorkbenchLibraryItem {
   height: number | null
   file_size: number | null
   platform?: string | null
+  taskId?: string
+  prompt?: string
+  model?: string
   created_at: string
 }
 
@@ -59,6 +62,9 @@ export function buildLibraryItems(
       height: null,
       file_size: null,
       platform: 'AI',
+      taskId: task.task_id,
+      prompt: task.prompt,
+      model: task.model_used,
       created_at: task.created_at,
     })),
   )

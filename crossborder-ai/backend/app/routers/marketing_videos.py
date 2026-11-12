@@ -582,6 +582,47 @@ async def cancel_project(
     return await _serialize_project(db, project)
 
 
+@router.delete("/projects/{project_id}", status_code=204)
+async def delete_marketing_project(
+    project_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除终态营销项目，并清理项目镜头与本地视频文件。"""
+    project = await _owned_project(db, project_id, current_user.id)
+    if project.status == "rendering":
+        raise HTTPException(status_code=409, detail="营销视频仍在生成，暂时不能删除")
+    shots = await _project_shots(db, project)
+    task_ids = [shot.video_task_id for shot in shots if shot.video_task_id]
+    tasks = (
+        await db.execute(
+            select(VideoGenerationTask).where(
+                VideoGenerationTask.id.in_(task_ids),
+                VideoGenerationTask.user_id == current_user.id,
+            )
+        )
+    ).scalars().all() if task_ids else []
+    paths: list[Path] = []
+    if project.final_storage_key:
+        paths.append(_project_file_path(project.final_storage_key))
+    for task in tasks:
+        if task.storage_key:
+            paths.append(_project_file_path(task.storage_key))
+
+    for shot in shots:
+        await db.delete(shot)
+    await db.flush()
+    await db.delete(project)
+    await db.flush()
+    for task in tasks:
+        await db.delete(task)
+    await db.flush()
+    for path in paths:
+        if path.is_file():
+            path.unlink()
+    return None
+
+
 @router.get("/projects/{project_id}/file")
 async def get_marketing_project_file(
     project_id: str,

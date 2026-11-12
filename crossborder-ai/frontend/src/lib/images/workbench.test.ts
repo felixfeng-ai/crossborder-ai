@@ -48,6 +48,11 @@ describe('image workbench helpers', () => {
       'upload',
     ])
     expect(items[0].name).toContain('AI 生成')
+    expect(items[0]).toMatchObject({
+      taskId: 'task-1',
+      prompt: 'product photo',
+      model: 'wanx',
+    })
   })
 
   it('格式化素材文件大小', () => {

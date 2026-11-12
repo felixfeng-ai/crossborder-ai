@@ -30,6 +30,10 @@ import {
 } from '@/lib/images/workbench'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { resolveMediaUrl } from '@/lib/apiUrl'
+import {
+  imageUploadErrorMessage,
+  validateImageUpload,
+} from '@/lib/images/upload'
 
 interface PlatformPreset {
   id: string
@@ -108,7 +112,11 @@ export default function ImagesPage() {
     mutationFn: async (file: File) => {
       const formData = new FormData()
       formData.append('file', file)
-      const response = await apiClient.post<WorkbenchAsset>('/images/assets/upload', formData)
+      const response = await apiClient.post<WorkbenchAsset>(
+        '/images/assets/upload',
+        formData,
+        { timeout: 60_000 },
+      )
       return response.data
     },
     onMutate: () => setActionError(''),
@@ -116,7 +124,7 @@ export default function ImagesPage() {
       queryClient.invalidateQueries({ queryKey: ['image-assets'] })
       setSelectedId(asset.id)
     },
-    onError: (error) => setActionError(toErrorMessage(error, '图片上传失败')),
+    onError: (error) => setActionError(imageUploadErrorMessage(error)),
   })
 
   const processMutation = useMutation({
@@ -177,7 +185,14 @@ export default function ImagesPage() {
 
   const chooseFile = (files?: FileList | null) => {
     const file = files?.[0]
-    if (file) uploadMutation.mutate(file)
+    if (!file) return
+    const validationError = validateImageUpload(file)
+    if (validationError) {
+      setActionError(validationError)
+      return
+    }
+    setActionError('')
+    uploadMutation.mutate(file)
   }
 
   const copySelectedUrl = async () => {
@@ -202,7 +217,7 @@ export default function ImagesPage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
         className="hidden"
         onChange={(event) => {
           chooseFile(event.target.files)

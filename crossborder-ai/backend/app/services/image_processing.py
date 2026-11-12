@@ -130,7 +130,8 @@ def normalize_uploaded_image(data: bytes, max_bytes: int) -> tuple[bytes, int, i
 
             rgba = image.convert("RGBA")
             output = io.BytesIO()
-            rgba.save(output, format="WEBP", quality=94, method=6)
+            # method=6 压缩率略高但大图耗时明显更长，容易触发客户端超时。
+            rgba.save(output, format="WEBP", quality=90, method=4)
             return output.getvalue(), width, height
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
         raise ValueError("无法识别图片，请上传 JPEG、PNG 或 WebP 文件") from exc

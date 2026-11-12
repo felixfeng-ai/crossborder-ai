@@ -5,8 +5,16 @@ import {
   AlertCircle,
   ArrowRight,
   CheckCircle2,
+  ChevronRight,
   CreditCard,
+  FileText,
+  Film,
+  Image as ImageIcon,
   Loader2,
+  Mic2,
+  PackageCheck,
+  Play,
+  Search,
   Sparkles,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -17,6 +25,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/cn'
 
 type BillingCycle = 'monthly' | 'annual'
+type OutputMode = 'video' | 'image' | 'listing'
 
 interface Plan {
   id: string
@@ -143,10 +152,51 @@ function formatCampaignRange(startsAt: string, endsAt: string) {
   return `${formatter.format(new Date(startsAt))} 至 ${formatter.format(end)}`
 }
 
+const PLAN_ROLES: Record<string, string> = {
+  free: '验证一条链路',
+  standard: '日常运营提效',
+  professional: '稳定生产内容',
+}
+
+const OUTPUT_OPTIONS: Array<{
+  id: OutputMode
+  label: string
+  icon: typeof Film
+  count: string
+  unit: string
+  detail: string
+}> = [
+  {
+    id: 'video',
+    label: '营销成片',
+    icon: Film,
+    count: '13',
+    unit: '条',
+    detail: '30 秒 / 768P / 8 镜头',
+  },
+  {
+    id: 'image',
+    label: '商品图',
+    icon: ImageIcon,
+    count: '666',
+    unit: '张',
+    detail: '3 积分 / 张',
+  },
+  {
+    id: 'listing',
+    label: 'Listing',
+    icon: FileText,
+    count: '2,000',
+    unit: '份',
+    detail: '1 积分 / 份',
+  },
+]
+
 export default function BillingPage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly')
+  const [outputMode, setOutputMode] = useState<OutputMode>('video')
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
   const [selectedPack, setSelectedPack] = useState<string | null>(null)
   const [contact, setContact] = useState('')
@@ -249,83 +299,240 @@ export default function BillingPage() {
         <div>
           <h1 className="text-[26px] font-semibold leading-tight">账单与套餐</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            按月获得套餐积分，购买积分长期保留
+            选择计划、查看积分消耗，并确认每一笔升级
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span className="border border-border px-3 py-2">
-            当前套餐 <strong className="ml-1 text-foreground">{currentPlanName}</strong>
+        {campaignActive && (
+          <span className="inline-flex items-center gap-2 border border-[color:var(--factory-accent)]/35 px-3 py-2 text-xs text-[color:var(--factory-accent)]">
+            <Sparkles className="h-3.5 w-3.5" />
+            {campaign && formatCampaignRange(campaign.starts_at, campaign.ends_at)}
           </span>
-          <span className="border border-border px-3 py-2">
-            可用积分{' '}
-            <strong className="metric-number ml-1 text-foreground">
-              {formatCreditTotal(wallet?.total_credits ?? user.credits)}
-            </strong>
-          </span>
-        </div>
+        )}
       </div>
 
-      {campaignActive ? (
-        <section className="relative grid overflow-hidden rounded-lg border border-[color:var(--factory-accent)]/35 bg-[var(--factory-surface-raised)] p-6 md:grid-cols-[minmax(0,1fr)_300px] md:gap-8 md:p-7">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--factory-accent)]">
-              <Sparkles className="h-3.5 w-3.5" />
-              {campaign?.name} · {campaign && formatCampaignRange(campaign.starts_at, campaign.ends_at)}
-            </div>
-            <h2 className="mt-3 max-w-[620px] text-balance text-[clamp(28px,3vw,40px)] font-semibold leading-[1.2]">
-              把 AI 用在能出结果的地方
-            </h2>
-            <p className="mt-2 max-w-[660px] text-sm leading-7 text-muted-foreground">
-              {firstMonthEligible
-                ? '新客首月 8 折，Professional 再送 100 积分。年付买 10 个月送 2 个月。'
-                : '年付买 10 个月送 2 个月，购买积分长期保留。'}
-            </p>
-            <div className="mt-5 grid gap-2 text-xs text-muted-foreground sm:flex sm:flex-wrap sm:gap-6">
-              <span>新客首月 <strong className="text-foreground">最高省 ¥50</strong></span>
-              <span>年付最高 <strong className="text-foreground">省 ¥498</strong></span>
-              <span>首购体验包 <strong className="text-foreground">50 积分 / ¥9.9</strong></span>
-            </div>
+      <section className="grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-[var(--factory-surface)] xl:grid-cols-4" aria-label="当前账户状态">
+        {[
+          ['当前套餐', currentPlanName],
+          ['套餐积分', formatCreditTotal(wallet?.plan_credits ?? 0)],
+          ['购买积分', formatCreditTotal(wallet?.purchased_credits ?? 0)],
+          ['套餐到期', currentPlan?.id === 'free' ? '长期' : packageExpires],
+        ].map(([label, value], index) => (
+          <div
+            key={label}
+            className={cn(
+              'min-w-0 px-4 py-3',
+              index % 2 === 1 && 'border-l border-border',
+              index > 1 && 'border-t border-border',
+              'xl:border-l xl:border-t-0',
+              index === 0 && 'xl:border-l-0',
+            )}
+          >
+            <p className="text-[10px] text-muted-foreground">{label}</p>
+            <p className="metric-number mt-1 text-sm font-medium">{value}</p>
           </div>
-          <div className="mt-5 flex flex-col justify-between border-t border-dashed border-[color:var(--factory-accent)]/35 pt-5 md:mt-0 md:border-l md:border-t-0 md:pl-8 md:pt-0">
-            <div>
-              <p className="text-xs text-[color:var(--factory-accent)]">
-                {firstMonthEligible ? 'Professional 新客首月' : 'Professional 年付活动'}
-              </p>
-              <div className="mt-2 flex items-end gap-2">
-                <strong className="metric-number text-[42px] leading-none">
-                  {firstMonthEligible ? '¥199' : '¥2,490'}
-                </strong>
-                <span className="pb-1 text-xs text-muted-foreground">
-                  {firstMonthEligible ? '/ 首月' : '/ 年'}
-                </span>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {firstMonthEligible ? (
-                  <>日常价 <s>¥249</s>，本月直接省 ¥50</>
-                ) : (
-                  <>原价 ¥2,988，年付省 ¥498</>
-                )}
-              </p>
-            </div>
-            <p className="mt-5 border-t border-border pt-4 text-xs font-medium">
-              {firstMonthEligible ? '再送 100 AI 积分' : '包含 2,000 AI 积分 / 月'}
-              <span className="mt-1 block font-normal text-muted-foreground">
-                每个账号限购，首月与年付优惠不可叠加
-              </span>
-            </p>
+        ))}
+      </section>
+
+      <section className="overflow-hidden rounded-lg border border-[color:var(--factory-accent)]/35 bg-[var(--factory-surface-raised)] lg:grid lg:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+        <div className="min-w-0 p-5 md:p-7">
+          <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--factory-accent)]">
+            <Sparkles className="h-3.5 w-3.5" />
+            {campaignActive ? `${campaign?.name} · 新客首月` : 'Professional 月度套餐'}
           </div>
-        </section>
-      ) : (
-        <section className="rounded-lg border border-border bg-[var(--factory-surface-raised)] p-5">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Sparkles className="h-4 w-4 text-[color:var(--factory-accent)]" />
-            当前没有进行中的限时活动
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            仍可选择年付方案，套餐权益与日常价格保持透明。
+          <h2 className="mt-3 max-w-[620px] text-balance text-[clamp(28px,3vw,42px)] font-semibold leading-[1.2]">
+            把积分换成能发布的内容
+          </h2>
+          <p className="mt-2 max-w-[620px] text-sm leading-7 text-muted-foreground">
+            从商品图、Listing 到营销成片，额度直接对应可执行产出。首月优惠、年付折扣与首购体验包规则清晰可见。
           </p>
-        </section>
-      )}
+
+          <div className="mt-5 flex flex-wrap items-end gap-x-3 gap-y-1">
+            <strong className="metric-number text-[44px] font-semibold leading-none">
+              {firstMonthEligible ? '¥199' : '¥249'}
+            </strong>
+            <span className="pb-1.5 text-xs text-muted-foreground">
+              {firstMonthEligible ? '/ 首月' : '/ 月'}
+            </span>
+            {firstMonthEligible && (
+              <span className="pb-1.5 text-xs text-muted-foreground">
+                日常价 <s>¥249</s>
+              </span>
+            )}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+            <span className="border border-[color:var(--factory-accent)]/30 bg-[color:var(--factory-accent)]/10 px-2.5 py-1 text-[color:var(--factory-accent)]">
+              {firstMonthEligible ? '首月最高省 ¥50' : '2,000 AI 积分'}
+            </span>
+            <span className="border border-border px-2.5 py-1 text-muted-foreground">
+              年付买 10 个月送 2 个月
+            </span>
+            <span className="border border-border px-2.5 py-1 text-muted-foreground">
+              {firstMonthEligible ? '再送 100 积分' : '购买积分长期保留'}
+            </span>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              onClick={() => {
+                setBillingCycle('monthly')
+                setSelectedPlan('professional')
+              }}
+            >
+              以活动价升级
+              <ChevronRight className="ml-1.5 h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                document.getElementById('plan-comparison')?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'start',
+                })
+              }}
+            >
+              比较全部套餐
+            </Button>
+          </div>
+          <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
+            首月优惠每账号限一次，年付与首月优惠不可叠加；正式开通前由人工确认付款。
+          </p>
+        </div>
+
+        <div className="border-t border-border p-4 md:p-5 lg:border-l lg:border-t-0">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 gap-1" role="tablist" aria-label="额度产出预览">
+              {OUTPUT_OPTIONS.map((option) => {
+                const Icon = option.icon
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={outputMode === option.id}
+                    aria-controls="output-preview-panel"
+                    onClick={() => setOutputMode(option.id)}
+                    className={cn(
+                      'inline-flex min-h-8 items-center gap-1.5 rounded px-2.5 text-[11px] transition-colors',
+                      outputMode === option.id
+                        ? 'bg-foreground font-medium text-background'
+                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
+            <span className="shrink-0 text-[10px] text-muted-foreground">示例素材</span>
+          </div>
+
+          <div
+            id="output-preview-panel"
+            role="tabpanel"
+            className="mt-3 min-h-[238px] overflow-hidden rounded-md border border-border bg-[var(--factory-ground)]"
+          >
+            {outputMode === 'video' ? (
+              <div className="grid h-[238px] grid-cols-[150px_minmax(0,1fr)]">
+                <div className="relative min-h-0 overflow-hidden border-r border-border">
+                  <img
+                    src="/demo/terra-body-oil.webp"
+                    alt="示例商品 Terra Daily Body Oil"
+                    className="h-full w-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/20" />
+                  <div className="absolute inset-x-3 bottom-3 text-white">
+                    <p className="text-[10px] opacity-80">Terra Daily Body Oil</p>
+                    <p className="mt-0.5 text-xs font-medium">冬日礼盒 · 30 秒</p>
+                  </div>
+                  <span className="absolute left-1/2 top-1/2 grid h-10 w-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/40 bg-black/35">
+                    <Play className="h-4 w-4 fill-white text-white" />
+                  </span>
+                </div>
+                <div className="flex min-w-0 flex-col justify-between p-4">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">分镜时间轴</p>
+                    <div className="mt-3 space-y-2">
+                      {[
+                        ['01', '门口的快递', '4s'],
+                        ['02', '拆开纸箱', '4s'],
+                        ['03', '取出礼盒', '4s'],
+                        ['04', '检查与轻嗅', '4s'],
+                      ].map(([index, label, duration]) => (
+                        <div key={index} className="flex items-center gap-2 text-[11px]">
+                          <span className="metric-number text-[9px] text-[color:var(--factory-accent)]">{index}</span>
+                          <span className="min-w-0 flex-1 truncate text-muted-foreground">{label}</span>
+                          <span className="metric-number text-[9px] text-muted-foreground">{duration}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
+                    <Mic2 className="h-3 w-3" />
+                    字幕、配音与成片素材统一沉淀
+                  </div>
+                </div>
+              </div>
+            ) : outputMode === 'image' ? (
+              <div className="grid h-[238px] grid-cols-3 gap-2 p-3">
+                {[
+                  'object-center',
+                  'object-left',
+                  'object-right',
+                ].map((position, index) => (
+                  <div key={position} className="relative min-h-0 overflow-hidden border border-border bg-[var(--factory-panel)]">
+                    <img
+                      src="/demo/terra-body-oil.webp"
+                      alt={`示例商品图 ${index + 1}`}
+                      className={cn('h-full w-full object-cover', position)}
+                    />
+                    <span className="absolute left-2 top-2 bg-black/55 px-1.5 py-0.5 text-[9px] text-white">
+                      {index === 0 ? 'Amazon' : index === 1 ? 'Shopify' : 'TikTok'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex h-[238px] flex-col p-4">
+                <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Amazon Listing · 示例输出</p>
+                    <p className="mt-1 text-sm font-medium">Terra Daily Body Oil for Winter Gifting</p>
+                  </div>
+                  <FileText className="h-4 w-4 shrink-0 text-[color:var(--factory-accent)]" />
+                </div>
+                <ul className="mt-3 grid flex-1 content-start gap-2 text-[11px] leading-5 text-muted-foreground">
+                  <li>Lightweight daily body oil with a clean, gift-ready presentation.</li>
+                  <li>Product facts, target market and VOC insights stay aligned.</li>
+                  <li>Compliance status is attached to the current listing version.</li>
+                </ul>
+                <div className="flex flex-wrap gap-1.5 border-t border-border pt-3 text-[9px] text-muted-foreground">
+                  <span className="border border-border px-1.5 py-0.5">标题</span>
+                  <span className="border border-border px-1.5 py-0.5">五点描述</span>
+                  <span className="border border-border px-1.5 py-0.5">SEO</span>
+                  <span className="border border-border px-1.5 py-0.5">合规</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {OUTPUT_OPTIONS.map((option) => option.id === outputMode && (
+            <div key={option.id} className="mt-3 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-[10px] text-muted-foreground">Professional 月额度单用于{option.label}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{option.detail}</p>
+              </div>
+              <p className="metric-number shrink-0 text-lg font-semibold">
+                {option.count}
+                <span className="ml-1 text-[10px] font-normal text-muted-foreground">{option.unit}</span>
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
         <div>
@@ -358,7 +565,7 @@ export default function BillingPage() {
         </div>
       </div>
 
-      <section className="grid overflow-hidden rounded-lg border border-border bg-[var(--factory-surface)] lg:grid-cols-3" aria-label="套餐对比">
+      <section id="plan-comparison" className="grid scroll-mt-6 overflow-hidden rounded-lg border border-border bg-[var(--factory-surface)] lg:grid-cols-3" aria-label="套餐对比">
         {campaignQuery.isLoading ? (
           <div className="col-span-full flex min-h-64 items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-[color:var(--factory-accent)]" />
@@ -390,7 +597,10 @@ export default function BillingPage() {
                   </span>
                 )}
                 <h3 className="text-[15px] font-semibold">{plan.name}</h3>
-                <p className="mt-1 min-h-10 text-xs leading-5 text-muted-foreground">
+                <p className="mt-1 text-[10px] text-[color:var(--factory-accent)]">
+                  {PLAN_ROLES[plan.id] || '按需选择'}
+                </p>
+                <p className="mt-2 min-h-10 text-xs leading-5 text-muted-foreground">
                   {plan.description}
                 </p>
                 <div className="mt-4 flex min-h-12 items-end gap-2">
@@ -405,13 +615,28 @@ export default function BillingPage() {
                 </p>
                 <div className="my-4 h-px bg-border" />
                 <ul className="space-y-2.5 text-xs leading-5 text-muted-foreground">
-                  {plan.features.map((feature) => (
+                  {plan.features.slice(0, 4).map((feature) => (
                     <li key={feature} className="flex items-start gap-2">
                       <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[color:var(--factory-mint)]" />
                       <span>{feature}</span>
                     </li>
                   ))}
                 </ul>
+                {plan.features.length > 4 && (
+                  <details className="mt-3 text-[11px] text-muted-foreground">
+                    <summary className="cursor-pointer list-none text-[color:var(--factory-accent)] hover:underline">
+                      查看其余 {plan.features.length - 4} 项权益
+                    </summary>
+                    <ul className="mt-2 space-y-2">
+                      {plan.features.slice(4).map((feature) => (
+                        <li key={feature} className="flex items-start gap-2">
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[color:var(--factory-mint)]" />
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
                 <Button
                   size="sm"
                   className="mt-auto w-full"

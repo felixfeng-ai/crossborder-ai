@@ -141,7 +141,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
         id: 'scope',
         title: '1. 适用范围',
         paragraphs: [
-          `${LEGAL_OPERATOR_DISCLOSURE}本政策适用于 VeyaShip 网站、账号工作台、AI 助手、图片与视频工具、素材中心、运营同步和渠道发布功能。若某个第三方平台有自己的隐私政策，该平台对数据的处理还受其政策约束。`,
+          `${LEGAL_OPERATOR_DISCLOSURE}本政策适用于 VeyaShip 网站、账号工作台、AI 决策助手、图片与视频工具、素材中心、运营同步和渠道发布功能。若某个第三方平台有自己的隐私政策，该平台对数据的处理还受其政策约束。`,
         ],
       },
       {

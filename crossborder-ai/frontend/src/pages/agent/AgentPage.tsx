@@ -286,7 +286,7 @@ export default function AgentPage({
         className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}
       >
         {/* 用品牌标识和用户首字母替代通用机器人/用户图标。 */}
-        {isUser ? <UserAvatar user={user} /> : <AgentAvatar />}
+        {isUser ? <UserAvatar user={user} /> : <AgentAvatar label={workspace.label} />}
 
         {/* 消息内容 */}
         <div className={`max-w-[80%] space-y-2 ${isUser ? 'items-end' : ''}`}>
@@ -374,7 +374,7 @@ export default function AgentPage({
             animate={{ opacity: 1, y: 0 }}
             className="flex gap-3"
           >
-            <AgentAvatar />
+            <AgentAvatar label={workspace.label} />
             <div className="flex-1 space-y-2">
               <div className="bg-muted rounded-2xl rounded-tl-[4px] px-4 py-3 w-fit">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -460,11 +460,11 @@ export default function AgentPage({
   )
 }
 
-function AgentAvatar() {
+function AgentAvatar({ label }: { label: string }) {
   return (
     <div
       className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[var(--factory-accent)]/45 bg-[var(--factory-panel)]"
-      aria-label="VeyaShip AI Agent"
+      aria-label={`VeyaShip ${label}`}
     >
       <Bot className="h-[18px] w-[18px] text-[var(--factory-accent)]" strokeWidth={1.7} />
       <Sparkles

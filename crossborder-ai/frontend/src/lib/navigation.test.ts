@@ -23,6 +23,11 @@ describe('navigation architecture', () => {
     expect(paths).not.toContain('/app/batch')
     expect(paths).not.toContain('/app/content')
     expect(paths).toContain('/app/marketing-agent')
+    expect(
+      NAVIGATION_GROUPS.flatMap((group) => group.items).find(
+        (item) => item.path === '/app/agent',
+      )?.label,
+    ).toBe('AI 决策助手')
   })
 
   it('为顶部栏提供页面上下文', () => {
@@ -41,6 +46,10 @@ describe('navigation architecture', () => {
     expect(getHeaderContext('/app/marketing-agent')).toMatchObject({
       group: 'AI 创作',
       title: '营销 Agent',
+    })
+    expect(getHeaderContext('/app/agent')).toMatchObject({
+      group: 'AI 创作',
+      title: 'AI 决策助手',
     })
   })
 

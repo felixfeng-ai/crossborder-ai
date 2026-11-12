@@ -152,7 +152,7 @@ export default function DashboardPage() {
     { icon: MessageSquareText, label: '生成 Listing', detail: '按平台生成并合规审查', path: '/app/content' },
     { icon: ImageIcon, label: '商品图片', detail: '主图、白底图与场景图', path: '/app/images' },
     { icon: PackageSearch, label: 'SKU 与库存', detail: '变体、售价与补货风险', path: '/app/catalog' },
-    { icon: Bot, label: 'AI 助手', detail: '直接下达经营任务', path: '/app/agent' },
+    { icon: Bot, label: 'AI 决策助手', detail: '判断机会并执行经营任务', path: '/app/agent' },
   ]
 
   return (
@@ -175,7 +175,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => navigate('/app/agent')}>
             <Bot className="mr-2 h-4 w-4" />
-            AI 助手
+            AI 决策助手
           </Button>
           <Button onClick={() => navigate(nextAction.href)}>
             {nextAction.label}
@@ -444,7 +444,7 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <Bot className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              让 Agent 继续处理
+              让 AI 决策助手继续处理
             </CardTitle>
             <p className="text-xs text-muted-foreground">
               进入完整对话工作台，执行、流式反馈和结果留痕都在同一处完成。
@@ -457,7 +457,7 @@ export default function DashboardPage() {
             >
               <span className="flex items-center gap-2">
                 <Bot className="h-4 w-4" />
-                打开 AI 助手
+                打开 AI 决策助手
               </span>
               <ArrowUpRight className="h-4 w-4" />
             </Button>

@@ -5,6 +5,12 @@ import {
 } from './workspace'
 
 describe('agent workspaces', () => {
+  it('uses the AI decision assistant name and execution-aware intro', () => {
+    expect(AGENT_WORKSPACES.general.label).toBe('AI 决策助手')
+    expect(AGENT_WORKSPACES.general.intro).toContain('先判断')
+    expect(AGENT_WORKSPACES.general.intro).toContain('执行')
+  })
+
   it('provides a dedicated marketing workspace', () => {
     expect(AGENT_WORKSPACES.marketing.label).toBe('营销 Agent')
     expect(AGENT_WORKSPACES.marketing.actions.map((item) => item.label)).toEqual([

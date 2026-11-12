@@ -1,14 +1,14 @@
 {
   "app": {
     "name": "VeyaShip",
-    "tagline": "AI-powered cross-border e-commerce platform"
+    "tagline": "An integrated AI workspace from product selection to compliant publishing"
   },
   "nav": {
     "dashboard": "Dashboard",
     "products": "Products",
     "listings": "Listings",
     "content": "Listing Gen",
-    "agent": "AI Assistant",
+    "agent": "AI Decision Assistant",
     "images": "AI Images",
     "batch": "Batch",
     "radar": "Radar",

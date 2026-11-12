@@ -1,14 +1,14 @@
 {
   "app": {
     "name": "VeyaShip",
-    "tagline": "AI 驱动的跨境电商平台"
+    "tagline": "从选品判断到合规上架的一体化 AI 运营台"
   },
   "nav": {
     "dashboard": "仪表盘",
     "products": "商品管理",
     "listings": "Listing 管理",
     "content": "Listing 生成",
-    "agent": "AI 助手",
+    "agent": "AI 决策助手",
     "images": "AI 图片",
     "batch": "批量导入",
     "radar": "竞品分析",

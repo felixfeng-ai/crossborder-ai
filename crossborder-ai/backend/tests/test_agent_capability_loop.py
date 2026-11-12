@@ -239,12 +239,17 @@ async def test_agent_can_schedule_product_image_task(
     monkeypatch,
 ):
     user = await _make_user(db_session, email="agent-loop-image@test.com")
+    campaign_id = uuid.uuid4()
     monkeypatch.setattr(
         provider_config,
         "get",
         lambda provider, key, default="": "test-key" if provider == "aliyun" else default,
     )
-    orchestrator = AgentOrchestrator(user=user, db=db_session)
+    orchestrator = AgentOrchestrator(
+        user=user,
+        db=db_session,
+        campaign_id=str(campaign_id),
+    )
 
     rejected = await orchestrator._execute_step(
         "generate_product_image",
@@ -265,6 +270,7 @@ async def test_agent_can_schedule_product_image_task(
         )
     ).scalar_one()
     assert task.user_id == user.id
+    assert task.campaign_id == campaign_id
     assert task.status == "pending"
     assert created["links"][0]["href"] == "/app/images"
 
@@ -276,6 +282,7 @@ async def test_agent_video_requires_confirmation_and_submits_after_confirmation(
     monkeypatch,
 ):
     user = await _make_user(db_session, email="agent-loop-video@test.com")
+    campaign_id = uuid.uuid4()
     asset = await _make_asset(db_session, user, tmp_path, monkeypatch)
     monkeypatch.setattr(settings, "MINIMAX_API_KEY", "video-key")
     provider_config.clear_cache()
@@ -292,7 +299,11 @@ async def test_agent_video_requires_confirmation_and_submits_after_confirmation(
         "app.services.video_task_executor.submit_video_task",
         fake_submit,
     )
-    orchestrator = AgentOrchestrator(user=user, db=db_session)
+    orchestrator = AgentOrchestrator(
+        user=user,
+        db=db_session,
+        campaign_id=str(campaign_id),
+    )
     base_params = {
         "source_asset_id": str(asset.id),
         "prompt": "slow premium product camera movement",
@@ -320,6 +331,7 @@ async def test_agent_video_requires_confirmation_and_submits_after_confirmation(
     ).scalar_one()
     assert task.provider_task_id == "provider-agent-video"
     assert task.provider == "minimax"
+    assert task.campaign_id == campaign_id
     await db_session.refresh(user)
     assert user.credits == 200 - task.credits_cost
     assert created["links"][0]["href"] == "/app/videos?tab=single"
@@ -415,6 +427,7 @@ async def test_agent_marketing_plan_creates_brief_without_rendering(
     monkeypatch,
 ):
     user = await _make_user(db_session, email="agent-loop-marketing@test.com")
+    campaign_id = uuid.uuid4()
     asset = await _make_asset(db_session, user, tmp_path, monkeypatch)
     monkeypatch.setattr(settings, "MINIMAX_API_KEY", "video-key")
     provider_config.clear_cache()
@@ -456,7 +469,11 @@ async def test_agent_marketing_plan_creates_brief_without_rendering(
         "app.services.agent_capability_service.generate_marketing_plan",
         fake_plan,
     )
-    orchestrator = AgentOrchestrator(user=user, db=db_session)
+    orchestrator = AgentOrchestrator(
+        user=user,
+        db=db_session,
+        campaign_id=str(campaign_id),
+    )
 
     result = await orchestrator._execute_step(
         "create_marketing_video_plan",
@@ -493,6 +510,7 @@ async def test_agent_marketing_plan_creates_brief_without_rendering(
         )
     ).scalars().all()
     assert project.status == "brief_ready"
+    assert project.campaign_id == campaign_id
     assert len(shots) == 3
     assert tasks == []
     assert result["links"][0]["href"].endswith(

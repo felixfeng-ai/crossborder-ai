@@ -29,6 +29,11 @@ class VideoGenerationTask(Base):
         nullable=False,
         index=True,
     )
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
     source_asset_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("image_assets.id", ondelete="SET NULL"),

@@ -9,11 +9,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.models.marketing_campaign import MarketingCampaign
+from app.models.marketing_video import MarketingVideoProject
 from app.models.product import Product
 from app.models.user import User
+from app.models.image_generation_task import ImageGenerationTask
+from app.models.video_generation_task import VideoGenerationTask
 
 
 router = APIRouter(prefix="/marketing-campaigns", tags=["营销 Agent"])
@@ -143,3 +147,124 @@ async def get_campaign(
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
     return _serialize_campaign(campaign)
+
+
+@router.get("/{campaign_id}/assets")
+async def list_campaign_assets(
+    campaign_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """按活动聚合素材；活动归属和素材用户范围必须同时校验。"""
+    campaign = await get_owned_campaign(
+        db,
+        current_user.id,
+        campaign_id,
+    )
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="营销活动不存在")
+
+    image_tasks = (
+        await db.execute(
+            select(ImageGenerationTask)
+            .where(
+                ImageGenerationTask.user_id == current_user.id,
+                ImageGenerationTask.campaign_id == campaign.id,
+            )
+            .order_by(desc(ImageGenerationTask.created_at))
+            .limit(50)
+        )
+    ).scalars().all()
+    video_tasks = (
+        await db.execute(
+            select(VideoGenerationTask)
+            .where(
+                VideoGenerationTask.user_id == current_user.id,
+                VideoGenerationTask.campaign_id == campaign.id,
+            )
+            .order_by(desc(VideoGenerationTask.created_at))
+            .limit(30)
+        )
+    ).scalars().all()
+    projects = (
+        await db.execute(
+            select(MarketingVideoProject)
+            .where(
+                MarketingVideoProject.user_id == current_user.id,
+                MarketingVideoProject.campaign_id == campaign.id,
+            )
+            .order_by(desc(MarketingVideoProject.created_at))
+            .limit(20)
+        )
+    ).scalars().all()
+
+    items = []
+    for task in image_tasks:
+        try:
+            urls = json.loads(task.image_urls or "[]")
+        except (json.JSONDecodeError, TypeError):
+            urls = []
+        items.append({
+            "id": str(task.id),
+            "kind": "image",
+            "status": task.status,
+            "prompt": task.prompt,
+            "urls": urls if isinstance(urls, list) else [],
+            "thumbnail_url": urls[0] if isinstance(urls, list) and urls else None,
+            "credits": task.credits_charged or task.credits_cost,
+            "created_at": str(task.created_at),
+        })
+    for task in video_tasks:
+        has_file = task.status == "succeeded" and bool(task.storage_key)
+        items.append({
+            "id": str(task.id),
+            "kind": "video",
+            "status": task.status,
+            "prompt": task.prompt,
+            "urls": (
+                [f"{settings.API_V1_PREFIX}/videos/tasks/{task.id}/file"]
+                if has_file
+                else []
+            ),
+            "thumbnail_url": (
+                f"{settings.API_V1_PREFIX}/videos/tasks/{task.id}/thumbnail"
+                if has_file
+                else None
+            ),
+            "credits": task.credits_charged or task.credits_cost,
+            "created_at": str(task.created_at),
+        })
+    for project in projects:
+        has_file = project.status == "succeeded" and bool(project.final_storage_key)
+        items.append({
+            "id": str(project.id),
+            "kind": "marketing_video",
+            "status": project.status,
+            "prompt": project.idea,
+            "urls": (
+                [
+                    f"{settings.API_V1_PREFIX}/marketing-videos/"
+                    f"projects/{project.id}/file"
+                ]
+                if has_file
+                else []
+            ),
+            "thumbnail_url": (
+                f"{settings.API_V1_PREFIX}/marketing-videos/"
+                f"projects/{project.id}/thumbnail"
+                if has_file
+                else None
+            ),
+            "credits": project.credits_charged or project.credits_estimated,
+            "created_at": str(project.created_at),
+        })
+    items.sort(key=lambda item: item["created_at"], reverse=True)
+    return {
+        "counts": {
+            "images": len(image_tasks),
+            "videos": len(video_tasks),
+            "marketing_videos": len(projects),
+            "total": len(items),
+        },
+        "items": items,
+    }

@@ -83,37 +83,44 @@ async def execute_agent_task(task_id) -> None:
                 task.progress = json.dumps({"steps": steps}, ensure_ascii=False)
                 await db.commit()
 
-            orchestrator = AgentOrchestrator(user, db, on_step=on_step)
+            campaign = None
+            product = None
+            campaign_id = params.get("campaign_id")
+            if task.task_type != "agent_workflow" and campaign_id:
+                campaign = (
+                    await db.execute(
+                        select(MarketingCampaign).where(
+                            MarketingCampaign.id == UUID(str(campaign_id)),
+                            MarketingCampaign.user_id == task.user_id,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if campaign is not None and campaign.product_id:
+                    product = (
+                        await db.execute(
+                            select(Product).where(
+                                Product.id == campaign.product_id,
+                                Product.user_id == task.user_id,
+                            )
+                        )
+                    ).scalar_one_or_none()
+
+            orchestrator = AgentOrchestrator(
+                user,
+                db,
+                on_step=on_step,
+                campaign_id=str(campaign.id) if campaign is not None else None,
+            )
             if task.task_type == "agent_workflow":
                 result = await orchestrator.run_workflow(params["workflow"], params.get("params", {}))
                 conv_id = None
             else:
                 instruction = params["instruction"]
-                campaign_id = params.get("campaign_id")
-                if campaign_id:
-                    campaign = (
-                        await db.execute(
-                            select(MarketingCampaign).where(
-                                MarketingCampaign.id == UUID(str(campaign_id)),
-                                MarketingCampaign.user_id == task.user_id,
-                            )
-                        )
-                    ).scalar_one_or_none()
-                    if campaign is not None:
-                        product = None
-                        if campaign.product_id:
-                            product = (
-                                await db.execute(
-                                    select(Product).where(
-                                        Product.id == campaign.product_id,
-                                        Product.user_id == task.user_id,
-                                    )
-                                )
-                            ).scalar_one_or_none()
-                        instruction = (
-                            f"{instruction}\n\n[营销活动上下文]\n"
-                            f"{build_campaign_context(campaign, product)}"
-                        )
+                if campaign is not None:
+                    instruction = (
+                        f"{instruction}\n\n[营销活动上下文]\n"
+                        f"{build_campaign_context(campaign, product)}"
+                    )
                 result = await orchestrator.run(instruction)
                 conv_id = UUID(params["conversation_id"]) if params.get("conversation_id") else None
 

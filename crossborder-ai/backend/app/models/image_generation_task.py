@@ -23,6 +23,12 @@ class ImageGenerationTask(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False, index=True,
     )
+    # 空值表示素材来自普通工作台；有值时必须归属当前营销活动。
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
 
     # 使用的图片描述词（已含品牌调性拼接）
     prompt: Mapped[str] = mapped_column(Text, nullable=False)

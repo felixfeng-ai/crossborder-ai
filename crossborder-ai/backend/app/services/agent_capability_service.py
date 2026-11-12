@@ -229,6 +229,7 @@ async def schedule_product_image_task(
     *,
     prompt: str,
     num_outputs: int = 1,
+    campaign_id: str | None = None,
 ) -> ImageGenerationTask:
     """创建持久商品图片任务，由调度器异步消费。"""
     if not check_feature_access(user, "ai_image"):
@@ -263,6 +264,7 @@ async def schedule_product_image_task(
 
     task = ImageGenerationTask(
         user_id=user.id,
+        campaign_id=UUID(str(campaign_id)) if campaign_id else None,
         prompt=enhanced_prompt,
         num_outputs=max(1, min(int(num_outputs or 1), 4)),
         status="pending",
@@ -290,6 +292,7 @@ async def create_product_video_task(
     duration: int = 4,
     ratio: str = "9:16",
     reserve_credits: int = 0,
+    campaign_id: str | None = None,
 ) -> VideoGenerationTask:
     """校验权限、积分和首帧后提交商品图生视频任务。"""
     if not check_feature_access(user, "ai_video"):
@@ -341,6 +344,7 @@ async def create_product_video_task(
     )
     task = VideoGenerationTask(
         user_id=user.id,
+        campaign_id=UUID(str(campaign_id)) if campaign_id else None,
         source_asset_id=UUID(str(source_asset_id)),
         template_id=template_id,
         provider=str(quality["provider"]),
@@ -404,6 +408,7 @@ async def create_marketing_plan_project(
     style_preset: str = "premium_luxury",
     model: str = "MiniMax-H3-Lite",
     resolution: str = "480P",
+    campaign_id: str | None = None,
 ) -> tuple[MarketingVideoProject, int]:
     """生成营销方案和分镜，不提交视频供应商，也不扣视频积分。"""
     if not check_feature_access(user, "ai_video"):
@@ -452,6 +457,7 @@ async def create_marketing_plan_project(
     )
     project = MarketingVideoProject(
         user_id=user.id,
+        campaign_id=UUID(str(campaign_id)) if campaign_id else None,
         source_asset_id=UUID(str(source_asset_id)),
         title=plan["title"],
         product_name=product_name,

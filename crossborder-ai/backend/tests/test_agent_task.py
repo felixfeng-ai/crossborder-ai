@@ -25,6 +25,8 @@ from sqlalchemy.pool import StaticPool
 from app.core.database import Base
 from app.models.agent_task import AgentTask
 from app.models.conversation import Conversation, ConversationMessage
+from app.models.marketing_campaign import MarketingCampaign
+from app.models.product import Product
 from app.models.user import User
 from app.services import agent_task_executor as exe
 
@@ -113,8 +115,9 @@ async def test_agent_run_idempotent_by_key(client, db_session):
 class _FakeOrchestrator:
     """与 AgentOrchestrator 同签名：接收 on_step 进度回调，模拟逐步执行。"""
 
-    def __init__(self, user, db, on_step=None):
+    def __init__(self, user, db, on_step=None, campaign_id=None):
         self.on_step = on_step
+        self.campaign_id = campaign_id
         self.steps = [
             {"action": "analyze", "status": "success", "title": "分析商品"},
             {"action": "answer", "status": "success", "title": "给出结论"},
@@ -180,6 +183,82 @@ async def test_execute_agent_task_success(monkeypatch):
             select(ConversationMessage).where(ConversationMessage.conversation_id == conv_id)
         )).scalars().all()
         assert any(m.role == "assistant" and m.content == "可以做" for m in msgs)
+
+
+@pytest.mark.asyncio
+async def test_execute_agent_task_injects_campaign_context(monkeypatch):
+    """活动任务必须把活动、商品事实和 campaign_id 传给编排器。"""
+    engine, factory = _make_static_factory()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    monkeypatch.setattr(exe, "async_session_factory", factory)
+
+    captured: dict[str, str] = {}
+
+    class _CampaignOrchestrator:
+        def __init__(self, user, db, on_step=None, campaign_id=None):
+            captured["campaign_id"] = campaign_id or ""
+
+        async def run(self, instruction):
+            captured["instruction"] = instruction
+            return {"summary": "活动任务完成", "status": "success", "steps": []}
+
+        async def run_workflow(self, workflow, params):
+            return {"summary": "工作流完成", "status": "success", "steps": []}
+
+    monkeypatch.setattr(exe, "AgentOrchestrator", _CampaignOrchestrator)
+
+    async with factory() as db:
+        user = User(
+            email="task-campaign@test.com",
+            username="taskcampaign",
+            password_hash="x",
+            credits=30,
+        )
+        db.add(user)
+        await db.flush()
+        product = Product(
+            user_id=user.id,
+            url="https://detail.1688.com/offer/campaign-task.html",
+            title="节日香薰礼盒",
+            price=59.9,
+        )
+        db.add(product)
+        await db.flush()
+        campaign = MarketingCampaign(
+            user_id=user.id,
+            product_id=product.id,
+            title="圣诞转化活动",
+            budget_credits=300,
+            brief_json='{"offer":"限时八折"}',
+        )
+        db.add(campaign)
+        await db.flush()
+        task = AgentTask(
+            user_id=user.id,
+            task_type="agent_run",
+            status="running",
+            input=json.dumps(
+                {
+                    "instruction": "生成活动主图",
+                    "conversation_id": "",
+                    "campaign_id": str(campaign.id),
+                },
+                ensure_ascii=False,
+            ),
+            cost=1,
+        )
+        db.add(task)
+        await db.commit()
+        task_id = task.id
+        campaign_id = campaign.id
+
+    await exe.execute_agent_task(task_id)
+
+    assert captured["campaign_id"] == str(campaign_id)
+    assert "圣诞转化活动" in captured["instruction"]
+    assert "节日香薰礼盒" in captured["instruction"]
+    assert "限时八折" in captured["instruction"]
 
 
 @pytest.mark.asyncio

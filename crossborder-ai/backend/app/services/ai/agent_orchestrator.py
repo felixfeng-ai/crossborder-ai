@@ -564,12 +564,14 @@ class AgentOrchestrator:
         user: User,
         db: AsyncSession,
         on_step: Optional[Callable[[list[dict]], Awaitable[None]]] = None,
+        campaign_id: str | None = None,
     ):
         self.llm = DeepSeekService()
         self.user = user
         self.db = db
         self.steps: list[dict] = []  # 记录执行步骤
         self.on_step = on_step  # 步骤进度回调（流式输出用），每完成一步触发
+        self.campaign_id = campaign_id
 
     def _status_from_steps(self) -> str:
         failed = any(step.get("status") == "failed" for step in self.steps)
@@ -1216,6 +1218,7 @@ class AgentOrchestrator:
                 self.user,
                 prompt=prompt,
                 num_outputs=int(params.get("num_outputs") or 1),
+                campaign_id=self.campaign_id,
             )
         except PermissionError as exc:
             return {
@@ -1284,6 +1287,7 @@ class AgentOrchestrator:
                 duration=duration,
                 ratio=str(params.get("ratio") or "9:16"),
                 reserve_credits=1,
+                campaign_id=self.campaign_id,
             )
         except (PermissionError, ValueError) as exc:
             return {
@@ -1328,6 +1332,7 @@ class AgentOrchestrator:
                 template_id=str(params.get("template_id") or "presenter_demo"),
                 quality_tier=str(params.get("quality_tier") or "draft"),
                 style_preset=str(params.get("style_preset") or "premium_luxury"),
+                campaign_id=self.campaign_id,
             )
         except (PermissionError, ValueError) as exc:
             return {

@@ -16,6 +16,7 @@ import { useStoreStore } from '@/stores/storeStore'
 import { Badge } from '@/components/ui/badge'
 import apiClient from '@/api/client'
 import { getHeaderContext } from '@/lib/navigation'
+import { normalizeLanguageCode } from '@/i18n/language'
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -60,7 +61,11 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
     retry: false,
   })
 
-  const currentLang = LANGUAGES.find((l) => l.code === i18n.language) || LANGUAGES[0]
+  const currentLanguageCode = normalizeLanguageCode(i18n.language)
+  const currentLang =
+    LANGUAGES.find((language) => language.code === currentLanguageCode) ||
+    LANGUAGES.find((language) => language.code === 'zh') ||
+    LANGUAGES[0]
   const walletQuery = useQuery<BillingWalletSummary>({
     queryKey: ['header-billing-wallet'],
     queryFn: async () => {

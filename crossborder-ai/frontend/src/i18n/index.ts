@@ -11,6 +11,11 @@ import fr from './locales/fr.json'
 import de from './locales/de.json'
 import pt from './locales/pt.json'
 import ru from './locales/ru.json'
+import {
+  DEFAULT_LANGUAGE,
+  LANGUAGE_DETECTION_ORDER,
+  LANGUAGE_STORAGE_KEY,
+} from './language'
 
 const resources = {
   en: { translation: en },
@@ -29,10 +34,11 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    fallbackLng: 'en',
+    fallbackLng: DEFAULT_LANGUAGE,
     detection: {
-      order: ['localStorage', 'navigator'],
+      order: [...LANGUAGE_DETECTION_ORDER],
       caches: ['localStorage'],
+      lookupLocalStorage: LANGUAGE_STORAGE_KEY,
     },
     interpolation: {
       escapeValue: false,

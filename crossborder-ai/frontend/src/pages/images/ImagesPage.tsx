@@ -57,6 +57,8 @@ export default function ImagesPage() {
   const [showGenerate, setShowGenerate] = useState(false)
   const [prompt, setPrompt] = useState('')
   const [actionError, setActionError] = useState('')
+  const [actionSuccess, setActionSuccess] = useState('')
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WorkbenchLibraryItem | null>(null)
 
@@ -111,14 +113,27 @@ export default function ImagesPage() {
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      return uploadImageFile<WorkbenchAsset>(file)
+      return uploadImageFile<WorkbenchAsset>(file, {
+        onProgress: setUploadProgress,
+      })
     },
-    onMutate: () => setActionError(''),
+    onMutate: () => {
+      setActionError('')
+      setActionSuccess('')
+      setUploadProgress(0)
+    },
     onSuccess: (asset) => {
+      setUploadProgress(100)
+      setActionSuccess(
+        `图片上传成功：${asset.name} · ${asset.width} × ${asset.height}`,
+      )
       queryClient.invalidateQueries({ queryKey: ['image-assets'] })
       setSelectedId(asset.id)
     },
-    onError: (error) => setActionError(imageUploadErrorMessage(error)),
+    onError: (error) => {
+      setUploadProgress(0)
+      setActionError(imageUploadErrorMessage(error))
+    },
   })
 
   const processMutation = useMutation({
@@ -186,6 +201,7 @@ export default function ImagesPage() {
       return
     }
     setActionError('')
+    setActionSuccess('')
     uploadMutation.mutate(file)
   }
 
@@ -243,7 +259,11 @@ export default function ImagesPage() {
             ) : (
               <Upload className="mr-2 h-4 w-4" />
             )}
-            上传图片
+            {uploadMutation.isPending
+              ? uploadProgress >= 100
+                ? '图片优化中...'
+                : `上传中 ${uploadProgress}%`
+              : '上传图片'}
           </Button>
         </div>
       </div>
@@ -280,6 +300,32 @@ export default function ImagesPage() {
       {actionError && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {actionError}
+        </div>
+      )}
+      {actionSuccess && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/8 px-3 py-2 text-sm text-emerald-600"
+        >
+          <Check className="h-4 w-4 shrink-0" />
+          {actionSuccess}
+        </div>
+      )}
+      {uploadMutation.isPending && (
+        <div className="rounded-md border border-border bg-background p-3">
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <span className="text-muted-foreground">
+              {uploadProgress >= 100 ? '文件已传完，正在优化图片...' : '正在上传图片...'}
+            </span>
+            <span className="metric-number">{uploadProgress}%</span>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden bg-secondary">
+            <div
+              className="h-full bg-[var(--factory-accent)] transition-[width] duration-200"
+              style={{ width: `${Math.max(2, uploadProgress)}%` }}
+            />
+          </div>
         </div>
       )}
 
@@ -404,7 +450,13 @@ export default function ImagesPage() {
                 ) : (
                   <ImagePlus className="mb-4 h-10 w-10 text-muted-foreground" />
                 )}
-                <p className="text-sm font-medium">{uploadMutation.isPending ? '正在上传图片' : '点击或拖拽上传商品图片'}</p>
+                <p className="text-sm font-medium">
+                  {uploadMutation.isPending
+                    ? uploadProgress >= 100
+                      ? '图片优化中，请稍候'
+                      : `正在上传 ${uploadProgress}%`
+                    : '点击或拖拽上传商品图片'}
+                </p>
                 <p className="mt-1 text-xs text-muted-foreground">支持 JPEG、PNG、WebP，最大 12MB</p>
               </button>
             )}

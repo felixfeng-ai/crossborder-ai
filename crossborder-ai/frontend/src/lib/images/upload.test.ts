@@ -62,21 +62,33 @@ describe('image upload diagnostics', () => {
     ).toBe('无法识别图片，请上传 JPEG、PNG 或 WebP 文件')
   })
 
-  it('使用原生 fetch 发送真正的 multipart 请求', async () => {
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
-      expect(init?.body).toBeInstanceOf(FormData)
-      expect(init?.headers).toMatchObject({
-        Authorization: 'Bearer test-token',
-      })
-      return new Response(
-        JSON.stringify({ id: 'asset-1', name: '素材2' }),
-        {
-          status: 201,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      )
-    })
-    vi.stubGlobal('fetch', fetchMock)
+  it('使用 XHR 发送 multipart 并报告上传进度', async () => {
+    const progress: number[] = []
+    class MockXHR {
+      upload = {}
+      status = 201
+      responseText = JSON.stringify({ id: 'asset-1', name: '素材2' })
+      timeout = 0
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      ontimeout: (() => void) | null = null
+      open() {}
+      setRequestHeader(key: string, value: string) {
+        expect(key).toBe('Authorization')
+        expect(value).toBe('Bearer test-token')
+      }
+      abort() {}
+      send(body: unknown) {
+        expect(body).toBeInstanceOf(FormData)
+        ;(this.upload as { onprogress?: (event: ProgressEvent) => void }).onprogress?.({
+          lengthComputable: true,
+          loaded: 50,
+          total: 100,
+        } as ProgressEvent)
+        this.onload?.()
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', MockXHR)
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => key === 'access_token' ? 'test-token' : null,
     })
@@ -84,9 +96,12 @@ describe('image upload diagnostics', () => {
       type: 'image/jpeg',
     })
 
-    const result = await uploadImageFile<{ id: string; name: string }>(file)
+    const result = await uploadImageFile<{ id: string; name: string }>(
+      file,
+      { onProgress: (value) => progress.push(value) },
+    )
 
     expect(result).toEqual({ id: 'asset-1', name: '素材2' })
-    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(progress).toEqual([50, 100])
   })
 })

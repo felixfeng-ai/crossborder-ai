@@ -54,40 +54,46 @@ export function imageUploadErrorMessage(error: unknown): string {
   return toErrorMessage(error, '图片上传失败，请稍后重试')
 }
 
-export async function uploadImageFile<T>(file: File): Promise<T> {
-  const controller = new AbortController()
-  const timeout = globalThis.setTimeout(() => controller.abort(), 60_000)
+export async function uploadImageFile<T>(
+  file: File,
+  options: { onProgress?: (percent: number) => void } = {},
+): Promise<T> {
   const form = new FormData()
   form.append('file', file)
   const token = globalThis.localStorage?.getItem('access_token')
 
-  try {
-    let response: Response
-    try {
-      response = await fetch(`${API_BASE}/images/assets/upload`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-        signal: controller.signal,
-      })
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw { code: 'ETIMEDOUT' }
+  return new Promise<T>((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('POST', `${API_BASE}/images/assets/upload`)
+    request.timeout = 60_000
+    if (token) request.setRequestHeader('Authorization', `Bearer ${token}`)
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable || event.total <= 0) return
+      options.onProgress?.(
+        Math.min(100, Math.round((event.loaded / event.total) * 100)),
+      )
+    }
+    request.onload = () => {
+      let body: unknown = null
+      try {
+        body = JSON.parse(request.responseText)
+      } catch {
+        body = null
       }
-      throw { code: 'ERR_NETWORK' }
+      if (request.status >= 200 && request.status < 300) {
+        options.onProgress?.(100)
+        resolve(body as T)
+        return
+      }
+      reject({
+        response: {
+          status: request.status,
+          data: body,
+        },
+      })
     }
-
-    let body: unknown = null
-    try {
-      body = await response.json()
-    } catch {
-      body = null
-    }
-    if (!response.ok) {
-      throw { response: { status: response.status, data: body } }
-    }
-    return body as T
-  } finally {
-    globalThis.clearTimeout(timeout)
-  }
+    request.onerror = () => reject({ code: 'ERR_NETWORK' })
+    request.ontimeout = () => reject({ code: 'ETIMEDOUT' })
+    request.send(form)
+  })
 }

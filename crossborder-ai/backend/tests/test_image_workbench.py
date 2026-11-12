@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.models.image_asset import ImageAsset
 from app.models.user import User
+from app.services.image_processing import normalize_uploaded_image
 
 
 def _png_bytes(size=(120, 80), transparent=True) -> bytes:
@@ -23,6 +24,25 @@ def _png_bytes(size=(120, 80), transparent=True) -> bytes:
     output = io.BytesIO()
     image.save(output, format="PNG")
     return output.getvalue()
+
+
+def _jpeg_bytes(size=(640, 480)) -> bytes:
+    image = Image.new("RGB", size, (220, 40, 40))
+    output = io.BytesIO()
+    image.save(output, format="JPEG", quality=90)
+    return output.getvalue()
+
+
+def test_normalize_jpeg_uses_rgb_webp_without_alpha():
+    normalized, width, height = normalize_uploaded_image(
+        _jpeg_bytes(),
+        12 * 1024 * 1024,
+    )
+
+    assert (width, height) == (640, 480)
+    output = Image.open(io.BytesIO(normalized))
+    assert output.format == "WEBP"
+    assert output.mode == "RGB"
 
 
 async def _upload(

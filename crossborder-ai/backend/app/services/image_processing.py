@@ -122,16 +122,29 @@ def normalize_uploaded_image(data: bytes, max_bytes: int) -> tuple[bytes, int, i
             probe.verify()
         with Image.open(io.BytesIO(data)) as image:
             image = ImageOps.exif_transpose(image)
-            width, height = image.size
-            if width < 1 or height < 1 or width > 8000 or height > 8000:
+            source_width, source_height = image.size
+            if (
+                source_width < 1
+                or source_height < 1
+                or source_width > 8000
+                or source_height > 8000
+            ):
                 raise ValueError("图片尺寸超出支持范围")
-            if width * height > 36_000_000:
+            if source_width * source_height > 36_000_000:
                 raise ValueError("图片像素过大，请压缩后重新上传")
 
-            rgba = image.convert("RGBA")
+            # 商品素材超过 4096 边后继续保留原尺寸对页面使用没有收益，
+            # 还会明显增加编码耗时和存储体积。
+            if max(source_width, source_height) > 4096:
+                image.thumbnail((4096, 4096), Image.Resampling.LANCZOS)
+            width, height = image.size
+            has_alpha = image.mode in {"RGBA", "LA"} or (
+                image.mode == "P" and "transparency" in image.info
+            )
+            normalized = image.convert("RGBA" if has_alpha else "RGB")
             output = io.BytesIO()
             # method=6 压缩率略高但大图耗时明显更长，容易触发客户端超时。
-            rgba.save(output, format="WEBP", quality=90, method=4)
+            normalized.save(output, format="WEBP", quality=90, method=3)
             return output.getvalue(), width, height
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
         raise ValueError("无法识别图片，请上传 JPEG、PNG 或 WebP 文件") from exc

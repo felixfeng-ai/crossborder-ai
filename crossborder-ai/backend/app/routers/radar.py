@@ -13,6 +13,10 @@ from app.core.rate_limit import RateLimit
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.services.scraper import scrape_1688
+from app.services.plan_service import (
+    consume_feature_allowance,
+    feature_allowance_snapshot,
+)
 from app.services import provider_config
 from pydantic import BaseModel, Field
 
@@ -31,8 +35,13 @@ async def scrape_competitor(
     提取竞品的标题、价格、销量、店铺名，
     供卖家做竞品对比分析。
     """
-    if current_user.credits < 1:
-        raise HTTPException(status_code=402, detail="积分不足，每次竞品抓取需要 1 积分")
+    scrape_usage = await feature_allowance_snapshot(
+        db,
+        current_user,
+        "radar_scrape",
+    )
+    if not scrape_usage["included"] and current_user.credits < 2:
+        raise HTTPException(status_code=402, detail="积分不足，超额竞品抓取需要 2 积分")
     try:
         await provider_config.refresh(db)
         data = await scrape_1688(
@@ -41,13 +50,11 @@ async def scrape_competitor(
             api_key=provider_config.get("onebound", "api_key"),
             api_secret=provider_config.get("onebound", "api_secret"),
         )
-        await current_user.deduct_credits(
+        await consume_feature_allowance(
             db,
-            1,
-            feature="radar_scrape",
-            reference_type="competitor_url",
-            reference_id=url[:128],
-            description="Radar 竞品抓取",
+            current_user,
+            "radar_scrape",
+            overage_credits=2,
         )
         return {"competitor": data}
     except Exception as e:

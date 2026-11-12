@@ -79,7 +79,9 @@ def test_video_capabilities_and_credits():
     assert capabilities["default_model"] == "MiniMax-H3-Lite"
     model = next(item for item in capabilities["models"] if item["id"] == "MiniMax-H3-Lite")
     assert "480P" in model["resolutions"]
-    assert estimate_video_credits("MiniMax-H3-Lite", "480P", 4) >= 10
+    assert estimate_video_credits("MiniMax-H3-Lite", "480P", 4) == 12
+    assert estimate_video_credits("MiniMax-H3-Lite", "768P", 4) == 18
+    assert estimate_video_credits("MiniMax-H3", "2K", 4) == 60
 
 
 def test_video_capabilities_disabled_without_key(monkeypatch):

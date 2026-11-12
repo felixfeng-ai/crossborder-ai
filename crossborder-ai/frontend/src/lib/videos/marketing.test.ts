@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildMarketingPipeline,
   downloadFilename,
+  estimateVoiceoverCredits,
   marketingTemplateName,
   projectStatusLabel,
   shotStatusLabel,
@@ -62,5 +63,19 @@ describe('marketing video helpers', () => {
     expect(downloadFilename('project-1', 'srt')).toBe(
       'veyaship-marketing-project-1.srt',
     )
+  })
+
+  it('按配音字符数计算最低积分', () => {
+    expect(estimateVoiceoverCredits({ hook: 'Hi', cta: 'Shop now' })).toBe(3)
+    expect(
+      estimateVoiceoverCredits({
+        script: 'x'.repeat(260),
+      }),
+    ).toBe(3)
+    expect(
+      estimateVoiceoverCredits({
+        script: 'x'.repeat(340),
+      }),
+    ).toBe(4)
   })
 })

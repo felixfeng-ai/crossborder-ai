@@ -18,21 +18,25 @@ MODEL_CONFIGS: dict[str, dict[str, Any]] = {
         "min_duration": 4,
         "max_duration": 15,
         "prices_per_second": {"768P": 0.5, "2K": 0.8},
+        "credits_per_second": {"768P": 10.0, "2K": 15.0},
     },
     "MiniMax-H3-Highspeed": {
         "min_duration": 4,
         "max_duration": 15,
         "prices_per_second": {"480P": 0.26, "768P": 0.4},
+        "credits_per_second": {"480P": 5.0, "768P": 7.5},
     },
     "MiniMax-H3-Lite": {
         "min_duration": 4,
         "max_duration": 15,
         "prices_per_second": {"480P": 0.16, "768P": 0.26},
+        "credits_per_second": {"480P": 3.0, "768P": 4.5},
     },
     "MiniMax-H3-Max": {
         "min_duration": 5,
         "max_duration": 15,
         "prices_per_second": {"480P": 0.33, "768P": 0.5},
+        "credits_per_second": {"480P": 8.0, "768P": 12.5},
     },
 }
 
@@ -104,6 +108,7 @@ def get_minimax_video_capabilities(api_key: str | None = None) -> dict[str, Any]
     models = []
     for model_id, model in MODEL_CONFIGS.items():
         prices = model["prices_per_second"]
+        credit_rates = model["credits_per_second"]
         models.append(
             {
                 "id": model_id,
@@ -111,10 +116,7 @@ def get_minimax_video_capabilities(api_key: str | None = None) -> dict[str, Any]
                 "max_duration": model["max_duration"],
                 "resolutions": list(prices.keys()),
                 "prices_per_second": prices,
-                "credits_per_second": {
-                    resolution: max(1, math.ceil(price * 10))
-                    for resolution, price in prices.items()
-                },
+                "credits_per_second": credit_rates,
             }
         )
     return {
@@ -148,8 +150,11 @@ def estimate_video_cost_micros(model: str, resolution: str, duration: int) -> in
 
 
 def estimate_video_credits(model: str, resolution: str, duration: int) -> int:
-    cost_cny = estimate_video_cost_micros(model, resolution, duration) / 1_000_000
-    return max(10, math.ceil(cost_cny * 10))
+    model_config, _ = _validate_selection(model, resolution, duration)
+    rate = model_config["credits_per_second"].get(resolution)
+    if rate is None:
+        raise ValueError(f"{model} 不支持 {resolution}")
+    return max(1, math.ceil(float(rate) * int(duration)))
 
 
 def build_minimax_video_request(

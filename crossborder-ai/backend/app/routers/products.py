@@ -26,6 +26,10 @@ from app.models.listing_draft import ListingDraft
 from app.models.user import User
 from app.services.scraper import SERVICE_NOT_CONFIGURED_MSG, ScrapeError, scrape_1688
 from app.services.listing_service import serialize_listing
+from app.services.plan_service import (
+    consume_feature_allowance,
+    feature_allowance_snapshot,
+)
 from app.services import provider_config
 from pydantic import BaseModel, Field
 
@@ -156,9 +160,14 @@ async def scrape_product(
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="该商品已抓取过")
 
-    # ── 积分检查 ───────────────────────────────────────────
-    if current_user.credits < 1:
-        raise HTTPException(status_code=402, detail="积分不足")
+    # ── 积分与套餐内抓取额度检查 ───────────────────────────
+    scrape_usage = await feature_allowance_snapshot(
+        db,
+        current_user,
+        "product_scrape",
+    )
+    if not scrape_usage["included"] and current_user.credits < 2:
+        raise HTTPException(status_code=402, detail="积分不足，超额抓取需要 2 积分")
 
     # ── 调用爬虫（外部服务，不是数据库操作） ────────────────
     # ScrapeError 已分类：稳定 code + 中文 message，绝不裸抛底层异常给卖家
@@ -194,13 +203,11 @@ async def scrape_product(
     )
     db.add(product)
     await db.flush()  # 立即写入，获取 product.id
-    await current_user.deduct_credits(
+    await consume_feature_allowance(
         db,
-        1,
-        feature="product_scrape",
-        reference_type="product",
-        reference_id=str(product.id),
-        description="抓取 1688 商品",
+        current_user,
+        "product_scrape",
+        overage_credits=2,
     )
 
     # ── 缓存相关 ───────────────────────────────────────────

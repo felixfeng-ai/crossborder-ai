@@ -135,6 +135,14 @@ export function totalShotDuration(shots: MarketingVideoShot[]): number {
   return shots.reduce((total, shot) => total + Math.max(0, shot.duration), 0)
 }
 
+export function estimateVoiceoverCredits(brief: MarketingVideoBrief): number {
+  const text = [brief.hook, brief.script, brief.cta]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+  return Math.max(3, Math.ceil(text.length / 100))
+}
+
 export function downloadFilename(
   projectId: string,
   extension: 'mp4' | 'srt' | 'mp3',

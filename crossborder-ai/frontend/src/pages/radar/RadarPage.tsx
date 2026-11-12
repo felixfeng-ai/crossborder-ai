@@ -105,7 +105,7 @@ export default function RadarPage() {
           竞品分析
         </h1>
         <p className="text-muted-foreground mt-1">
-          输入多个 1688 商品链接，对比分析价格和市场；每个成功抓取消耗 1 积分
+          输入多个 1688 商品链接，对比分析价格和市场；套餐内赠送额度，超额每次 2 积分
         </p>
       </div>
 

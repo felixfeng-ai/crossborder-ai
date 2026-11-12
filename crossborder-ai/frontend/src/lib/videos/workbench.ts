@@ -56,7 +56,7 @@ export function getVideoModel(
 }
 
 /**
- * 前端估算必须与后端积分保护一致：按秒单价累计，最低 10 积分。
+ * 前端估算必须与后端积分保护一致：按秒单价累计。
  */
 export function estimateVideoCredits(
   capabilities: VideoCapabilities | undefined,
@@ -67,7 +67,7 @@ export function estimateVideoCredits(
   const model = getVideoModel(capabilities, modelId)
   const perSecond = model?.credits_per_second?.[resolution]
   if (!perSecond) return 0
-  return Math.max(10, Math.ceil(perSecond * duration))
+  return Math.max(1, Math.ceil(perSecond * duration))
 }
 
 export function isVideoTerminal(status: string): boolean {

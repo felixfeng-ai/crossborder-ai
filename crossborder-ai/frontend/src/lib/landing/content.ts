@@ -29,6 +29,7 @@ export interface LandingCreditPack {
   name: string
   credits: number
   price: number
+  trial_once?: boolean
 }
 
 export const SUPPORTED_COPY_PLATFORMS = [
@@ -110,6 +111,7 @@ export const LANDING_AGENT_EXAMPLES = [
 ]
 
 export const FALLBACK_CREDIT_PACKS: LandingCreditPack[] = [
+  { id: 'pack_trial_50', name: '首购体验包', credits: 50, price: 9.9, trial_once: true },
   { id: 'pack_200', name: '入门积分包', credits: 200, price: 19 },
   { id: 'pack_500', name: '常用积分包', credits: 500, price: 45 },
   { id: 'pack_1200', name: '专业积分包', credits: 1200, price: 99 },
@@ -157,11 +159,12 @@ export const FALLBACK_PLANS: LandingPlan[] = [
     monthly_credits: 2000,
     description: '适合工作室与专业卖家',
     validity_days: 30,
-    recommended: false,
+    recommended: true,
     features: [
       '每月 2,000 AI 积分',
       '所有 Standard 功能',
-      'AI 图片、商品视频与营销成片',
+      '约 13 条 30 秒 768P 营销成片',
+      '约 660 张 AI 图片',
       '字幕、AI 配音与素材中心',
       '每月 20 次手动整店巡检',
       '优先技术支持',

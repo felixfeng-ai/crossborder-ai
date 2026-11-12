@@ -35,6 +35,18 @@ class PlanUpgradeRequest(Base):
     order_id: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
     # 应付金额（人民币）
     amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 日常价，用于审计活动实际减免
+    original_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # monthly / annual
+    billing_cycle: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="monthly"
+    )
+    # 活动标识，如 new_customer_first_month / annual_10_for_12
+    promotion_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # 活动额外赠送的购买积分
+    bonus_credits: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 本次开通的有效天数
+    duration_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     # pending / approved / rejected
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     # 管理员处理备注（拒绝原因等）

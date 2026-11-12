@@ -81,7 +81,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "030_professional_storyboard"
+    assert version == "031_pricing_campaign"
 
 
 def test_full_sqlite_upgrade_from_empty_database(
@@ -105,7 +105,7 @@ def test_full_sqlite_upgrade_from_empty_database(
     assert "data_retention_runs" in inspector.get_table_names()
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "030_professional_storyboard"
+    assert version == "031_pricing_campaign"
     assert "credit_transactions" in inspector.get_table_names()
     assert {
         "credit_wallets",
@@ -130,3 +130,10 @@ def test_full_sqlite_upgrade_from_empty_database(
     assert {"credits_charged", "credits_refunded"} <= _column_names(
         engine, "video_generation_tasks"
     )
+    assert {
+        "billing_cycle",
+        "promotion_code",
+        "original_amount",
+        "bonus_credits",
+        "duration_days",
+    } <= _column_names(engine, "plan_upgrade_requests")

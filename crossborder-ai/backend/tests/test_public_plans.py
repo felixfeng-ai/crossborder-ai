@@ -12,6 +12,10 @@ async def test_public_plans_expose_current_capabilities(client):
     assert plans["free"]["price"] == 0
     assert plans["standard"]["price"] == 99
     assert plans["professional"]["price"] == 249
+    assert plans["standard"]["first_month_price"] == 79
+    assert plans["professional"]["first_month_price"] == 199
+    assert plans["professional"]["first_month_bonus_credits"] == 100
+    assert plans["professional"]["recommended"] is True
     assert any("30 AI 积分" in item for item in plans["free"]["features"])
     assert any("800 AI 积分" in item for item in plans["standard"]["features"])
     assert any("2,000 AI 积分" in item for item in plans["professional"]["features"])
@@ -30,9 +34,11 @@ async def test_public_credit_packs_match_current_pricing(client):
         "pack_200": 200,
         "pack_500": 500,
         "pack_1200": 1200,
+        "pack_trial_50": 50,
     }
     assert {key: value["price"] for key, value in packs.items()} == {
         "pack_200": 19,
         "pack_500": 45,
         "pack_1200": 99,
+        "pack_trial_50": 9.9,
     }

@@ -399,9 +399,9 @@ export default function LandingPage() {
                 <h3 className="text-sm font-semibold text-slate-100">超额积分包</h3>
                 <p className="mt-1 text-xs text-slate-500">套餐额度不足时补充，购买积分不随月度额度重置</p>
               </div>
-              <span className="text-[11px] text-slate-500">视频最低 10 积分/次</span>
+              <span className="text-[11px] text-slate-500">视频最低 12 积分/4 秒</span>
             </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {creditPacks.map((pack) => (
                 <div key={pack.id} className="flex items-center justify-between border border-white/10 bg-white/[0.03] px-3 py-2.5">
                   <div>

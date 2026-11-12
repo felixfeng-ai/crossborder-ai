@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,7 +25,7 @@ class CreditPurchase(Base):
     pack_id: Mapped[str] = mapped_column(String(32), nullable=False)
     pack_name: Mapped[str] = mapped_column(String(100), nullable=False)
     credits: Mapped[int] = mapped_column(Integer, nullable=False)
-    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
     order_id: Mapped[str] = mapped_column(
         String(64), nullable=False, unique=True, index=True
     )

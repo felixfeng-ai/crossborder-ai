@@ -10,6 +10,7 @@ import app.routers.radar as radar_router
 import app.routers.shopify as shopify_router
 import app.services.video_task_executor as video_executor
 from app.models.credit_transaction import CreditTransaction
+from app.models.feature_usage import FeatureUsageCounter
 from app.models.user import User
 from app.models.video_generation_task import VideoGenerationTask
 
@@ -79,6 +80,15 @@ async def test_shopify_compliance_requires_login_and_charges_one_credit(
 @pytest.mark.asyncio
 async def test_radar_scrape_charges_only_after_success(client, db_session, monkeypatch):
     headers, user = await _register_with_credits(client, db_session, credits=5)
+    db_session.add(
+        FeatureUsageCounter(
+            user_id=user.id,
+            feature="radar_scrape",
+            period_key=datetime.now(timezone.utc).strftime("%Y-%m"),
+            used=10,
+        )
+    )
+    await db_session.flush()
 
     async def fake_refresh(db):
         return None
@@ -102,16 +112,16 @@ async def test_radar_scrape_charges_only_after_success(client, db_session, monke
 
     assert response.status_code == 200, response.text
     await db_session.refresh(user)
-    assert user.credits == 4
+    assert user.credits == 3
     ledger = (
         await db_session.execute(
             select(CreditTransaction).where(
                 CreditTransaction.user_id == user.id,
-                CreditTransaction.feature == "radar_scrape",
+                CreditTransaction.feature == "radar_scrape_overage",
             )
         )
     ).scalar_one()
-    assert ledger.delta == -1
+    assert ledger.delta == -2
 
 
 @pytest.mark.asyncio

@@ -86,6 +86,7 @@ from app.models.credit_wallet import CreditWallet  # noqa: F401
 from app.models.subscription import UserSubscription  # noqa: F401
 from app.models.feature_usage import FeatureUsageCounter  # noqa: F401
 from app.models.credit_purchase import CreditPurchase  # noqa: F401
+from app.models.plan_upgrade import PlanUpgradeRequest  # noqa: F401
 from app.models.voc import VocAnalysis  # noqa: F401
 
 target_metadata = Base.metadata

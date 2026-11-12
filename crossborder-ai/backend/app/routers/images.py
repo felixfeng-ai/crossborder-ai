@@ -50,6 +50,12 @@ from app.core.access_control import check_feature_access
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/images", tags=["AI 图片生成"])
+AI_IMAGE_CREDITS_PER_IMAGE = 3
+
+
+def image_generation_credits(num_outputs: int) -> int:
+    """按图片张数计算积分，避免高成本图片生成被单积分低估。"""
+    return max(1, int(num_outputs)) * AI_IMAGE_CREDITS_PER_IMAGE
 
 
 class GenerateImageRequest(BaseModel):
@@ -358,13 +364,14 @@ async def _execute_image_task(task_id: str, prompt: str, num_outputs: int) -> No
 
 async def schedule_image_task(db: AsyncSession, user_id, prompt: str, num_outputs: int = 1) -> str:
     """建 pending 记录并后台调度生成；返回 task_id（供 POST /generate 与 content 主图复用）。"""
+    credits_cost = image_generation_credits(num_outputs)
     task = ImageGenerationTask(
         user_id=user_id,
         prompt=prompt,
         num_outputs=num_outputs,
         status="pending",
         attempts=0,
-        credits_cost=num_outputs,
+        credits_cost=credits_cost,
         credits_charged=0,
         image_urls="[]",
         model_used="",
@@ -391,10 +398,11 @@ async def generate_image(
     if not check_feature_access(current_user, "ai_image"):
         raise HTTPException(status_code=403, detail="图片生成功能仅限专业版套餐使用，请升级套餐")
 
-    if current_user.credits < payload.num_outputs:
+    credits_cost = image_generation_credits(payload.num_outputs)
+    if current_user.credits < credits_cost:
         raise HTTPException(
             status_code=402,
-            detail=f"积分不足，本次图片生成需要 {payload.num_outputs} 积分",
+            detail=f"积分不足，本次图片生成需要 {credits_cost} 积分",
         )
 
     aliyun_key = provider_config.get("aliyun", "api_key", settings.ALIYUN_DASHSCOPE_API_KEY or "")

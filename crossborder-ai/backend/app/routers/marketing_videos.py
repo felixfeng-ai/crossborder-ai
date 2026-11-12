@@ -1,6 +1,7 @@
 """AI 营销视频 Agent 路由。"""
 
 import json
+import math
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -731,8 +732,12 @@ async def generate_marketing_voiceover(
     )
     if not narration:
         raise HTTPException(status_code=400, detail="当前项目没有可配音的脚本")
-    if current_user.credits < 1:
-        raise HTTPException(status_code=402, detail="积分不足，配音生成需要 1 积分")
+    credits_cost = max(3, math.ceil(len(narration) / 100))
+    if current_user.credits < credits_cost:
+        raise HTTPException(
+            status_code=402,
+            detail=f"积分不足，本次配音生成需要 {credits_cost} 积分",
+        )
     try:
         audio, media_type = await synthesize_minimax_tts(narration)
     except MiniMaxTTSNotConfigured as exc:
@@ -741,7 +746,7 @@ async def generate_marketing_voiceover(
         raise HTTPException(status_code=502, detail=str(exc))
     await current_user.deduct_credits(
         db,
-        1,
+        credits_cost,
         feature="marketing_voiceover",
         reference_type="marketing_video_project",
         reference_id=str(project.id),
@@ -754,6 +759,6 @@ async def generate_marketing_voiceover(
             "Content-Disposition": (
                 f'attachment; filename="veyaship-marketing-{project.id}.mp3"'
             ),
-            "X-Credits-Charged": "1",
+            "X-Credits-Charged": str(credits_cost),
         },
     )

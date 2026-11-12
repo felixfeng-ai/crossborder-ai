@@ -26,21 +26,53 @@ PLAN_CATALOG: dict[str, dict] = {
     "standard": {
         "name": "Standard",
         "price": 99,
+        "first_month_price": 79,
+        "annual_price": 990,
+        "annual_full_price": 1188,
         "monthly_credits": 800,
         "valid_days": 30,
     },
     "professional": {
         "name": "Professional",
         "price": 249,
+        "first_month_price": 199,
+        "annual_price": 2490,
+        "annual_full_price": 2988,
+        "first_month_bonus_credits": 100,
         "monthly_credits": 2000,
         "valid_days": 30,
     },
 }
 
 CREDIT_PACKS = (
-    {"id": "pack_200", "name": "入门积分包", "credits": 200, "price": 19},
-    {"id": "pack_500", "name": "常用积分包", "credits": 500, "price": 45},
-    {"id": "pack_1200", "name": "专业积分包", "credits": 1200, "price": 99},
+    {
+        "id": "pack_trial_50",
+        "name": "首购体验包",
+        "credits": 50,
+        "price": 9.9,
+        "trial_once": True,
+    },
+    {
+        "id": "pack_200",
+        "name": "入门积分包",
+        "credits": 200,
+        "price": 19,
+        "trial_once": False,
+    },
+    {
+        "id": "pack_500",
+        "name": "常用积分包",
+        "credits": 500,
+        "price": 45,
+        "trial_once": False,
+    },
+    {
+        "id": "pack_1200",
+        "name": "专业积分包",
+        "credits": 1200,
+        "price": 99,
+        "trial_once": False,
+    },
 )
 
 ANALYSIS_LIMITS = {
@@ -52,6 +84,12 @@ MANUAL_STORE_CHECK_LIMITS = {
     "free": 0,
     "standard": 10,
     "professional": 20,
+}
+
+PRODUCT_SCRAPE_LIMITS = {
+    "free": 10,
+    "standard": 100,
+    "professional": 300,
 }
 
 
@@ -315,6 +353,7 @@ async def activate_paid_plan(
     *,
     now: datetime | None = None,
     source: str = "manual_transfer",
+    duration_days: int | None = None,
 ) -> UserSubscription:
     settings = PLAN_CATALOG.get(plan)
     if not settings or plan == "free":
@@ -334,7 +373,9 @@ async def activate_paid_plan(
         plan=plan,
         status="active",
         starts_at=current,
-        expires_at=current + timedelta(days=settings["valid_days"]),
+        expires_at=current + timedelta(
+            days=duration_days or int(settings["valid_days"])
+        ),
         source=source,
     )
     db.add(subscription)
@@ -417,7 +458,39 @@ def _included_limit(user: User, feature: str) -> int:
         return ANALYSIS_LIMITS[feature]
     if feature == "manual_store_check":
         return MANUAL_STORE_CHECK_LIMITS.get(user.plan, 0)
+    if feature in {"product_scrape", "radar_scrape"}:
+        return PRODUCT_SCRAPE_LIMITS.get(user.plan, 0)
     return 0
+
+
+async def feature_allowance_snapshot(
+    db: AsyncSession,
+    user: User,
+    feature: str,
+    *,
+    now: datetime | None = None,
+) -> dict:
+    """返回当期额度快照，供外部抓取在扣积分前预检。"""
+    current = now or datetime.now(timezone.utc)
+    period = _period_key(current)
+    counter = (
+        await db.execute(
+            select(FeatureUsageCounter).where(
+                FeatureUsageCounter.user_id == user.id,
+                FeatureUsageCounter.feature == feature,
+                FeatureUsageCounter.period_key == period,
+            )
+        )
+    ).scalar_one_or_none()
+    used = int(counter.used or 0) if counter else 0
+    limit = _included_limit(user, feature)
+    return {
+        "included": used < limit,
+        "used": used,
+        "included_limit": limit,
+        "included_remaining": max(0, limit - used),
+        "period_key": period,
+    }
 
 
 async def consume_feature_allowance(

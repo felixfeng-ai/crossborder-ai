@@ -25,6 +25,7 @@ import { Label } from '@/components/ui/label'
 import {
   buildMarketingPipeline,
   downloadFilename,
+  estimateVoiceoverCredits,
   marketingTemplateName,
   projectStatusLabel,
   shotStatusLabel,
@@ -776,6 +777,7 @@ export function MarketingVideoPreview({
   const [videoLoading, setVideoLoading] = useState(false)
   const [voiceError, setVoiceError] = useState('')
   const [voicePending, setVoicePending] = useState(false)
+  const voiceCredits = estimateVoiceoverCredits(project.brief)
 
   useEffect(() => {
     setError('')
@@ -961,7 +963,7 @@ export function MarketingVideoPreview({
               ) : (
                 <Mic2 className="mr-2 h-4 w-4" />
               )}
-              {voicePending ? '配音生成中' : '生成 AI 配音 1 积分'}
+              {voicePending ? '配音生成中' : `生成 AI 配音 ${voiceCredits} 积分`}
             </Button>
           )}
           <p className="text-[10px] leading-4 text-muted-foreground">

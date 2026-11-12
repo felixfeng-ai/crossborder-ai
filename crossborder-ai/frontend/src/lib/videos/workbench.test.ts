@@ -20,7 +20,7 @@ const capabilities: VideoCapabilities = {
       max_duration: 15,
       resolutions: ['480P', '768P'],
       prices_per_second: { '480P': 0.16, '768P': 0.26 },
-      credits_per_second: { '480P': 2, '768P': 3 },
+      credits_per_second: { '480P': 3, '768P': 4.5 },
     },
   ],
   templates: [
@@ -38,8 +38,8 @@ describe('video workbench helpers', () => {
   it('读取模型并按最低积分保护估算费用', () => {
     const model = getVideoModel(capabilities, 'MiniMax-H3-Lite')
     expect(model?.resolutions).toEqual(['480P', '768P'])
-    expect(estimateVideoCredits(capabilities, 'MiniMax-H3-Lite', '480P', 4)).toBe(10)
-    expect(estimateVideoCredits(capabilities, 'MiniMax-H3-Lite', '768P', 6)).toBe(18)
+    expect(estimateVideoCredits(capabilities, 'MiniMax-H3-Lite', '480P', 4)).toBe(12)
+    expect(estimateVideoCredits(capabilities, 'MiniMax-H3-Lite', '768P', 6)).toBe(27)
   })
 
   it('使用中文状态并识别终态', () => {

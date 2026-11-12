@@ -13,6 +13,11 @@ interface UpgradeRecord {
   contact: string
   order_id: string
   amount: number
+  original_amount: number
+  billing_cycle: 'monthly' | 'annual'
+  promotion_code: string | null
+  bonus_credits: number
+  duration_days: number
   status: 'pending' | 'approved' | 'rejected'
   note: string
   created_at: string | null
@@ -137,6 +142,9 @@ export default function AdminUpgradesPage() {
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium">
                           {u.plan === 'standard' ? 'Standard' : 'Professional'} · ¥{u.amount}
+                          <span className="ml-1 font-normal text-muted-foreground">
+                            {u.billing_cycle === 'annual' ? '/ 年' : '/ 月'}
+                          </span>
                         </p>
                         <Badge variant={meta.variant}>{meta.label}</Badge>
                       </div>
@@ -144,6 +152,12 @@ export default function AdminUpgradesPage() {
                     </div>
                     <div className="text-xs text-muted-foreground space-y-0.5">
                       <p>联系方式：{u.contact || '—'}</p>
+                      <p>
+                        计费周期：{u.billing_cycle === 'annual' ? '年付' : '月付'} · {u.duration_days} 天
+                        {u.original_amount > u.amount ? ` · 原价 ¥${u.original_amount}` : ''}
+                      </p>
+                      {u.promotion_code && <p>活动：{u.promotion_code}</p>}
+                      {u.bonus_credits > 0 && <p>额外赠送：{u.bonus_credits} 积分</p>}
                       <p>
                         订单号：<code className="bg-muted px-1 py-0.5 rounded">{u.order_id}</code>
                       </p>

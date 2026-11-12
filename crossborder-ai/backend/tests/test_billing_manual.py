@@ -6,6 +6,7 @@
 """
 
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
@@ -72,13 +73,24 @@ async def _submit_upgrade(client: AsyncClient, headers: dict, plan: str = "stand
 
 
 @pytest.mark.asyncio
-async def test_submit_upgrade_request_creates_pending(client: AsyncClient, buyer_headers: dict):
+async def test_submit_upgrade_request_creates_pending(
+    client: AsyncClient,
+    buyer_headers: dict,
+    monkeypatch,
+):
     """提交升级申请 → 落库为 pending，带订单号和金额"""
+    monkeypatch.setattr(
+        "app.routers.billing._now",
+        lambda: datetime(2026, 11, 15, 4, 0, tzinfo=timezone.utc),
+    )
     data = await _submit_upgrade(client, buyer_headers, "standard")
 
     assert data["status"] == "pending"
     assert data["plan"] == "standard"
-    assert data["amount"] == 99
+    assert data["amount"] == 79
+    assert data["original_amount"] == 99
+    assert data["billing_cycle"] == "monthly"
+    assert data["promotion_code"] == "new_customer_first_month"
     assert data["order_id"].startswith("VS")
     assert len(data["order_id"]) > 8
     assert "申请已提交" in data["message"]

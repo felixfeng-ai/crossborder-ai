@@ -131,9 +131,9 @@ async def test_voiceover_endpoint_charges_once_after_success(
 
     assert response.status_code == 200
     assert response.content == b"ID3audio"
-    assert response.headers["x-credits-charged"] == "1"
+    assert response.headers["x-credits-charged"] == "3"
     await db_session.refresh(user)
-    assert user.credits == 29
+    assert user.credits == 27
 
 
 @pytest.mark.asyncio

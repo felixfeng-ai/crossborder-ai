@@ -67,6 +67,7 @@ async def test_generate_persists_pending_row(
     row = result.scalar_one()
     assert row.user_id == await _current_user_id(db_session)
     assert row.status == "pending"
+    assert row.credits_cost == 3
     assert "red sneaker" in row.prompt
 
 

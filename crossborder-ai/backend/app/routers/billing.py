@@ -11,7 +11,8 @@
 """
 
 import uuid as uuid_lib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -22,6 +23,7 @@ from app.core.database import get_db
 from app.dependencies import get_current_user, require_admin
 from app.models.credit_purchase import CreditPurchase
 from app.models.plan_upgrade import PlanUpgradeRequest
+from app.models.subscription import UserSubscription
 from app.models.user import User
 from app.services.credit_service import apply_monthly_allowance
 from app.services.plan_service import (
@@ -36,12 +38,36 @@ from app.services.plan_service import (
 
 router = APIRouter(prefix="/billing", tags=["套餐与支付"])
 
+CAMPAIGN_CODE = "year_end_2026"
+CAMPAIGN_NAME = "2026 年末增长季"
+# UTC 时间对应北京时间 2026-11-12 00:00 至 2026-12-01 00:00。
+CAMPAIGN_START = datetime(2026, 11, 11, 16, 0, tzinfo=timezone.utc)
+CAMPAIGN_END = datetime(2026, 11, 30, 16, 0, tzinfo=timezone.utc)
+
+
+def _now() -> datetime:
+    """集中时间源，便于活动资格测试与后续运营配置。"""
+    return datetime.now(timezone.utc)
+
+
+def _campaign_active(now: datetime | None = None) -> bool:
+    current = now or _now()
+    return CAMPAIGN_START <= current < CAMPAIGN_END
+
 PLANS = [
     {
         "id": plan,
         "name": config["name"],
         "price": config["price"],
         "price_label": "免费" if config["price"] == 0 else f"¥{config['price']}/月",
+        "first_month_price": config.get("first_month_price", config["price"]),
+        "first_month_bonus_credits": config.get(
+            "first_month_bonus_credits", 0
+        ),
+        "annual_price": config.get("annual_price", config["price"] * 12),
+        "annual_full_price": config.get(
+            "annual_full_price", config["price"] * 12
+        ),
         "monthly_credits": config["monthly_credits"],
         "description": (
             "试试基本功能"
@@ -67,6 +93,7 @@ PLANS = [
                     "Shopify 草稿发布与运营同步",
                     "11 个平台 Listing 文案生成",
                     "每月 10 次手动整店巡检",
+                    "商品抓取每月 100 次",
                 ]
                 if plan == "standard"
                 else []
@@ -75,6 +102,8 @@ PLANS = [
                 [
                     "所有 Standard 功能",
                     "AI 图片、商品视频与营销成片",
+                    "约 13 条 30 秒 768P 营销成片",
+                    "约 660 张 AI 图片",
                     "字幕、AI 配音与素材中心",
                     "每月 20 次手动整店巡检",
                     "优先技术支持",
@@ -84,7 +113,7 @@ PLANS = [
             ),
         ],
         "validity_days": config["valid_days"],
-        "recommended": plan == "standard",
+        "recommended": plan == "professional",
     }
     for plan, config in PLAN_CATALOG.items()
 ]
@@ -93,6 +122,10 @@ PLANS = [
 class UpgradeRequest(BaseModel):
     plan: str = Field(..., description="目标套餐: standard, professional")
     contact: str = Field(..., min_length=2, max_length=100, description="联系方式（微信/手机），付款后通知")
+    billing_cycle: Literal["monthly", "annual"] = Field(
+        "monthly",
+        description="计费周期：monthly / annual",
+    )
 
 
 class HandleRequest(BaseModel):
@@ -112,6 +145,11 @@ def _request_response(req: PlanUpgradeRequest) -> dict:
         "contact": req.contact,
         "order_id": req.order_id,
         "amount": req.amount,
+        "original_amount": req.original_amount,
+        "billing_cycle": req.billing_cycle,
+        "promotion_code": req.promotion_code,
+        "bonus_credits": req.bonus_credits,
+        "duration_days": req.duration_days,
         "status": req.status,
         "note": req.note or "",
         "created_at": str(req.created_at) if req.created_at else None,
@@ -122,6 +160,73 @@ def _request_response(req: PlanUpgradeRequest) -> dict:
 @router.get("/plans")
 async def get_plans():
     return {"plans": PLANS}
+
+
+async def _first_month_eligible(db: AsyncSession, user: User) -> bool:
+    """只允许从未开通过付费套餐的 Free 用户领取首月价。"""
+    if user.plan != "free":
+        return False
+    had_subscription = await db.scalar(
+        select(UserSubscription.id)
+        .where(UserSubscription.user_id == user.id)
+        .limit(1)
+    )
+    if had_subscription is not None:
+        return False
+    had_first_month_request = await db.scalar(
+        select(PlanUpgradeRequest.id)
+        .where(
+            PlanUpgradeRequest.user_id == user.id,
+            PlanUpgradeRequest.status.in_(("pending", "approved")),
+            PlanUpgradeRequest.promotion_code == "new_customer_first_month",
+        )
+        .limit(1)
+    )
+    if had_first_month_request is not None:
+        return False
+    had_paid_upgrade = await db.scalar(
+        select(PlanUpgradeRequest.id)
+        .where(
+            PlanUpgradeRequest.user_id == user.id,
+            PlanUpgradeRequest.status == "approved",
+        )
+        .limit(1)
+    )
+    return had_paid_upgrade is None
+
+
+async def _trial_pack_eligible(db: AsyncSession, user: User) -> bool:
+    """待处理订单也占用资格，已成功订单永久占用。"""
+    existing = await db.scalar(
+        select(CreditPurchase.id)
+        .where(
+            CreditPurchase.user_id == user.id,
+            CreditPurchase.pack_id == "pack_trial_50",
+            CreditPurchase.status.in_(("pending", "approved")),
+        )
+        .limit(1)
+    )
+    return existing is None
+
+
+@router.get("/campaign")
+async def get_campaign(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    active = _campaign_active()
+    first_month_eligible = active and await _first_month_eligible(db, current_user)
+    trial_pack_eligible = active and await _trial_pack_eligible(db, current_user)
+    return {
+        "code": CAMPAIGN_CODE,
+        "name": CAMPAIGN_NAME,
+        "active": active,
+        "starts_at": CAMPAIGN_START.isoformat(),
+        "ends_at": CAMPAIGN_END.isoformat(),
+        "first_month_eligible": first_month_eligible,
+        "trial_pack_eligible": trial_pack_eligible,
+        "plans": PLANS,
+    }
 
 
 @router.get("/wallet")
@@ -166,6 +271,21 @@ async def purchase_credit_pack(
     pack = next((item for item in CREDIT_PACKS if item["id"] == payload.pack_id), None)
     if pack is None:
         raise HTTPException(status_code=400, detail="积分包不存在")
+    if pack.get("trial_once"):
+        approved_trial = await db.scalar(
+            select(CreditPurchase.id)
+            .where(
+                CreditPurchase.user_id == current_user.id,
+                CreditPurchase.pack_id == pack["id"],
+                CreditPurchase.status == "approved",
+            )
+            .limit(1)
+        )
+        if approved_trial is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="首购体验包每个账号只能成功购买一次",
+            )
     existing = (
         await db.execute(
             select(CreditPurchase).where(
@@ -288,7 +408,6 @@ async def upgrade_plan(
     existing = (await db.execute(
         select(PlanUpgradeRequest).where(
             PlanUpgradeRequest.user_id == current_user.id,
-            PlanUpgradeRequest.plan == payload.plan,
             PlanUpgradeRequest.status == "pending",
         )
     )).scalar_one_or_none()
@@ -299,7 +418,37 @@ async def upgrade_plan(
         }
 
     plan_info = next((p for p in PLANS if p["id"] == payload.plan), None)
-    amount = plan_info["price"] if plan_info else 0
+    if plan_info is None:
+        raise HTTPException(status_code=400, detail="无效的套餐")
+
+    campaign_active = _campaign_active()
+    first_month_eligible = (
+        campaign_active
+        and payload.billing_cycle == "monthly"
+        and await _first_month_eligible(db, current_user)
+    )
+    if payload.billing_cycle == "annual":
+        amount = (
+            plan_info["annual_price"]
+            if campaign_active
+            else plan_info["annual_full_price"]
+        )
+        original_amount = plan_info["annual_full_price"]
+        promotion_code = "annual_10_for_12" if campaign_active else None
+        bonus_credits = 0
+        duration_days = 365
+    elif first_month_eligible:
+        amount = plan_info["first_month_price"]
+        original_amount = plan_info["price"]
+        promotion_code = "new_customer_first_month"
+        bonus_credits = int(plan_info["first_month_bonus_credits"])
+        duration_days = 30
+    else:
+        amount = plan_info["price"]
+        original_amount = plan_info["price"]
+        promotion_code = None
+        bonus_credits = 0
+        duration_days = 30
     order_id = f"VS{datetime.now():%Y%m%d}{uuid_lib.uuid4().hex[:8].upper()}"
 
     req = PlanUpgradeRequest(
@@ -308,6 +457,11 @@ async def upgrade_plan(
         contact=payload.contact,
         order_id=order_id,
         amount=amount,
+        original_amount=original_amount,
+        billing_cycle=payload.billing_cycle,
+        promotion_code=promotion_code,
+        bonus_credits=bonus_credits,
+        duration_days=duration_days,
         status="pending",
     )
     db.add(req)
@@ -318,6 +472,11 @@ async def upgrade_plan(
         "message": (
             f"升级申请已提交，请转账 ¥{amount} 到以下账户，备注订单号 {order_id}，"
             "客服核对到账后即为你开通。"
+            + (
+                f" 本单另赠 {bonus_credits} 积分。"
+                if bonus_credits
+                else ""
+            )
         ),
         "account": {
             "type": "支付宝 / 微信",
@@ -366,7 +525,20 @@ async def approve_upgrade(
     req = await _load_pending_request(db, request_id)
 
     user = (await db.execute(select(User).where(User.id == req.user_id))).scalar_one()
-    await activate_paid_plan(db, user, req.plan)
+    await activate_paid_plan(
+        db,
+        user,
+        req.plan,
+        duration_days=req.duration_days or 30,
+    )
+    if req.bonus_credits:
+        await grant_purchased_credits(
+            db,
+            user,
+            req.bonus_credits,
+            reference_type="plan_upgrade_bonus",
+            reference_id=req.order_id,
+        )
 
     req.status = "approved"
     req.handled_by = admin.id

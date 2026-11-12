@@ -166,13 +166,19 @@ class SchedulerService:
         )
 
     async def _run_operations_monitor(self):
-        """扫描所有拥有 SKU 的用户并生成快照与预警。"""
-        from app.services.operations_monitor import scan_all_users
+        """按用户开关扫描 SKU 并生成快照与预警。"""
+        from app.services.automation_tasks import (
+            run_scheduled_operations_monitors,
+        )
 
         async with async_session_factory() as db:
-            count = await scan_all_users(db)
+            result = await run_scheduled_operations_monitors(db)
             await db.commit()
-            print(f"[Scheduler] 运营监控完成：{count} 个用户")
+            print(
+                "[Scheduler] 运营监控完成："
+                f"{result['succeeded']} 成功，"
+                f"{result['failed']} 失败，{result['skipped']} 跳过"
+            )
 
     async def _sync_all_shopify_operations_locked(self):
         """多 worker 下只执行一份 Shopify 全局同步。"""
@@ -196,26 +202,17 @@ class SchedulerService:
             )
 
     async def _run_store_checks(self):
-        """定时整店巡检：检查所有用户的商品，记录结果"""
-        from app.models.product import Product
-        from app.models.user import User
-        from app.services.store_check_service import run_store_check
+        """按用户开关执行定时整店巡检。"""
+        from app.services.automation_tasks import run_scheduled_store_checks
 
         async with async_session_factory() as db:
-            # 找出有商品的用户
-            result = await db.execute(
-                select(Product.user_id).distinct()
-            )
-            user_ids = result.scalars().all()
-
-            for user_id in user_ids:
-                user = await db.get(User, user_id)
-                if user is not None and user.plan in {"standard", "professional"}:
-                    await run_store_check(db, user)
-
-            await db.flush()
+            result = await run_scheduled_store_checks(db)
             await db.commit()
-            print(f"[Scheduler] 定时巡检完成：{len(user_ids)} 个用户")
+            print(
+                "[Scheduler] 定时巡检完成："
+                f"{result['succeeded']} 成功，"
+                f"{result['failed']} 失败，{result['skipped']} 跳过"
+            )
 
     async def stop(self):
         """Shut down the scheduler."""

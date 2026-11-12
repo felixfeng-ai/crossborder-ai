@@ -5,6 +5,7 @@ import uuid
 import pytest
 
 from app.core.crypto import encrypt_value
+from app.models.automation_preference import AutomationPreference
 from app.models.shopify_channel import ShopifyChannel
 from app.models.user import User
 from app.services.scheduler import SchedulerService
@@ -111,3 +112,47 @@ async def test_scheduler_registers_shopify_auto_sync_job():
     await service.start()
 
     assert "shopify_operations_sync" in job_ids
+
+
+@pytest.mark.asyncio
+async def test_sync_all_skips_shopify_when_user_turned_off(
+    db_session,
+    monkeypatch,
+):
+    user = User(
+        email=f"auto-sync-off-{uuid.uuid4().hex[:8]}@test.com",
+        username="auto-sync-off",
+        password_hash="x",
+        plan="professional",
+    )
+    db_session.add(user)
+    await db_session.flush()
+    channel = ShopifyChannel(
+        user_id=user.id,
+        shop_name="auto-sync-off",
+        shop_domain="auto-sync-off.myshopify.com",
+        access_token=encrypt_value("shpat_off"),
+        is_active=True,
+    )
+    db_session.add(channel)
+    db_session.add(
+        AutomationPreference(
+            user_id=user.id,
+            shopify_auto_sync=False,
+        )
+    )
+    await db_session.commit()
+
+    async def should_not_run(*args, **kwargs):
+        raise AssertionError("关闭 Shopify 自动同步后不应调用真实同步")
+
+    monkeypatch.setattr(
+        "app.services.shopify_operations_sync.sync_shopify_operations",
+        should_not_run,
+    )
+
+    result = await sync_all_shopify_operations(db_session)
+
+    assert result["channels_scanned"] == 1
+    assert result["channels_skipped"] == 1
+    assert result["channels_succeeded"] == 0

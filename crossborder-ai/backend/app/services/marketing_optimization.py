@@ -63,6 +63,7 @@ def evaluate_variant_performance(
     snapshots: list[MarketingPerformanceSnapshot],
     *,
     now: datetime | None = None,
+    persist: bool = True,
 ) -> list[dict]:
     """按平台计算 A/B 表现，并返回可持久化的版本状态。
 
@@ -149,12 +150,13 @@ def evaluate_variant_performance(
             "metrics": metrics,
             "evaluated_at": evaluated_at.isoformat(),
         }
-        asset.performance_status = status
-        asset.performance_metrics_json = json.dumps(
-            {**metrics, "reason": payload["reason"]},
-            ensure_ascii=False,
-        )
-        asset.last_evaluated_at = evaluated_at
+        if persist:
+            asset.performance_status = status
+            asset.performance_metrics_json = json.dumps(
+                {**metrics, "reason": payload["reason"]},
+                ensure_ascii=False,
+            )
+            asset.last_evaluated_at = evaluated_at
         results.append(payload)
     return results
 

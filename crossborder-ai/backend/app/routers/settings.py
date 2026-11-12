@@ -14,9 +14,49 @@ from app.models.persona import Persona
 from app.models.system_config import SystemConfig
 from app.models.user import User
 from app.services import provider_config
+from app.services.automation_settings import (
+    load_automation_settings,
+    update_automation_settings,
+)
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
+
+
+class AutomationSettingsRequest(BaseModel):
+    """四项业务自动化开关，未提交字段保持原值。"""
+
+    daily_store_check: bool | None = None
+    daily_operations_monitor: bool | None = None
+    shopify_auto_sync: bool | None = None
+    ab_auto_pause: bool | None = None
+
+
+@router.get("/automation")
+async def get_automation_settings(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """返回当前用户业务自动化开关和最近执行状态。"""
+    return await load_automation_settings(db, current_user)
+
+
+@router.put("/automation")
+async def save_automation_settings(
+    payload: AutomationSettingsRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """保存当前用户业务自动化开关。"""
+    updates = {
+        key: value
+        for key, value in payload.model_dump().items()
+        if value is not None
+    }
+    try:
+        return await update_automation_settings(db, current_user, updates)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 @router.get("/providers")

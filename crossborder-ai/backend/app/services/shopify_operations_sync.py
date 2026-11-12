@@ -19,6 +19,10 @@ from app.models.marketing_distribution import (
 from app.models.publication import Publication
 from app.models.shopify_channel import ShopifyChannel
 from app.models.user import User
+from app.services.automation_settings import (
+    automation_enabled_for_user,
+    record_task_state,
+)
 
 
 class ShopifyOperationsSyncError(Exception):
@@ -364,6 +368,7 @@ async def sync_all_shopify_operations(
         "channels_scanned": len(channel_refs),
         "channels_succeeded": 0,
         "channels_failed": 0,
+        "channels_skipped": 0,
         "orders_scanned": 0,
         "campaign_performance_updates": 0,
         "failures": [],
@@ -395,6 +400,9 @@ async def sync_all_shopify_operations(
                 }
             )
             continue
+        if not await automation_enabled_for_user(db, user, "shopify_sync"):
+            summary["channels_skipped"] += 1
+            continue
         try:
             result = await sync_shopify_operations(
                 db,
@@ -402,6 +410,13 @@ async def sync_all_shopify_operations(
                 channel=channel,
                 days=days,
             )
+            await record_task_state(
+                db,
+                user_id=user_id,
+                task="shopify_sync",
+                status="success",
+            )
+            await db.commit()
         except Exception as exc:
             await db.rollback()
             summary["channels_failed"] += 1
@@ -412,6 +427,14 @@ async def sync_all_shopify_operations(
                     "error": str(exc)[:300],
                 }
             )
+            await record_task_state(
+                db,
+                user_id=user_id,
+                task="shopify_sync",
+                status="failed",
+                error=str(exc),
+            )
+            await db.commit()
             continue
 
         summary["channels_succeeded"] += 1

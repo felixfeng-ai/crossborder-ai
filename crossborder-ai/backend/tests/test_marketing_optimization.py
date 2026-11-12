@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.models.marketing_campaign import MarketingCampaign
 from app.models.marketing_copy import MarketingCopyAsset
 from app.models.marketing_distribution import MarketingPerformanceSnapshot
+from app.models.automation_preference import AutomationPreference
 from app.models.product import Product
 from app.models.user import User
 from app.services.marketing_optimization import evaluate_variant_performance
@@ -242,3 +243,105 @@ async def test_metric_import_auto_evaluates_and_returns_actions(
     )
     assert resumed.status_code == 200, resumed.text
     assert resumed.json()["performance_status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_metric_import_respects_disabled_ab_auto_pause(
+    client,
+    auth_headers,
+    db_session,
+):
+    user = (
+        await db_session.execute(
+            select(User).where(User.email == "test@example.com")
+        )
+    ).scalar_one()
+    user.plan = "professional"
+    product = Product(
+        user_id=user.id,
+        url=f"https://detail.1688.com/offer/{uuid.uuid4().hex}.html",
+        title="关闭 A/B 自动暂停测试",
+    )
+    db_session.add(product)
+    await db_session.flush()
+    campaign = MarketingCampaign(
+        user_id=user.id,
+        product_id=product.id,
+        title="关闭 A/B 自动暂停活动",
+        objective="conversion",
+        platform="tiktok",
+        market="US",
+        language="en",
+        budget_credits=100,
+        brief_json="{}",
+    )
+    db_session.add(campaign)
+    await db_session.flush()
+    variant_a = MarketingCopyAsset(
+        batch_id=uuid.uuid4(),
+        user_id=user.id,
+        campaign_id=campaign.id,
+        platform="tiktok",
+        variant_key="A",
+        language="en",
+        headline="A",
+        body="A",
+        cta="Shop",
+    )
+    variant_b = MarketingCopyAsset(
+        batch_id=variant_a.batch_id,
+        user_id=user.id,
+        campaign_id=campaign.id,
+        platform="tiktok",
+        variant_key="B",
+        language="en",
+        headline="B",
+        body="B",
+        cta="Shop",
+    )
+    db_session.add_all([variant_a, variant_b])
+    db_session.add(
+        AutomationPreference(
+            user_id=user.id,
+            ab_auto_pause=False,
+        )
+    )
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/v1/marketing-campaigns/{campaign.id}/metrics",
+        json={
+            "items": [
+                {
+                    "platform": "tiktok",
+                    "source": "manual",
+                    "copy_id": str(variant_a.id),
+                    "period_start": "2026-11-01T00:00:00Z",
+                    "period_end": "2026-11-07T23:59:59Z",
+                    "impressions": 2400,
+                    "clicks": 120,
+                    "orders": 20,
+                    "spend": 100,
+                    "revenue": 520,
+                },
+                {
+                    "platform": "tiktok",
+                    "source": "manual",
+                    "copy_id": str(variant_b.id),
+                    "period_start": "2026-11-01T00:00:00Z",
+                    "period_end": "2026-11-07T23:59:59Z",
+                    "impressions": 2200,
+                    "clicks": 44,
+                    "orders": 2,
+                    "spend": 100,
+                    "revenue": 30,
+                },
+            ]
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 201, response.text
+    await db_session.refresh(variant_a)
+    await db_session.refresh(variant_b)
+    assert variant_a.performance_status == "active"
+    assert variant_b.performance_status == "active"

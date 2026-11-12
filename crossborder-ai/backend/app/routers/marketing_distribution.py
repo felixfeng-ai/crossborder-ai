@@ -41,6 +41,10 @@ from app.services.marketing_optimization import (
     evaluate_campaign_ab_performance,
     evaluate_variant_performance,
 )
+from app.services.automation_settings import (
+    automation_enabled_for_user,
+    record_task_state,
+)
 from app.services.shopify_publish_service import (
     ShopifyPublishError,
     publish_shopify_product,
@@ -633,11 +637,18 @@ async def import_campaign_metrics(
         db.add(snapshot)
         items.append(snapshot)
     await db.flush()
-    await evaluate_campaign_ab_performance(
-        db,
-        campaign_id=campaign.id,
-        user_id=current_user.id,
-    )
+    if await automation_enabled_for_user(db, current_user, "ab_evaluation"):
+        await evaluate_campaign_ab_performance(
+            db,
+            campaign_id=campaign.id,
+            user_id=current_user.id,
+        )
+        await record_task_state(
+            db,
+            user_id=current_user.id,
+            task="ab_evaluation",
+            status="success",
+        )
     for item in items:
         await db.refresh(item)
     return {
@@ -714,11 +725,18 @@ async def import_campaign_metrics_csv(
     )
     db.add(snapshot)
     await db.flush()
-    await evaluate_campaign_ab_performance(
-        db,
-        campaign_id=campaign.id,
-        user_id=current_user.id,
-    )
+    if await automation_enabled_for_user(db, current_user, "ab_evaluation"):
+        await evaluate_campaign_ab_performance(
+            db,
+            campaign_id=campaign.id,
+            user_id=current_user.id,
+        )
+        await record_task_state(
+            db,
+            user_id=current_user.id,
+            task="ab_evaluation",
+            status="success",
+        )
     await db.commit()
     await db.refresh(snapshot)
     return {
@@ -785,7 +803,16 @@ async def get_campaign_optimization(
         )
     ).scalars().all()
     totals = _aggregate_performance(list(snapshots))
-    variant_analysis = evaluate_variant_performance(list(copies), list(snapshots))
+    ab_auto_pause = await automation_enabled_for_user(
+        db,
+        current_user,
+        "ab_evaluation",
+    )
+    variant_analysis = evaluate_variant_performance(
+        list(copies),
+        list(snapshots),
+        persist=ab_auto_pause,
+    )
     asset_actions = build_optimization_asset_actions(variant_analysis)
     recommendations: list[dict] = []
     if not snapshots:

@@ -1,7 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Settings, CheckCircle2, Palette, X, KeyRound, Server, Link2, RefreshCw } from 'lucide-react'
+import {
+  Settings,
+  CheckCircle2,
+  Palette,
+  X,
+  KeyRound,
+  Server,
+  Link2,
+  RefreshCw,
+  Clock3,
+  ShieldCheck,
+  CircleAlert,
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,6 +21,22 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import apiClient from '@/api/client'
+import {
+  AUTOMATION_FIELD_BY_TASK,
+  automationStatusLabel,
+  effectiveAutomationEnabled,
+  type AutomationSettingsResponse,
+  type AutomationTask,
+} from '@/lib/settings/automation'
+
+const AUTOMATION_FIELDS = [
+  'daily_store_check',
+  'daily_operations_monitor',
+  'shopify_auto_sync',
+  'ab_auto_pause',
+] as const
+
+type AutomationDraft = Record<(typeof AUTOMATION_FIELDS)[number], boolean>
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState(() => {
@@ -37,12 +65,16 @@ export default function SettingsPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="persona">品牌调性</TabsTrigger>
+          <TabsTrigger value="automation">自动化</TabsTrigger>
           <TabsTrigger value="connections">平台连接</TabsTrigger>
           {me?.is_admin && <TabsTrigger value="providers">服务商配置</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="persona" className="space-y-4">
           <PersonaForm />
+        </TabsContent>
+        <TabsContent value="automation" className="space-y-4">
+          <AutomationSettings />
         </TabsContent>
         <TabsContent value="connections" className="space-y-4">
           <PlatformConnections />
@@ -55,6 +87,197 @@ export default function SettingsPage() {
       </Tabs>
     </motion.div>
   )
+}
+
+function AutomationSettings() {
+  const queryClient = useQueryClient()
+  const [draft, setDraft] = useState<AutomationDraft>({
+    daily_store_check: true,
+    daily_operations_monitor: true,
+    shopify_auto_sync: true,
+    ab_auto_pause: true,
+  })
+
+  const { data, isLoading } = useQuery<AutomationSettingsResponse>({
+    queryKey: ['automation-settings'],
+    queryFn: async () => {
+      const response = await apiClient.get('/settings/automation')
+      return response.data
+    },
+  })
+
+  useEffect(() => {
+    if (!data) return
+    const next = { ...draft }
+    for (const task of data.tasks) {
+      const field = AUTOMATION_FIELD_BY_TASK[task.key]
+      next[field] = task.enabled
+    }
+    setDraft(next)
+    // 仅在服务端配置变化时重置草稿。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data])
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.put('/settings/automation', draft)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['automation-settings'] })
+    },
+  })
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-center text-sm text-muted-foreground">
+          加载自动化设置...
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const tasks = data?.tasks || []
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4" />
+            业务自动化
+          </CardTitle>
+          <CardDescription>
+            控制当前账号的巡检、监控、店铺同步和 A/B 自动暂停。
+            系统任务队列、计费、数据保留和 Webhook 不受这里影响。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!data?.eligible && (
+            <div className="flex gap-2 border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              Standard 及以上套餐才能实际执行定时业务自动化。
+            </div>
+          )}
+
+          {tasks.map((task) => (
+            <AutomationTaskRow
+              key={task.key}
+              task={task}
+              eligible={Boolean(data?.eligible)}
+              checked={effectiveAutomationEnabled(
+                data?.plan || '',
+                draft[AUTOMATION_FIELD_BY_TASK[task.key]],
+              )}
+              onChange={(checked) => setDraft((current) => ({
+                ...current,
+                [AUTOMATION_FIELD_BY_TASK[task.key]]: checked,
+              }))}
+            />
+          ))}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+            <p className="text-[11px] text-muted-foreground">
+              关闭自动任务后，原有手动操作入口仍然可用。
+            </p>
+            <Button
+              size="sm"
+              onClick={() => saveMutation.mutate()}
+              disabled={!data?.eligible || saveMutation.isPending}
+            >
+              {saveMutation.isPending ? '保存中...' : '保存自动化设置'}
+            </Button>
+          </div>
+          {saveMutation.isSuccess && (
+            <p className="flex items-center gap-1 text-xs text-emerald-600">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              自动化设置已保存，下一次调度立即生效
+            </p>
+          )}
+          {saveMutation.isError && (
+            <p className="text-xs text-destructive">
+              自动化设置保存失败，请稍后重试。
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function AutomationTaskRow({
+  task,
+  eligible,
+  checked,
+  onChange,
+}: {
+  task: AutomationTask
+  eligible: boolean
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  const statusVariant =
+    task.status === 'failed'
+      ? 'destructive'
+      : task.status === 'success'
+        ? 'secondary'
+        : 'outline'
+  return (
+    <div className="grid gap-3 border border-border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-medium">{task.title}</p>
+          <Badge variant="outline" className="gap-1">
+            <Clock3 className="h-3 w-3" />
+            {task.schedule}
+          </Badge>
+          <Badge variant={statusVariant}>
+            {automationStatusLabel(task.status)}
+          </Badge>
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          {task.description}
+        </p>
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          {task.last_run_at
+            ? `最近执行：${formatAutomationTime(task.last_run_at)}`
+            : '最近执行：暂无记录'}
+          {task.error ? ` · ${task.error}` : ''}
+        </p>
+      </div>
+      <div className="flex justify-end sm:justify-self-end">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={checked}
+          aria-label={`${task.title}${checked ? '已开启' : '已关闭'}`}
+          disabled={!eligible}
+          onClick={() => onChange(!checked)}
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 ${
+            checked
+              ? 'border-[var(--factory-accent)] bg-[var(--factory-accent)]'
+              : 'border-border bg-muted'
+          }`}
+        >
+          <span
+            className={`absolute h-4 w-4 rounded-full bg-background transition-transform ${
+              checked ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function formatAutomationTime(value: string): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
 }
 
 const PROVIDERS = [

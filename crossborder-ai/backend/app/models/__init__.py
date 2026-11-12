@@ -45,6 +45,10 @@ from app.models.subscription import UserSubscription
 from app.models.feature_usage import FeatureUsageCounter
 from app.models.credit_purchase import CreditPurchase
 from app.models.voc import VocAnalysis
+from app.models.automation_preference import (
+    AutomationPreference,
+    AutomationTaskState,
+)
 
 __all__ = [
     "User",
@@ -90,4 +94,6 @@ __all__ = [
     "FeatureUsageCounter",
     "CreditPurchase",
     "VocAnalysis",
+    "AutomationPreference",
+    "AutomationTaskState",
 ]

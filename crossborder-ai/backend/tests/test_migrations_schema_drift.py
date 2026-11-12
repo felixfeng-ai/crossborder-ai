@@ -123,7 +123,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "042_marketing_optimization"
+    assert version == "043_automation_preferences"
     assert "provider" in _column_names(engine, "marketing_video_projects")
     assert "workspace" in _column_names(engine, "conversations")
     assert "campaign_id" in _column_names(engine, "conversations")
@@ -157,6 +157,16 @@ def test_repair_migration_restores_stamped_schema_drift(
         "performance_metrics_json",
         "last_evaluated_at",
     } <= _column_names(engine, "marketing_copy_assets")
+    assert {
+        "automation_preferences",
+        "automation_task_states",
+    } <= set(sa.inspect(engine).get_table_names())
+    assert {
+        "daily_store_check",
+        "daily_operations_monitor",
+        "shopify_auto_sync",
+        "ab_auto_pause",
+    } <= _column_names(engine, "automation_preferences")
 
 
 def test_full_sqlite_upgrade_from_empty_database(
@@ -205,7 +215,7 @@ def test_full_sqlite_upgrade_from_empty_database(
     } <= _column_names(engine, "products")
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "042_marketing_optimization"
+    assert version == "043_automation_preferences"
     assert "provider" in _column_names(engine, "marketing_video_projects")
     assert "workspace" in _column_names(engine, "conversations")
     assert "campaign_id" in _column_names(engine, "conversations")
@@ -239,6 +249,15 @@ def test_full_sqlite_upgrade_from_empty_database(
         "performance_metrics_json",
         "last_evaluated_at",
     } <= _column_names(engine, "marketing_copy_assets")
+    assert {
+        "automation_preferences",
+        "automation_task_states",
+    } <= set(inspector.get_table_names())
+    assert {
+        "last_run_at",
+        "status",
+        "error",
+    } <= _column_names(engine, "automation_task_states")
     assert "credit_transactions" in inspector.get_table_names()
     assert {
         "credit_wallets",

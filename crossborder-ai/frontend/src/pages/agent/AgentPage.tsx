@@ -17,6 +17,8 @@ import {
   Image as ImageIcon,
   Clapperboard,
   FolderOpen,
+  Megaphone,
+  type LucideIcon,
 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,6 +30,11 @@ import apiClient, { API_BASE } from '@/api/client'
 import { readSseUntil, TaskTimeoutError } from '@/api/sse'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { getActionLabel } from '@/lib/agent/actionLabels'
+import {
+  agentWorkspaceCopy,
+  type AgentActionIcon,
+  type AgentWorkspaceMode,
+} from '@/lib/agent/workspace'
 import { useAuthStore } from '@/stores/authStore'
 
 /**
@@ -46,14 +53,15 @@ interface Message {
   timestamp: Date
 }
 
-// ── 快捷指令 ──────────────────────────────────────────────────
-const QUICK_ACTIONS = [
-  { icon: ShoppingCart, label: 'AI 选品', prompt: '帮我分析一个适合美国市场的跨境品类，并推荐值得做的方向' },
-  { icon: FileText, label: '生成 Listing', prompt: '帮我基于商品库中的商品生成 Amazon Listing，英文' },
-  { icon: ImageIcon, label: '商品图片', prompt: '帮我基于商品信息生成一张高质量商品主图' },
-  { icon: Clapperboard, label: '商品图生视频', prompt: '帮我基于素材中心中的商品首帧生成商品视频，先告诉我预计积分' },
-  { icon: FolderOpen, label: '查看素材', prompt: '查看我最新的图片、商品视频和营销视频项目' },
-]
+const ACTION_ICONS: Record<AgentActionIcon, LucideIcon> = {
+  'shopping-cart': ShoppingCart,
+  'file-text': FileText,
+  image: ImageIcon,
+  sparkles: Sparkles,
+  clapperboard: Clapperboard,
+  folder: FolderOpen,
+  megaphone: Megaphone,
+}
 
 // ── 任务进度：SSE 实时推流（替代 2s 轮询），连接失败自动回退轮询 ──
 const TASK_POLL_INTERVAL_MS = 2000 // 轮询兜底：每 2 秒查一次任务状态
@@ -112,14 +120,19 @@ async function streamTaskStatus(
   }
 }
 
-export default function AgentPage() {
+export default function AgentPage({
+  mode = 'general',
+}: {
+  mode?: AgentWorkspaceMode
+}) {
+  const workspace = agentWorkspaceCopy(mode)
   const user = useAuthStore((state) => state.user)
   const [searchParams] = useSearchParams()
   const promptFromQuery = searchParams.get('prompt') || ''
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: '你好，我是 VeyaShip 跨境电商 AI 决策助手。\n\n你可以直接告诉我经营目标，我会调用真实业务工具：\n- **选品与利润**：分析品类、测算净利\n- **Listing**：生成、回查、修改文案\n- **商品素材**：生成图片、查询素材、提交商品视频\n- **营销成片**：先生成分镜方案，确认后再渲染\n\n需要我做什么？',
+      content: workspace.intro,
       timestamp: new Date(),
     },
   ])
@@ -130,9 +143,11 @@ export default function AgentPage() {
 
   // 加载最近的对话
   const { data: convList } = useQuery({
-    queryKey: ['agent-conversations'],
+    queryKey: ['agent-conversations', mode],
     queryFn: async () => {
-      const r = await apiClient.get('/agent/conversations')
+      const r = await apiClient.get('/agent/conversations', {
+        params: { workspace: mode },
+      })
       return r.data.items || []
     },
   })
@@ -146,7 +161,7 @@ export default function AgentPage() {
 
   // 加载对话历史消息
   const { data: convData } = useQuery({
-    queryKey: ['agent-conversation', conversationId],
+    queryKey: ['agent-conversation', mode, conversationId],
     queryFn: async () => {
       if (!conversationId) return null
       const r = await apiClient.get(`/agent/conversations/${conversationId}`)
@@ -182,7 +197,11 @@ export default function AgentPage() {
     mutationFn: async (instruction: string) => {
       const res = await apiClient.post(
         '/agent/run',
-        { instruction, conversation_id: conversationId },
+        {
+          instruction,
+          conversation_id: conversationId,
+          workspace: mode,
+        },
         { headers: { 'Idempotency-Key': genIdempotencyKey() } },
       )
       return streamTaskStatus(res.data.task_id, setLiveSteps)
@@ -310,6 +329,15 @@ export default function AgentPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)] max-w-3xl mx-auto">
+      {mode === 'marketing' && (
+        <div className="flex items-center gap-4 overflow-x-auto border-b px-4 py-2 text-[11px] text-muted-foreground">
+          <span className="shrink-0 font-medium text-foreground">工作区</span>
+          <Link to="/app/images" className="shrink-0 hover:text-foreground">图片工作台</Link>
+          <Link to="/app/videos" className="shrink-0 hover:text-foreground">视频工作台</Link>
+          <Link to="/app/assets" className="shrink-0 hover:text-foreground">素材中心</Link>
+        </div>
+      )}
+
       {/* ── 聊天消息区 ────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto space-y-4 px-4 py-4">
         <AnimatePresence>
@@ -359,25 +387,27 @@ export default function AgentPage() {
         <div ref={chatEndRef} />
       </div>
 
-      {/* ── 快捷指令（仅首条消息时显示） ────────────────── */}
-      {messages.length === 1 && (
-        <div className="px-4 pb-2">
-          <div className="flex flex-wrap gap-2">
-            {QUICK_ACTIONS.map((action, i) => (
+      {/* 快捷指令独立于消息数量，历史加载或长对话时保持可见。 */}
+      <div className="px-4 pb-2">
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {workspace.actions.map((action) => {
+            const Icon = ACTION_ICONS[action.icon]
+            return (
               <Button
-                key={i}
+                key={action.label}
                 variant="outline"
                 size="sm"
-                className="gap-1.5"
+                className="shrink-0 gap-1.5"
+                disabled={agentMutation.isPending}
                 onClick={() => handleQuickAction(action.prompt)}
               >
-                <action.icon className="h-3.5 w-3.5" />
+                <Icon className="h-3.5 w-3.5" />
                 {action.label}
               </Button>
-            ))}
-          </div>
+            )
+          })}
         </div>
-      )}
+      </div>
 
       {/* ── 输入框 ────────────────────────────────────────── */}
       <div className="border-t bg-background px-4 py-3">
@@ -386,7 +416,7 @@ export default function AgentPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            placeholder="粘贴 1688 链接，或直接告诉我需求..."
+            placeholder={workspace.placeholder}
             className="flex-1 h-11 rounded-xl border bg-muted px-4 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
             disabled={agentMutation.isPending}
           />
@@ -400,7 +430,7 @@ export default function AgentPage() {
           </Button>
         </div>
         <p className="text-[11px] text-muted-foreground mt-1.5 text-center">
-          AI 会自动识别任务：选品、Listing、商品素材与营销视频方案
+          {workspace.footer}
         </p>
       </div>
     </div>

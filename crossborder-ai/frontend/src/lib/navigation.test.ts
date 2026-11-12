@@ -22,6 +22,7 @@ describe('navigation architecture', () => {
     expect(paths).not.toContain('/app/marketing-videos')
     expect(paths).not.toContain('/app/batch')
     expect(paths).not.toContain('/app/content')
+    expect(paths).toContain('/app/marketing-agent')
   })
 
   it('为顶部栏提供页面上下文', () => {
@@ -36,6 +37,10 @@ describe('navigation architecture', () => {
     expect(getHeaderContext('/app/videos')).toMatchObject({
       group: 'AI 创作',
       title: '视频工作台',
+    })
+    expect(getHeaderContext('/app/marketing-agent')).toMatchObject({
+      group: 'AI 创作',
+      title: '营销 Agent',
     })
   })
 

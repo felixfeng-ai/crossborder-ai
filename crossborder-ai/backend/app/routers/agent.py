@@ -37,6 +37,13 @@ WORKFLOW_TEMPLATES: dict[str, dict] = {
     "scrape_and_list": {"id": "scrape_and_list", "name": "抓取 + 生成 Listing", "desc": "抓取 1688 商品 → AI 生成 Listing", "cost": 1},
 }
 
+AGENT_WORKSPACES = {"general", "marketing"}
+
+
+def _normalize_workspace(value: str) -> str:
+    normalized = str(value or "general").strip().lower()
+    return normalized if normalized in AGENT_WORKSPACES else "general"
+
 
 @router.get("/workflows")
 async def list_workflows():
@@ -50,11 +57,15 @@ async def list_workflows():
 @router.get("/conversations")
 async def list_conversations(
     page: int = Query(1, ge=1),
+    workspace: str = Query("general"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """获取用户的对话历史列表"""
-    query = select(Conversation).where(Conversation.user_id == current_user.id).order_by(desc(Conversation.updated_at))
+    query = select(Conversation).where(
+        Conversation.user_id == current_user.id,
+        Conversation.workspace == _normalize_workspace(workspace),
+    ).order_by(desc(Conversation.updated_at))
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar()
     result = await db.execute(query.offset((page - 1) * 20).limit(20))
     convs = result.scalars().all()
@@ -67,11 +78,15 @@ async def list_conversations(
 
 @router.post("/conversations")
 async def create_conversation(
+    workspace: str = Query("general"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """创建新的对话会话"""
-    conv = Conversation(user_id=current_user.id)
+    conv = Conversation(
+        user_id=current_user.id,
+        workspace=_normalize_workspace(workspace),
+    )
     db.add(conv)
     await db.flush()
     return {"id": str(conv.id), "title": "新对话"}
@@ -114,6 +129,7 @@ async def get_conversation(
 class AgentRequest(BaseModel):
     instruction: str = Field(..., min_length=2, max_length=2000)
     conversation_id: str = Field("", description="对话ID，留空创建新对话")
+    workspace: str = Field("general", description="Agent 工作区")
 
 
 def _task_response(task: AgentTask) -> dict:
@@ -236,7 +252,10 @@ async def run_agent(
             pass
 
     if not conv_id:
-        conv = Conversation(user_id=current_user.id)
+        conv = Conversation(
+            user_id=current_user.id,
+            workspace=_normalize_workspace(payload.workspace),
+        )
         db.add(conv)
         await db.flush()
         conv_id = conv.id
@@ -252,6 +271,7 @@ async def run_agent(
         input=json.dumps({
             "instruction": payload.instruction,
             "conversation_id": str(conv_id),
+            "workspace": _normalize_workspace(payload.workspace),
         }, ensure_ascii=False),
         idempotency_key=idempotency_key or None,
         cost=cost,

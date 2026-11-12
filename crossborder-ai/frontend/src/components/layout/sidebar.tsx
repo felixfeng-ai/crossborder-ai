@@ -12,6 +12,7 @@ import {
   Layers,
   Activity,
   Clapperboard,
+  Megaphone,
   FolderOpen,
   type LucideIcon,
 } from 'lucide-react'
@@ -26,6 +27,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/app/products': Package,
   '/app/catalog': Layers,
   '/app/agent': Bot,
+  '/app/marketing-agent': Megaphone,
   '/app/images': Image,
   '/app/videos': Clapperboard,
   '/app/assets': FolderOpen,

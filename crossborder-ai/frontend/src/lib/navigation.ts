@@ -41,6 +41,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
     label: 'AI 创作',
     items: [
       { label: 'AI 助手', path: '/app/agent' },
+      { label: '营销 Agent', path: '/app/marketing-agent' },
       { label: '图片工作台', path: '/app/images' },
       { label: '视频工作台', path: '/app/videos' },
       { label: '素材中心', path: '/app/assets' },
@@ -89,6 +90,11 @@ const HEADER_CONTEXTS: Record<string, HeaderContext> = {
     group: 'AI 创作',
     title: 'AI 助手',
     description: '对话、分析与自动化工作流',
+  },
+  '/app/marketing-agent': {
+    group: 'AI 创作',
+    title: '营销 Agent',
+    description: '营销策略、图片、视频与文案',
   },
   '/app/images': {
     group: 'AI 创作',

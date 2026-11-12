@@ -40,6 +40,23 @@
 - When 再次提交月付升级
 - Then 不重复享受新客首月价格，按日常价 ¥99 / ¥249 创建订单
 
+### 1.1 套餐升降级边界
+
+**Requirement**
+
+用户只能申请高于当前等级的套餐；同级和低等级套餐在页面禁用，服务端也必须拒绝绕过页面的降级请求。
+
+**Scenario**
+
+- Given 用户当前为 Professional
+- When 尝试申请 Standard 或 Free
+- Then 页面按钮禁用并显示“已包含在当前套餐”
+- 直接调用升级接口返回 409，不创建订单
+
+- Given 用户当前为 Standard
+- When 查看套餐
+- Then Free 和 Standard 禁用，Professional 可申请
+
 ### 2. 首购体验包
 
 **Requirement**

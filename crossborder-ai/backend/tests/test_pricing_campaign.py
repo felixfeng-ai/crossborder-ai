@@ -1,6 +1,6 @@
 """套餐活动、年付与新客资格契约测试。"""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -126,7 +126,17 @@ async def test_existing_paid_user_does_not_get_first_month_price(
 ):
     monkeypatch.setattr(billing_router, "_now", _campaign_now)
     user = await _auth_user(db_session)
-    user.plan = "professional"
+    now = _campaign_now()
+    db_session.add(
+        UserSubscription(
+            user_id=user.id,
+            plan="standard",
+            status="expired",
+            starts_at=now - timedelta(days=60),
+            expires_at=now - timedelta(days=30),
+            source="test_history",
+        )
+    )
     await db_session.flush()
 
     response = await client.post(
@@ -145,6 +155,30 @@ async def test_existing_paid_user_does_not_get_first_month_price(
     assert body["original_amount"] == 99
     assert body["promotion_code"] is None
     assert body["bonus_credits"] == 0
+
+
+@pytest.mark.asyncio
+async def test_professional_user_cannot_downgrade_or_reapply(
+    client,
+    auth_headers,
+    db_session,
+):
+    user = await _auth_user(db_session)
+    user.plan = "professional"
+    await db_session.flush()
+
+    for target in ("free", "standard", "professional"):
+        response = await client.post(
+            "/api/v1/billing/upgrade",
+            json={
+                "plan": target,
+                "contact": "wx-downgrade",
+                "billing_cycle": "monthly",
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 409, response.text
+        assert "高于当前套餐" in response.json()["detail"]
 
 
 @pytest.mark.asyncio

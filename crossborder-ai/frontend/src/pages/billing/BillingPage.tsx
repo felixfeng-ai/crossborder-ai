@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import apiClient from '@/api/client'
 import { creditBreakdownLabel, formatCreditTotal } from '@/lib/billing/balance'
+import { planAccessState } from '@/lib/billing/plans'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/cn'
 
@@ -288,6 +289,7 @@ export default function BillingPage() {
   const campaignActive = Boolean(campaign?.active)
   const firstMonthEligible = Boolean(campaign?.first_month_eligible)
   const trialEligible = Boolean(campaign?.trial_pack_eligible)
+  const professionalAccess = planAccessState(user.plan, 'professional')
 
   return (
     <motion.div
@@ -375,13 +377,20 @@ export default function BillingPage() {
           <div className="mt-5 flex flex-wrap gap-2">
             <Button
               size="sm"
+              disabled={professionalAccess !== 'available'}
               onClick={() => {
                 setBillingCycle('monthly')
                 setSelectedPlan('professional')
               }}
             >
-              以活动价升级
-              <ChevronRight className="ml-1.5 h-3.5 w-3.5" />
+              {professionalAccess === 'current'
+                ? '当前已是 Professional'
+                : professionalAccess === 'included'
+                  ? 'Professional 已包含'
+                  : '以活动价升级'}
+              {professionalAccess === 'available' && (
+                <ChevronRight className="ml-1.5 h-3.5 w-3.5" />
+              )}
             </Button>
             <Button
               size="sm"
@@ -581,7 +590,14 @@ export default function BillingPage() {
         ) : (
           plans.map((plan, index) => {
             const view = planView(plan, billingCycle, firstMonthEligible)
-            const isCurrent = user.plan === plan.id
+            const accessState = planAccessState(user.plan, plan.id)
+            const canRequest = accessState === 'available'
+            const availabilityNote =
+              accessState === 'included'
+                ? `已包含在 ${currentPlanName} 套餐中`
+                : accessState === 'current'
+                  ? '当前套餐正在生效'
+                  : view.note
             return (
               <article
                 key={plan.id}
@@ -611,7 +627,7 @@ export default function BillingPage() {
                 </div>
                 <p className="mt-2 min-h-5 text-[11px] text-muted-foreground">
                   {view.original && <span className="mr-1 text-[color:var(--factory-accent)]">{view.original}；</span>}
-                  {view.note}
+                  {availabilityNote}
                 </p>
                 <div className="my-4 h-px bg-border" />
                 <ul className="space-y-2.5 text-xs leading-5 text-muted-foreground">
@@ -640,15 +656,19 @@ export default function BillingPage() {
                 <Button
                   size="sm"
                   className="mt-auto w-full"
-                  variant={plan.recommended ? 'default' : 'outline'}
-                  disabled={isCurrent}
+                  variant={plan.recommended && canRequest ? 'default' : 'outline'}
+                  disabled={!canRequest}
                   onClick={() => {
                     upgradeMutation.reset()
                     setSelectedPlan(plan.id)
                   }}
                 >
-                  {isCurrent ? '当前套餐' : view.cta}
-                  {!isCurrent && plan.id !== 'free' && <ArrowRight className="ml-2 h-3.5 w-3.5" />}
+                  {accessState === 'current'
+                    ? '当前套餐'
+                    : accessState === 'included'
+                      ? `已包含在 ${currentPlanName}`
+                      : view.cta}
+                  {canRequest && plan.id !== 'free' && <ArrowRight className="ml-2 h-3.5 w-3.5" />}
                 </Button>
               </article>
             )

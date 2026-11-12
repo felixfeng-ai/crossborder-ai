@@ -43,6 +43,7 @@ CAMPAIGN_NAME = "2026 年末增长季"
 # UTC 时间对应北京时间 2026-11-12 00:00 至 2026-12-01 00:00。
 CAMPAIGN_START = datetime(2026, 11, 11, 16, 0, tzinfo=timezone.utc)
 CAMPAIGN_END = datetime(2026, 11, 30, 16, 0, tzinfo=timezone.utc)
+PLAN_RANK = {"free": 0, "standard": 1, "professional": 2}
 
 
 def _now() -> datetime:
@@ -401,8 +402,13 @@ async def upgrade_plan(
     申请落库为一条 plan_upgrade_requests 记录，用户可在
     GET /billing/upgrades 查看处理状态。
     """
-    if payload.plan not in ["standard", "professional"]:
+    if payload.plan not in PLAN_RANK:
         raise HTTPException(status_code=400, detail="无效的套餐")
+    if PLAN_RANK[payload.plan] <= PLAN_RANK.get(current_user.plan, 0):
+        raise HTTPException(
+            status_code=409,
+            detail="只能申请高于当前套餐的计划，当前套餐及低档套餐无需重复申请",
+        )
 
     # 同一套餐已有待处理申请 → 直接返回，避免重复提交刷单
     existing = (await db.execute(

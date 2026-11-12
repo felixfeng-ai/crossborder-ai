@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { CheckCircle2, CreditCard, ArrowRight, Loader2, AlertCircle } from 'lucide-react'
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useAuthStore } from '@/stores/authStore'
 import apiClient from '@/api/client'
+import { creditBreakdownLabel, formatCreditTotal } from '@/lib/billing/balance'
 
 interface Plan {
   id: string
@@ -59,6 +60,18 @@ export default function BillingPage() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
   const [selectedPack, setSelectedPack] = useState<string | null>(null)
   const [contact, setContact] = useState('')
+  const upgradeSectionRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!selectedPlan) return
+    const frame = window.requestAnimationFrame(() => {
+      upgradeSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [selectedPlan])
 
   const { data } = useQuery({
     queryKey: ['plans'],
@@ -134,8 +147,15 @@ export default function BillingPage() {
             <p className="text-lg font-semibold mt-0.5 capitalize">{currentPlanName}</p>
           </div>
           <div className="text-right">
-            <p className="text-sm text-muted-foreground">剩余积分</p>
-            <p className="text-lg font-semibold mt-0.5">{wallet?.total_credits ?? user.credits ?? 0}</p>
+            <p className="text-sm text-muted-foreground">总积分</p>
+            <p className="metric-number text-lg font-semibold mt-0.5">
+              {formatCreditTotal(wallet?.total_credits ?? user.credits)}
+            </p>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              {wallet
+                ? creditBreakdownLabel(wallet)
+                : '套餐额度 + 购买积分'}
+            </p>
           </div>
         </CardContent>
         <div className="grid gap-3 border-t border-border px-4 py-3 text-xs sm:grid-cols-4">
@@ -201,7 +221,12 @@ export default function BillingPage() {
                     size="sm"
                     className="w-full"
                     variant={plan.recommended ? 'default' : 'outline'}
-                    onClick={() => setSelectedPlan(plan.id)}
+                    aria-expanded={isSelected}
+                    aria-controls="plan-upgrade-form"
+                    onClick={() => {
+                      upgradeMutation.reset()
+                      setSelectedPlan(plan.id)
+                    }}
                   >
                     升级到 {plan.name}
                   </Button>
@@ -211,6 +236,86 @@ export default function BillingPage() {
             </Card>
           )
         })}
+      </div>
+
+      <div ref={upgradeSectionRef}>
+        {selectedPlan && (
+          <Card id="plan-upgrade-form" className="border-blue-600/30">
+            <CardHeader>
+              <CardTitle className="text-sm">
+                申请升级到 {plans.find((plan) => plan.id === selectedPlan)?.name}
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                提交后由客服核对付款并开通，不会在当前页面立即扣款或切换套餐。
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!upgradeMutation.data ? (
+                <>
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      请输入联系方式，付款后客服会联系你确认升级
+                    </p>
+                    <input
+                      value={contact}
+                      onChange={(event) => setContact(event.target.value)}
+                      placeholder="微信号 / 手机号"
+                      className="w-full h-10 rounded-lg border bg-background px-3 text-sm outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <Button
+                    className="w-full"
+                    disabled={!contact.trim() || upgradeMutation.isPending}
+                    onClick={() => upgradeMutation.mutate(selectedPlan)}
+                  >
+                    {upgradeMutation.isPending ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />提交中...</>
+                    ) : (
+                      '提交升级申请'
+                    )}
+                  </Button>
+                  {upgradeMutation.error && (
+                    <p className="text-sm text-destructive">
+                      {upgradeMutation.error instanceof Error
+                        ? upgradeMutation.error.message
+                        : '升级申请提交失败'}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-700">
+                    <p className="font-medium">升级申请已提交</p>
+                    <p className="mt-1">{upgradeMutation.data.message}</p>
+                  </div>
+                  <div className="rounded-lg border p-4 space-y-2 text-sm">
+                    <p className="font-medium">付款信息</p>
+                    <p>金额：<strong>¥{upgradeMutation.data.amount}</strong></p>
+                    <p>
+                      订单号：
+                      <code className="bg-muted px-1 py-0.5 rounded text-xs">
+                        {upgradeMutation.data.order_id}
+                      </code>
+                    </p>
+                    <p className="text-muted-foreground text-xs mt-2">
+                      转账请备注订单号，客服确认后立即升级。
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setSelectedPlan(null)
+                      upgradeMutation.reset()
+                    }}
+                  >
+                    完成
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* 积分包 */}
@@ -269,53 +374,6 @@ export default function BillingPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* 升级流程 */}
-      {selectedPlan && (
-        <Card className="border-blue-600/30">
-          <CardHeader>
-            <CardTitle className="text-sm">升级到 {plans.find(p => p.id === selectedPlan)?.name}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!upgradeMutation.data ? (
-              <>
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">请输入你的联系方式（微信或手机号），付款后客服会联系你确认升级</p>
-                  <input
-                    value={contact}
-                    onChange={(e) => setContact(e.target.value)}
-                    placeholder="微信号 / 手机号"
-                    className="w-full h-10 rounded-lg border bg-background px-3 text-sm outline-none focus:border-blue-500"
-                  />
-                </div>
-                <Button
-                  className="w-full"
-                  disabled={!contact.trim() || upgradeMutation.isPending}
-                  onClick={() => upgradeMutation.mutate(selectedPlan)}
-                >
-                  {upgradeMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />提交中...</> : '提交升级申请'}
-                </Button>
-              </>
-            ) : (
-              <div className="space-y-4">
-                <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-700">
-                  <p className="font-medium">✅ 升级申请已提交</p>
-                  <p className="mt-1">{upgradeMutation.data.message}</p>
-                </div>
-                <div className="rounded-lg border p-4 space-y-2 text-sm">
-                  <p className="font-medium">付款信息</p>
-                  <p>金额：<strong>¥{upgradeMutation.data.amount}</strong></p>
-                  <p>订单号：<code className="bg-muted px-1 py-0.5 rounded text-xs">{upgradeMutation.data.order_id}</code></p>
-                  <p className="text-muted-foreground text-xs mt-2">转账请备注订单号，客服确认后立即升级。</p>
-                </div>
-                <Button variant="outline" className="w-full" onClick={() => { setSelectedPlan(null); upgradeMutation.reset() }}>
-                  完成
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {/* 我的升级申请 */}
       {upgrades.length > 0 && (

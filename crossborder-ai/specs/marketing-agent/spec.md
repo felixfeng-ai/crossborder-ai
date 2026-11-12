@@ -48,6 +48,34 @@
 - Then 快捷指令仍作为紧凑横向工具条显示在输入框上方
 - And 不占用主要对话空间
 
+## 能力三：营销活动上下文
+
+### Requirement
+
+营销 Agent 的工作必须绑定可选营销活动；活动保存商品、目标、平台、市场、
+语言、预算和状态，并在执行任务时注入 Agent 上下文。
+
+### Scenario: 创建活动
+
+- Given 用户填写活动名称、营销目标、平台、市场和预算
+- When 创建营销活动
+- Then 活动归属当前用户
+- And 可选绑定当前用户商品
+
+### Scenario: 使用活动执行 Agent
+
+- Given 营销 Agent 已选中活动
+- When 提交 Agent 指令
+- Then 请求携带 `campaign_id`
+- And 后端验证活动归属
+- And 执行器把活动与商品上下文注入 Agent
+
+### Scenario: 跨用户访问
+
+- Given 其他用户的活动 ID
+- When 当前用户查询或使用该活动
+- Then 返回 404
+
 ## 验收标准
 
 - 通用 Agent 与营销 Agent 的文案和快捷指令不同。

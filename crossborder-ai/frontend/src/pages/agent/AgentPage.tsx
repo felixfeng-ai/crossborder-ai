@@ -27,6 +27,7 @@ import Markdown from '@/components/common/Markdown'
 import ProductReportCard from '@/components/agent/ProductReportCard'
 import type { AgentStep } from '@/types'
 import apiClient, { API_BASE } from '@/api/client'
+import { MarketingCampaignBar } from '@/components/agent/MarketingCampaignBar'
 import { readSseUntil, TaskTimeoutError } from '@/api/sse'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { getActionLabel } from '@/lib/agent/actionLabels'
@@ -138,15 +139,19 @@ export default function AgentPage({
   ])
   const [input, setInput] = useState(promptFromQuery)
   const [conversationId, setConversationId] = useState<string>('')
+  const [campaignId, setCampaignId] = useState('')
   const [liveSteps, setLiveSteps] = useState<AgentStep[]>([]) // SSE 实时推进度
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   // 加载最近的对话
   const { data: convList } = useQuery({
-    queryKey: ['agent-conversations', mode],
+    queryKey: ['agent-conversations', mode, campaignId],
     queryFn: async () => {
       const r = await apiClient.get('/agent/conversations', {
-        params: { workspace: mode },
+        params: {
+          workspace: mode,
+          campaign_id: campaignId,
+        },
       })
       return r.data.items || []
     },
@@ -161,7 +166,7 @@ export default function AgentPage({
 
   // 加载对话历史消息
   const { data: convData } = useQuery({
-    queryKey: ['agent-conversation', mode, conversationId],
+    queryKey: ['agent-conversation', mode, campaignId, conversationId],
     queryFn: async () => {
       if (!conversationId) return null
       const r = await apiClient.get(`/agent/conversations/${conversationId}`)
@@ -191,6 +196,17 @@ export default function AgentPage({
     if (promptFromQuery) setInput(promptFromQuery)
   }, [promptFromQuery])
 
+  useEffect(() => {
+    setConversationId('')
+    setMessages([
+      {
+        role: 'assistant',
+        content: workspace.intro,
+        timestamp: new Date(),
+      },
+    ])
+  }, [campaignId, mode, workspace.intro])
+
   // Agent 执行：POST 提交异步任务（带幂等键防重复扣积分）→ SSE 实时推进度，
   // 连接失败自动回退轮询到 succeeded/failed
   const agentMutation = useMutation({
@@ -201,6 +217,7 @@ export default function AgentPage({
           instruction,
           conversation_id: conversationId,
           workspace: mode,
+          campaign_id: campaignId,
         },
         { headers: { 'Idempotency-Key': genIdempotencyKey() } },
       )
@@ -330,12 +347,18 @@ export default function AgentPage({
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)] max-w-3xl mx-auto">
       {mode === 'marketing' && (
-        <div className="flex items-center gap-4 overflow-x-auto border-b px-4 py-2 text-[11px] text-muted-foreground">
-          <span className="shrink-0 font-medium text-foreground">工作区</span>
-          <Link to="/app/images" className="shrink-0 hover:text-foreground">图片工作台</Link>
-          <Link to="/app/videos" className="shrink-0 hover:text-foreground">视频工作台</Link>
-          <Link to="/app/assets" className="shrink-0 hover:text-foreground">素材中心</Link>
-        </div>
+        <>
+          <MarketingCampaignBar
+            campaignId={campaignId}
+            onCampaignChange={setCampaignId}
+          />
+          <div className="flex items-center gap-4 overflow-x-auto border-b px-4 py-2 text-[11px] text-muted-foreground">
+            <span className="shrink-0 font-medium text-foreground">工作区</span>
+            <Link to="/app/images" className="shrink-0 hover:text-foreground">图片工作台</Link>
+            <Link to="/app/videos" className="shrink-0 hover:text-foreground">视频工作台</Link>
+            <Link to="/app/assets" className="shrink-0 hover:text-foreground">素材中心</Link>
+          </div>
+        </>
       )}
 
       {/* ── 聊天消息区 ────────────────────────────────────── */}

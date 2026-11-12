@@ -18,6 +18,7 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.models.conversation import Conversation, ConversationMessage
 from app.models.agent_task import AgentTask
+from app.models.marketing_campaign import MarketingCampaign
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/agent", tags=["AI 智能助手"])
@@ -58,14 +59,25 @@ async def list_workflows():
 async def list_conversations(
     page: int = Query(1, ge=1),
     workspace: str = Query("general"),
+    campaign_id: str | None = Query(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """获取用户的对话历史列表"""
-    query = select(Conversation).where(
+    filters = [
         Conversation.user_id == current_user.id,
         Conversation.workspace == _normalize_workspace(workspace),
-    ).order_by(desc(Conversation.updated_at))
+    ]
+    if campaign_id is not None:
+        if campaign_id:
+            from uuid import UUID
+            try:
+                filters.append(Conversation.campaign_id == UUID(campaign_id))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="无效的活动ID")
+        else:
+            filters.append(Conversation.campaign_id.is_(None))
+    query = select(Conversation).where(*filters).order_by(desc(Conversation.updated_at))
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar()
     result = await db.execute(query.offset((page - 1) * 20).limit(20))
     convs = result.scalars().all()
@@ -79,13 +91,32 @@ async def list_conversations(
 @router.post("/conversations")
 async def create_conversation(
     workspace: str = Query("general"),
+    campaign_id: str = Query(""),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """创建新的对话会话"""
+    parsed_campaign_id = None
+    if campaign_id:
+        from uuid import UUID
+        try:
+            parsed_campaign_id = UUID(campaign_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="无效的活动ID")
+        campaign = (
+            await db.execute(
+                select(MarketingCampaign).where(
+                    MarketingCampaign.id == parsed_campaign_id,
+                    MarketingCampaign.user_id == current_user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if campaign is None:
+            raise HTTPException(status_code=404, detail="营销活动不存在")
     conv = Conversation(
         user_id=current_user.id,
         workspace=_normalize_workspace(workspace),
+        campaign_id=parsed_campaign_id,
     )
     db.add(conv)
     await db.flush()
@@ -130,6 +161,7 @@ class AgentRequest(BaseModel):
     instruction: str = Field(..., min_length=2, max_length=2000)
     conversation_id: str = Field("", description="对话ID，留空创建新对话")
     workspace: str = Field("general", description="Agent 工作区")
+    campaign_id: str = Field("", description="营销活动 ID")
 
 
 def _task_response(task: AgentTask) -> dict:
@@ -226,6 +258,26 @@ async def run_agent(
     if not check_feature_access(current_user, "agent"):
         raise HTTPException(status_code=403, detail="AI 智能助手仅限 Standard 及以上套餐使用")
 
+    campaign_id = ""
+    campaign_uuid = None
+    if payload.campaign_id:
+        from uuid import UUID
+        try:
+            campaign_uuid = UUID(payload.campaign_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="营销活动不存在")
+        campaign = (
+            await db.execute(
+                select(MarketingCampaign).where(
+                    MarketingCampaign.id == campaign_uuid,
+                    MarketingCampaign.user_id == current_user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if campaign is None:
+            raise HTTPException(status_code=404, detail="营销活动不存在")
+        campaign_id = str(campaign.id)
+
     if current_user.credits < cost:
         raise HTTPException(status_code=402, detail="积分不足")
 
@@ -247,7 +299,8 @@ async def run_agent(
             cid = UUID(payload.conversation_id)
             conv = (await db.execute(select(Conversation).where(Conversation.id == cid, Conversation.user_id == current_user.id))).scalar_one_or_none()
             if conv:
-                conv_id = conv.id
+                if campaign_uuid is None or conv.campaign_id == campaign_uuid:
+                    conv_id = conv.id
         except ValueError:
             pass
 
@@ -255,6 +308,7 @@ async def run_agent(
         conv = Conversation(
             user_id=current_user.id,
             workspace=_normalize_workspace(payload.workspace),
+            campaign_id=campaign_uuid,
         )
         db.add(conv)
         await db.flush()
@@ -272,6 +326,7 @@ async def run_agent(
             "instruction": payload.instruction,
             "conversation_id": str(conv_id),
             "workspace": _normalize_workspace(payload.workspace),
+            "campaign_id": campaign_id,
         }, ensure_ascii=False),
         idempotency_key=idempotency_key or None,
         cost=cost,

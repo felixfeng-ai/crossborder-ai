@@ -55,3 +55,44 @@ async def test_create_conversation_persists_workspace(
     )
     assert conversation is not None
     assert conversation.workspace == "marketing"
+
+
+@pytest.mark.asyncio
+async def test_conversation_list_filters_by_campaign(
+    client,
+    auth_headers,
+    db_session,
+):
+    user = (
+        await db_session.execute(
+            select(User).where(User.email == "test@example.com")
+        )
+    ).scalar_one()
+    campaign_id = uuid.uuid4()
+    db_session.add_all([
+        Conversation(
+            user_id=user.id,
+            title="活动一",
+            workspace="marketing",
+            campaign_id=campaign_id,
+        ),
+        Conversation(
+            user_id=user.id,
+            title="活动二",
+            workspace="marketing",
+            campaign_id=uuid.uuid4(),
+        ),
+    ])
+    await db_session.flush()
+
+    response = await client.get(
+        "/api/v1/agent/conversations",
+        params={
+            "workspace": "marketing",
+            "campaign_id": str(campaign_id),
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()["items"]] == ["活动一"]

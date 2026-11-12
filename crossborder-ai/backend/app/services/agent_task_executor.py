@@ -17,10 +17,40 @@ from sqlalchemy import select
 from app.core.database import async_session_factory
 from app.models.agent_task import AgentTask
 from app.models.conversation import Conversation, ConversationMessage
+from app.models.marketing_campaign import MarketingCampaign
+from app.models.product import Product
 from app.models.user import InsufficientCreditsError, User
 from app.services.ai.agent_orchestrator import AgentOrchestrator
 
 logger = logging.getLogger("veyaship")
+
+
+def build_campaign_context(campaign, product=None) -> str:
+    """构造注入 Agent 的营销活动事实，避免模型自行猜测活动信息。"""
+    try:
+        brief = json.loads(campaign.brief_json or "{}")
+    except (json.JSONDecodeError, TypeError):
+        brief = {}
+    lines = [
+        f"活动名称：{campaign.title}",
+        f"营销目标：{campaign.objective}",
+        f"目标平台：{campaign.platform}",
+        f"目标市场：{campaign.market}",
+        f"内容语言：{campaign.language}",
+        f"活动预算：{campaign.budget_credits} 积分",
+        f"已消耗：{campaign.spent_credits} 积分",
+    ]
+    if isinstance(brief, dict) and brief:
+        lines.append(f"活动补充信息：{json.dumps(brief, ensure_ascii=False)}")
+    if product is not None:
+        lines.extend([
+            f"绑定商品：{product.title or product.url}",
+            f"商品链接：{product.url}",
+            f"参考供货价：{product.price if product.price is not None else '未知'}",
+            f"品牌：{product.brand_name or '未设置'}",
+            f"商品描述：{(product.description or '暂无')[:500]}",
+        ])
+    return "\n".join(lines)
 
 
 async def execute_agent_task(task_id) -> None:
@@ -58,7 +88,33 @@ async def execute_agent_task(task_id) -> None:
                 result = await orchestrator.run_workflow(params["workflow"], params.get("params", {}))
                 conv_id = None
             else:
-                result = await orchestrator.run(params["instruction"])
+                instruction = params["instruction"]
+                campaign_id = params.get("campaign_id")
+                if campaign_id:
+                    campaign = (
+                        await db.execute(
+                            select(MarketingCampaign).where(
+                                MarketingCampaign.id == UUID(str(campaign_id)),
+                                MarketingCampaign.user_id == task.user_id,
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if campaign is not None:
+                        product = None
+                        if campaign.product_id:
+                            product = (
+                                await db.execute(
+                                    select(Product).where(
+                                        Product.id == campaign.product_id,
+                                        Product.user_id == task.user_id,
+                                    )
+                                )
+                            ).scalar_one_or_none()
+                        instruction = (
+                            f"{instruction}\n\n[营销活动上下文]\n"
+                            f"{build_campaign_context(campaign, product)}"
+                        )
+                result = await orchestrator.run(instruction)
                 conv_id = UUID(params["conversation_id"]) if params.get("conversation_id") else None
 
             # 保存助手消息 + 自动生成对话标题（复用原同步逻辑）

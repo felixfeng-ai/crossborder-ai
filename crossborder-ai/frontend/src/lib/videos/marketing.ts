@@ -143,6 +143,79 @@ export function totalShotDuration(shots: MarketingVideoShot[]): number {
   return shots.reduce((total, shot) => total + Math.max(0, shot.duration), 0)
 }
 
+export interface MarketingRenderProgress {
+  completed: number
+  total: number
+  percent: number
+  label: string
+  detail: string
+}
+
+export function marketingRenderProgress(
+  project: MarketingVideoProject,
+): MarketingRenderProgress {
+  const total = project.shots.length
+  const completed = project.shots.filter((shot) => shot.status === 'succeeded').length
+  const running = project.shots.filter((shot) => shot.status === 'running').length
+  if (project.status === 'succeeded') {
+    return {
+      completed,
+      total,
+      percent: 100,
+      label: '成片已完成',
+      detail: '视频文件已经可以预览和下载',
+    }
+  }
+  if (project.status === 'failed' || project.status === 'canceled') {
+    return {
+      completed,
+      total,
+      percent: total > 0 ? Math.round((completed / total) * 88) : 0,
+      label: project.status === 'failed' ? '生成失败' : '生成已取消',
+      detail: project.error || `已完成 ${completed}/${total} 个镜头`,
+    }
+  }
+  if (project.status !== 'rendering') {
+    return {
+      completed,
+      total,
+      percent: 0,
+      label: '等待生成',
+      detail: '确认方案后开始生成分镜',
+    }
+  }
+  if (total > 0 && completed === total) {
+    return {
+      completed,
+      total,
+      percent: 94,
+      label: '正在合成成片',
+      detail: '镜头已完成，正在处理转场、音轨和视频文件',
+    }
+  }
+  return {
+    completed,
+    total,
+    percent: total > 0 ? Math.round((completed / total) * 88) : 0,
+    label: '分镜生成中',
+    detail: running > 0
+      ? `已完成 ${completed}/${total} 个镜头，${running} 个正在生成`
+      : `已完成 ${completed}/${total} 个镜头，等待下一批任务`,
+  }
+}
+
+/** 清理商品名中的系统非法字符，生成可跨平台下载的文件名。 */
+export function safeFilenamePart(value: string, fallback: string): string {
+  const cleaned = String(value || '')
+    .normalize('NFKC')
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-')
+    .replace(/\s*-\s*/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/^[- .]+|[- .]+$/g, '')
+    .slice(0, 80)
+  return cleaned || fallback
+}
+
 export function estimateVoiceoverCredits(brief: MarketingVideoBrief): number {
   const text = [brief.hook, brief.script, brief.cta]
     .map((value) => String(value || '').trim())
@@ -152,10 +225,20 @@ export function estimateVoiceoverCredits(brief: MarketingVideoBrief): number {
 }
 
 export function downloadFilename(
-  projectId: string,
+  project: MarketingVideoProject,
   extension: 'mp4' | 'srt' | 'mp3',
 ): string {
-  return `veyaship-marketing-${projectId}.${extension}`
+  const product = safeFilenamePart(
+    project.product_name || project.title,
+    '商品视频',
+  )
+  const platform = safeFilenamePart(project.platform, 'video')
+  const labels = {
+    mp4: '营销成片',
+    srt: '营销成片字幕',
+    mp3: 'AI配音',
+  }
+  return `${product}-${platform}-${labels[extension]}.${extension}`
 }
 
 export function buildMarketingPipeline(

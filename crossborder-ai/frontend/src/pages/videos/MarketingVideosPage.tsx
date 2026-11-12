@@ -26,6 +26,7 @@ import {
   downloadFilename,
   estimateVoiceoverCredits,
   marketingTemplateName,
+  marketingRenderProgress,
   projectStatusLabel,
   shotStatusLabel,
   totalShotDuration,
@@ -782,6 +783,7 @@ export function MarketingVideoPreview({
   const [voiceError, setVoiceError] = useState('')
   const [voicePending, setVoicePending] = useState(false)
   const voiceCredits = estimateVoiceoverCredits(project.brief)
+  const progress = marketingRenderProgress(project)
 
   useEffect(() => {
     setError('')
@@ -829,7 +831,7 @@ export function MarketingVideoPreview({
       const url = URL.createObjectURL(response.data)
       const link = document.createElement('a')
       link.href = url
-      link.download = downloadFilename(project.id, 'mp4')
+      link.download = downloadFilename(project, 'mp4')
       link.click()
       URL.revokeObjectURL(url)
     } catch (reason) {
@@ -846,7 +848,7 @@ export function MarketingVideoPreview({
       const url = URL.createObjectURL(response.data)
       const link = document.createElement('a')
       link.href = url
-      link.download = downloadFilename(project.id, 'srt')
+      link.download = downloadFilename(project, 'srt')
       link.click()
       URL.revokeObjectURL(url)
     } catch (reason) {
@@ -866,7 +868,7 @@ export function MarketingVideoPreview({
       const url = URL.createObjectURL(response.data)
       const link = document.createElement('a')
       link.href = url
-      link.download = downloadFilename(project.id, 'mp3')
+      link.download = downloadFilename(project, 'mp3')
       link.click()
       URL.revokeObjectURL(url)
     } catch (reason) {
@@ -936,6 +938,37 @@ export function MarketingVideoPreview({
   return (
     <div>
       {previewContent}
+      {project.status === 'rendering' && (
+        <div
+          className="mt-2 border border-border bg-[var(--factory-panel)] px-3 py-2.5"
+          aria-label="成片生成进度"
+        >
+          <div className="flex items-center justify-between gap-3 text-[11px]">
+            <span className="font-medium">{progress.label}</span>
+            <span className="metric-number text-muted-foreground">
+              {progress.percent}%
+            </span>
+          </div>
+          <div
+            className="mt-2 h-1 overflow-hidden bg-border"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress.percent}
+          >
+            <div
+              className="h-full bg-[color:var(--factory-accent)] transition-[width] duration-500"
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
+            <span>{progress.detail}</span>
+            <span className="metric-number shrink-0">
+              {progress.completed}/{progress.total}
+            </span>
+          </div>
+        </div>
+      )}
       {project.status === 'succeeded' && (
         <div className="mt-2 space-y-2">
           <Button variant="outline" size="sm" className="w-full" onClick={download}>

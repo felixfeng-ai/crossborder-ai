@@ -2,10 +2,12 @@
 
 import json
 import math
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import FileResponse, Response
@@ -272,6 +274,34 @@ def _project_file_path(storage_key: str) -> Path:
     if target != base and base not in target.parents:
         raise HTTPException(status_code=404, detail="营销成片不存在")
     return target
+
+
+def _safe_filename_part(value: str, fallback: str) -> str:
+    """清理文件名中的系统非法字符，并限制过长的商品名称。"""
+    cleaned = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "-", value or "")
+    cleaned = re.sub(r"\s*-\s*", "-", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip("-. ")
+    return cleaned[:80] or fallback
+
+
+def _marketing_download_filename(
+    project: MarketingVideoProject,
+    extension: Literal["mp4", "srt", "mp3"],
+) -> str:
+    """使用商品名和平台生成用户可读的下载文件名。"""
+    product = _safe_filename_part(project.product_name or project.title, "商品视频")
+    platform = _safe_filename_part(project.platform, "video")
+    labels = {
+        "mp4": "营销成片",
+        "srt": "营销成片字幕",
+        "mp3": "AI配音",
+    }
+    return f"{product}-{platform}-{labels[extension]}.{extension}"
+
+
+def _attachment_disposition(filename: str) -> str:
+    """按 RFC 5987 编码中文文件名，避免响应头出现编码异常。"""
+    return f"attachment; filename*=UTF-8''{quote(filename)}"
 
 
 def _parse_brief(project: MarketingVideoProject) -> dict:
@@ -782,7 +812,7 @@ async def get_marketing_project_file(
     return FileResponse(
         path,
         media_type=project.mime or "video/mp4",
-        filename=f"veyaship-marketing-{project.id}.mp4",
+        filename=_marketing_download_filename(project, "mp4"),
     )
 
 
@@ -833,8 +863,8 @@ async def download_marketing_subtitles(
         content=content.encode("utf-8"),
         media_type="application/x-subrip; charset=utf-8",
         headers={
-            "Content-Disposition": (
-                f'attachment; filename="veyaship-marketing-{project.id}.srt"'
+            "Content-Disposition": _attachment_disposition(
+                _marketing_download_filename(project, "srt")
             )
         },
     )
@@ -889,8 +919,8 @@ async def generate_marketing_voiceover(
         content=audio,
         media_type=media_type,
         headers={
-            "Content-Disposition": (
-                f'attachment; filename="veyaship-marketing-{project.id}.mp3"'
+            "Content-Disposition": _attachment_disposition(
+                _marketing_download_filename(project, "mp3")
             ),
             "X-Credits-Charged": str(credits_cost),
         },

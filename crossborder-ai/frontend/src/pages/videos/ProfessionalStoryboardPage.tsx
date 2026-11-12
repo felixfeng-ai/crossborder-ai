@@ -590,7 +590,7 @@ export default function ProfessionalStoryboardPage() {
                     取消渲染
                   </Button>
                 )}
-                {project.status === 'succeeded' && (
+                {(project.status === 'succeeded' || project.status === 'rendering') && (
                   <MarketingVideoPreview
                     project={project}
                     voice={capabilities?.voice}

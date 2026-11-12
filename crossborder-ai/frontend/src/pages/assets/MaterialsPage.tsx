@@ -30,6 +30,7 @@ import {
   type VideoTaskInput,
 } from '@/lib/assets/materials'
 import { formatFileSize } from '@/lib/images/workbench'
+import { safeFilenamePart } from '@/lib/videos/marketing'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { cn } from '@/utils/cn'
 
@@ -567,7 +568,9 @@ function VideoPreview({
       const objectUrl = URL.createObjectURL(response.data)
       const link = document.createElement('a')
       link.href = objectUrl
-      link.download = `veyaship-${material.id}.mp4`
+      link.download = `${safeFilenamePart(material.name, '商品视频')}-${
+        material.source === 'marketing' ? '营销成片' : '商品图生视频'
+      }.mp4`
       link.click()
       URL.revokeObjectURL(objectUrl)
     } catch (reason) {

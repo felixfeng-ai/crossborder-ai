@@ -692,6 +692,15 @@ async def test_marketing_project_only_exposes_existing_video_file(
     assert available.json()["video_available"] is True
     assert available.json()["final_video_url"].endswith("/file")
 
+    file_response = await client.get(
+        f"/api/v1/marketing-videos/projects/{project.id}/file",
+        headers=auth_headers,
+    )
+    assert file_response.status_code == 200
+    disposition = file_response.headers["content-disposition"]
+    assert "Terra-tiktok" in disposition
+    assert ".mp4" in disposition
+
     final_path.unlink()
     missing = await client.get(
         f"/api/v1/marketing-videos/projects/{project.id}",

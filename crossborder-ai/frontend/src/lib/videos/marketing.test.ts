@@ -3,6 +3,7 @@ import {
   buildMarketingPipeline,
   downloadFilename,
   estimateVoiceoverCredits,
+  marketingRenderProgress,
   marketingTemplateName,
   projectStatusLabel,
   shotStatusLabel,
@@ -59,10 +60,54 @@ describe('marketing video helpers', () => {
     expect(pipeline[1].state).toBe('pending')
   })
 
-  it('为字幕和成片生成稳定文件名', () => {
-    expect(downloadFilename('project-1', 'srt')).toBe(
-      'veyaship-marketing-project-1.srt',
+  it('使用商品和平台生成可读下载文件名', () => {
+    expect(downloadFilename(project, 'srt')).toBe(
+      'Terra-tiktok-营销成片字幕.srt',
     )
+    expect(
+      downloadFilename(
+        {
+          ...project,
+          product_name: 'DONMIS / 圣诞:礼盒',
+        },
+        'mp4',
+      ),
+    ).toBe(
+      'DONMIS-圣诞-礼盒-tiktok-营销成片.mp4',
+    )
+  })
+
+  it('按已完成镜头计算生成进度', () => {
+    const renderingProject: MarketingVideoProject = {
+      ...project,
+      status: 'rendering',
+      shots: [
+        { ...shots[0], status: 'succeeded' },
+        { ...shots[1], status: 'running' },
+        { ...shots[2], status: 'planned' },
+      ],
+    }
+
+    expect(marketingRenderProgress(renderingProject)).toMatchObject({
+      completed: 1,
+      total: 3,
+      percent: 29,
+      label: '分镜生成中',
+    })
+
+    const assemblingProject: MarketingVideoProject = {
+      ...renderingProject,
+      shots: renderingProject.shots.map((shot) => ({
+        ...shot,
+        status: 'succeeded',
+      })),
+    }
+    expect(marketingRenderProgress(assemblingProject)).toMatchObject({
+      completed: 3,
+      total: 3,
+      percent: 94,
+      label: '正在合成成片',
+    })
   })
 
   it('按配音字符数计算最低积分', () => {

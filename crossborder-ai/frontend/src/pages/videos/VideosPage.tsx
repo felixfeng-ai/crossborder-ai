@@ -28,6 +28,7 @@ import {
   type VideoCapabilities,
   type VideoTask,
 } from '@/lib/videos/workbench'
+import { safeFilenamePart } from '@/lib/videos/marketing'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { cn } from '@/utils/cn'
 import { resolveMediaUrl } from '@/lib/apiUrl'
@@ -193,7 +194,10 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
       const url = URL.createObjectURL(response.data)
       const link = document.createElement('a')
       link.href = url
-      link.download = `veyaship-${selectedTask.id}.mp4`
+      link.download = `${safeFilenamePart(
+        selectedAsset?.name || '商品视频',
+        '商品视频',
+      )}-商品图生视频.mp4`
       link.click()
       URL.revokeObjectURL(url)
     } catch (error) {

@@ -19,7 +19,7 @@ from app.models.user import User
 from app.models.conversation import Conversation, ConversationMessage
 from app.models.agent_task import AgentTask
 from app.models.marketing_campaign import MarketingCampaign
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 router = APIRouter(prefix="/agent", tags=["AI 智能助手"])
 
@@ -162,6 +162,33 @@ class AgentRequest(BaseModel):
     conversation_id: str = Field("", description="对话ID，留空创建新对话")
     workspace: str = Field("general", description="Agent 工作区")
     campaign_id: str = Field("", description="营销活动 ID")
+    page_context: "AgentPageContext | None" = Field(
+        None,
+        description="当前页面安全上下文，由全局侧栏传入",
+    )
+
+
+class AgentPageContext(BaseModel):
+    """当前页面上下文只允许短文本和资源 ID，不接收文件内容。"""
+
+    route: str = Field("", max_length=200)
+    page: str = Field("", max_length=80)
+    details: list[str] = Field(default_factory=list, max_length=6)
+    product_id: str = Field("", max_length=120)
+    asset_id: str = Field("", max_length=120)
+    asset_name: str = Field("", max_length=120)
+    video_tab: str = Field("", max_length=40)
+    campaign_id: str = Field("", max_length=120)
+
+    @field_validator("details")
+    @classmethod
+    def clean_details(cls, values: list[str]) -> list[str]:
+        """每个上下文条目只保留短文本，避免把文件正文写入任务。"""
+        return [
+            str(item).strip()[:120]
+            for item in values
+            if str(item).strip()
+        ][:6]
 
 
 def _task_response(task: AgentTask) -> dict:
@@ -318,16 +345,23 @@ async def run_agent(
     db.add(ConversationMessage(conversation_id=conv_id, role="user", content=payload.instruction))
 
     # 创建任务记录（pending，由 scheduler 分发后台执行）
+    task_input = {
+        "instruction": payload.instruction,
+        "conversation_id": str(conv_id),
+        "workspace": _normalize_workspace(payload.workspace),
+        "campaign_id": campaign_id,
+    }
+    if payload.page_context is not None:
+        task_input["page_context"] = payload.page_context.model_dump(
+            exclude_none=True,
+            exclude_defaults=True,
+        )
+
     task = AgentTask(
         user_id=current_user.id,
         task_type="agent_run",
         status="pending",
-        input=json.dumps({
-            "instruction": payload.instruction,
-            "conversation_id": str(conv_id),
-            "workspace": _normalize_workspace(payload.workspace),
-            "campaign_id": campaign_id,
-        }, ensure_ascii=False),
+        input=json.dumps(task_input, ensure_ascii=False),
         idempotency_key=idempotency_key or None,
         cost=cost,
     )

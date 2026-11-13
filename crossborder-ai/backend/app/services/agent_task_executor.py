@@ -53,6 +53,42 @@ def build_campaign_context(campaign, product=None) -> str:
     return "\n".join(lines)
 
 
+def build_page_context(page_context: dict | None) -> str:
+    """把侧栏传入的页面事实格式化后注入 Agent，不接收文件或页面正文。"""
+    if not isinstance(page_context, dict):
+        return ""
+
+    lines: list[str] = []
+    page = str(page_context.get("page") or "").strip()
+    route = str(page_context.get("route") or "").strip()
+    if page:
+        lines.append(f"当前页面：{page}")
+    if route:
+        lines.append(f"页面路由：{route}")
+
+    details = page_context.get("details")
+    if isinstance(details, list):
+        clean_details = [
+            str(item).strip()
+            for item in details[:6]
+            if str(item).strip()
+        ]
+        if clean_details:
+            lines.append(f"页面信息：{' | '.join(clean_details)}")
+
+    for key, label in (
+        ("product_id", "商品 ID"),
+        ("asset_id", "素材 ID"),
+        ("asset_name", "素材名称"),
+        ("video_tab", "视频模式"),
+        ("campaign_id", "活动 ID"),
+    ):
+        value = str(page_context.get(key) or "").strip()
+        if value:
+            lines.append(f"{label}：{value}")
+    return "\n".join(lines)
+
+
 async def execute_agent_task(task_id) -> None:
     """执行单个 Agent 任务。失败只更新任务状态为 failed，不抛异常。"""
     async with async_session_factory() as db:
@@ -120,6 +156,14 @@ async def execute_agent_task(task_id) -> None:
                     instruction = (
                         f"{instruction}\n\n[营销活动上下文]\n"
                         f"{build_campaign_context(campaign, product)}"
+                    )
+                page_context_text = build_page_context(
+                    params.get("page_context")
+                )
+                if page_context_text:
+                    instruction = (
+                        f"{instruction}\n\n[当前页面上下文]\n"
+                        f"{page_context_text}"
                     )
                 result = await orchestrator.run(instruction)
                 conv_id = UUID(params["conversation_id"]) if params.get("conversation_id") else None

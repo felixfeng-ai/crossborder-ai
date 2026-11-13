@@ -12,10 +12,10 @@ describe('石墨决策台设计契约', () => {
     const globals = readSource('src/styles/globals.css')
 
     expect(globals).toContain(
-      '--font-cjk: "PingFang SC", "Noto Sans SC", "Microsoft YaHei"',
+      '--font-cjk: "Noto Sans SC", "MiSans", "HarmonyOS Sans SC"',
     )
     expect(globals).toContain(
-      '--font-ui: var(--font-cjk), var(--font-latin), sans-serif',
+      '--font-ui: var(--font-latin), var(--font-cjk), sans-serif',
     )
     expect(globals).toContain('"JetBrains Mono"')
     expect(globals).not.toContain('Instrument Sans')

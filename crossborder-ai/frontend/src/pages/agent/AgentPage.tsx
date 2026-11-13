@@ -3,7 +3,6 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
-  Bot,
   Send,
   UserRound,
   Loader2,
@@ -26,6 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Markdown from '@/components/common/Markdown'
 import ProductReportCard from '@/components/agent/ProductReportCard'
+import { AssistantMark } from '@/components/brand/AssistantMark'
 import type { AgentStep } from '@/types'
 import apiClient, { API_BASE } from '@/api/client'
 import { MarketingCampaignBar } from '@/components/agent/MarketingCampaignBar'
@@ -37,6 +37,12 @@ import {
   type AgentActionIcon,
   type AgentWorkspaceMode,
 } from '@/lib/agent/workspace'
+import {
+  buildSidecarIntro,
+  buildSidecarPlaceholder,
+  buildSidecarQuickActions,
+  type AgentPageContext,
+} from '@/lib/agent/sidecar'
 import { useAuthStore } from '@/stores/authStore'
 
 /**
@@ -124,17 +130,43 @@ async function streamTaskStatus(
 
 export default function AgentPage({
   mode = 'general',
+  variant = 'page',
+  pageContext = null,
+  forceNewConversation = false,
+  loadHistory = true,
 }: {
   mode?: AgentWorkspaceMode
+  variant?: 'page' | 'sidecar'
+  pageContext?: AgentPageContext | null
+  forceNewConversation?: boolean
+  loadHistory?: boolean
 }) {
   const workspace = agentWorkspaceCopy(mode)
+  const sidecarIntro =
+    variant === 'sidecar' && pageContext
+      ? buildSidecarIntro(pageContext)
+      : workspace.intro
+  const sidecarActions =
+    variant === 'sidecar' && pageContext
+      ? buildSidecarQuickActions(pageContext)
+      : []
+  const quickActions =
+    sidecarActions.length > 0 ? sidecarActions : workspace.actions
+  const inputPlaceholder =
+    variant === 'sidecar' && pageContext
+      ? buildSidecarPlaceholder(pageContext)
+      : workspace.placeholder
+  const composerNote =
+    variant === 'sidecar'
+      ? '已带入当前页面；生成和执行前仍需你确认'
+      : workspace.footer
   const user = useAuthStore((state) => state.user)
   const [searchParams] = useSearchParams()
   const promptFromQuery = searchParams.get('prompt') || ''
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: workspace.intro,
+      content: sidecarIntro,
       timestamp: new Date(),
     },
   ])
@@ -143,6 +175,21 @@ export default function AgentPage({
   const [campaignId, setCampaignId] = useState('')
   const [liveSteps, setLiveSteps] = useState<AgentStep[]>([]) // SSE 实时推进度
   const chatEndRef = useRef<HTMLDivElement>(null)
+
+  // 侧栏可能在页面上下文就绪前挂载；尚无用户消息时同步更新引导语。
+  useEffect(() => {
+    if (variant !== 'sidecar') return
+    setMessages((previous) => {
+      if (
+        previous.length !== 1 ||
+        previous[0].role !== 'assistant' ||
+        previous[0].content === sidecarIntro
+      ) {
+        return previous
+      }
+      return [{ ...previous[0], content: sidecarIntro }]
+    })
+  }, [sidecarIntro, variant])
 
   // 加载最近的对话
   const { data: convList } = useQuery({
@@ -156,14 +203,21 @@ export default function AgentPage({
       })
       return r.data.items || []
     },
+    enabled: loadHistory,
   })
 
   // 如果有对话，加载第一条
   useEffect(() => {
-    if (convList && convList.length > 0 && !conversationId) {
+    if (
+      !forceNewConversation &&
+      loadHistory &&
+      convList &&
+      convList.length > 0 &&
+      !conversationId
+    ) {
       setConversationId(convList[0].id)
     }
-  }, [convList])
+  }, [convList, forceNewConversation, loadHistory])
 
   // 加载对话历史消息
   const { data: convData } = useQuery({
@@ -198,6 +252,7 @@ export default function AgentPage({
   }, [promptFromQuery])
 
   useEffect(() => {
+    if (variant === 'sidecar') return
     setConversationId('')
     setMessages([
       {
@@ -206,20 +261,24 @@ export default function AgentPage({
         timestamp: new Date(),
       },
     ])
-  }, [campaignId, mode, workspace.intro])
+  }, [campaignId, mode, variant, workspace.intro])
 
   // Agent 执行：POST 提交异步任务（带幂等键防重复扣积分）→ SSE 实时推进度，
   // 连接失败自动回退轮询到 succeeded/failed
   const agentMutation = useMutation({
     mutationFn: async (instruction: string) => {
+      const requestBody: Record<string, unknown> = {
+        instruction,
+        conversation_id: conversationId,
+        workspace: mode,
+        campaign_id: campaignId,
+      }
+      if (pageContext) {
+        requestBody.page_context = pageContext
+      }
       const res = await apiClient.post(
         '/agent/run',
-        {
-          instruction,
-          conversation_id: conversationId,
-          workspace: mode,
-          campaign_id: campaignId,
-        },
+        requestBody,
         { headers: { 'Idempotency-Key': genIdempotencyKey() } },
       )
       return streamTaskStatus(res.data.task_id, setLiveSteps)
@@ -359,8 +418,16 @@ export default function AgentPage({
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] max-w-3xl mx-auto">
-      {mode === 'marketing' && (
+    <div
+      className={
+        variant === 'sidecar'
+          ? 'flex h-full min-h-0 w-full flex-col'
+          : 'mx-auto flex h-[calc(100vh-6rem)] max-w-3xl flex-col'
+      }
+      data-agent-layout={variant}
+      data-agent-page={pageContext?.route || ''}
+    >
+      {mode === 'marketing' && variant === 'page' && (
         <>
           <MarketingCampaignBar
             campaignId={campaignId}
@@ -427,7 +494,7 @@ export default function AgentPage({
       {/* 快捷指令独立于消息数量，历史加载或长对话时保持可见。 */}
       <div className="px-4 pb-2">
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {workspace.actions.map((action) => {
+          {quickActions.map((action) => {
             const Icon = ACTION_ICONS[action.icon]
             return (
               <Button
@@ -453,7 +520,8 @@ export default function AgentPage({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            placeholder={workspace.placeholder}
+            placeholder={inputPlaceholder}
+            aria-label={inputPlaceholder}
             className="flex-1 h-11 rounded-xl border bg-muted px-4 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
             disabled={agentMutation.isPending}
           />
@@ -462,12 +530,13 @@ export default function AgentPage({
             disabled={!input.trim() || agentMutation.isPending}
             className="h-11 w-11 rounded-xl"
             size="icon"
+            aria-label="发送给 AI 决策助手"
           >
             <Send className="h-4 w-4" />
           </Button>
         </div>
         <p className="text-[11px] text-muted-foreground mt-1.5 text-center">
-          {workspace.footer}
+          {composerNote}
         </p>
       </div>
     </div>
@@ -543,12 +612,7 @@ function AgentAvatar({ label }: { label: string }) {
       className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[var(--factory-accent)]/45 bg-[var(--factory-panel)]"
       aria-label={`VeyaShip ${label}`}
     >
-      <Bot className="h-[18px] w-[18px] text-[var(--factory-accent)]" strokeWidth={1.7} />
-      <Sparkles
-        className="absolute -right-1 -top-1 h-3 w-3 text-[var(--factory-mint)]"
-        strokeWidth={1.8}
-        aria-hidden="true"
-      />
+      <AssistantMark className="h-8 w-8" />
       <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--factory-ground)] bg-[var(--factory-mint)]" />
     </div>
   )

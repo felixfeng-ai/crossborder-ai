@@ -35,6 +35,7 @@ import {
   uploadImageFile,
   validateImageUpload,
 } from '@/lib/images/upload'
+import { useAgentPageContext } from '@/lib/agent/useAgentPageContext'
 
 interface PlatformPreset {
   id: string
@@ -110,6 +111,17 @@ export default function ImagesPage() {
   const selected = items.find((item) => item.id === selectedId) || null
   const selectedAsset = (assetsQuery.data || []).find((asset) => asset.id === selectedId) || null
   const selectedPreset = (presetsQuery.data || []).find((preset) => preset.id === presetId) || null
+
+  useAgentPageContext({
+    route: '/app/images',
+    page: '图片工作台',
+    details: [
+      selected ? `当前素材：${selected.name}` : '尚未选择素材',
+      selectedPreset ? `平台预设：${selectedPreset.label}` : '',
+    ].filter(Boolean),
+    asset_id: selected?.assetId || selected?.id,
+    asset_name: selected?.name,
+  })
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {

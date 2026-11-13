@@ -88,7 +88,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             )}
           >
             {!collapsed && (
-              <p className="px-2.5 pb-1 pt-1 text-[10px] leading-4 text-[var(--factory-faint)]">
+              <p className="px-2.5 pb-1.5 pt-1 text-[11px] font-medium leading-4 text-[var(--factory-faint)]">
                 {group.label}
               </p>
             )}
@@ -107,7 +107,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                     title={item.label}
                     className={({ isActive }) =>
                       cn(
-                        'flex min-h-9 items-center gap-3 rounded px-2.5 text-[13px]',
+                        'flex min-h-10 items-center gap-3 rounded px-2.5 text-[14px] leading-5',
                         isActive || listingRouteActive
                           ? 'bg-secondary font-medium text-foreground'
                           : 'text-muted-foreground hover:bg-accent hover:text-foreground',

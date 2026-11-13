@@ -7,6 +7,7 @@ import {
   videoTabFromSearch,
   type VideoWorkspaceTab,
 } from '@/lib/navigation'
+import { useAgentPageContext } from '@/lib/agent/useAgentPageContext'
 import MarketingVideosPage from './MarketingVideosPage'
 import ProfessionalStoryboardPage from './ProfessionalStoryboardPage'
 import VideosPage from './VideosPage'
@@ -15,6 +16,15 @@ import VideosPage from './VideosPage'
 export default function VideoWorkspacePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = videoTabFromSearch(searchParams.toString())
+  const tabLabel =
+    VIDEO_WORKSPACE_TABS.find((item) => item.id === tab)?.label || '营销成片'
+
+  useAgentPageContext({
+    route: '/app/videos',
+    page: '视频工作台',
+    details: [tabLabel],
+    video_tab: tab,
+  })
 
   const switchTab = (value: string) => {
     const next = new URLSearchParams(searchParams)

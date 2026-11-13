@@ -111,6 +111,42 @@ async def test_agent_run_idempotent_by_key(client, db_session):
     assert len(rows) == 1
 
 
+@pytest.mark.asyncio
+async def test_agent_run_persists_page_context(client, db_session):
+    """侧栏任务必须把页面上下文写入异步任务输入，供后台执行器使用。"""
+    headers = await _register_agent_user(
+        client,
+        db_session,
+        f"agent-context-{uuid.uuid4().hex[:8]}@test.com",
+    )
+    page_context = {
+        "route": "/app/images",
+        "page": "图片工作台",
+        "details": ["商品 TERRA", "Amazon 主图"],
+        "asset_id": "asset-1",
+        "asset_name": "terrace-main.jpg",
+    }
+
+    response = await client.post(
+        "/api/v1/agent/run",
+        json={
+            "instruction": "帮我判断当前主图是否合适",
+            "page_context": page_context,
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 202, response.text
+    task = (
+        await db_session.execute(
+            select(AgentTask).where(
+                AgentTask.id == uuid.UUID(response.json()["task_id"])
+            )
+        )
+    ).scalar_one()
+    assert json.loads(task.input)["page_context"] == page_context
+
+
 # ── 执行器：成功 / 积分不足 ────────────────────────────────────
 class _FakeOrchestrator:
     """与 AgentOrchestrator 同签名：接收 on_step 进度回调，模拟逐步执行。"""
@@ -259,6 +295,70 @@ async def test_execute_agent_task_injects_campaign_context(monkeypatch):
     assert "圣诞转化活动" in captured["instruction"]
     assert "节日香薰礼盒" in captured["instruction"]
     assert "限时八折" in captured["instruction"]
+
+
+@pytest.mark.asyncio
+async def test_execute_agent_task_injects_page_context(monkeypatch):
+    """页面上下文必须进入编排器指令，同时保留用户原始指令。"""
+    engine, factory = _make_static_factory()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    monkeypatch.setattr(exe, "async_session_factory", factory)
+
+    captured: dict[str, str] = {}
+
+    class _ContextOrchestrator:
+        def __init__(self, user, db, on_step=None, campaign_id=None):
+            captured["campaign_id"] = campaign_id or ""
+
+        async def run(self, instruction):
+            captured["instruction"] = instruction
+            return {"summary": "完成", "status": "success", "steps": []}
+
+        async def run_workflow(self, workflow, params):
+            return {"summary": "完成", "status": "success", "steps": []}
+
+    monkeypatch.setattr(exe, "AgentOrchestrator", _ContextOrchestrator)
+
+    async with factory() as db:
+        user = User(
+            email="task-page-context@test.com",
+            username="taskpagecontext",
+            password_hash="x",
+            credits=30,
+        )
+        db.add(user)
+        await db.flush()
+        task = AgentTask(
+            user_id=user.id,
+            task_type="agent_run",
+            status="running",
+            input=json.dumps(
+                {
+                    "instruction": "这个首帧适合做什么镜头",
+                    "conversation_id": "",
+                    "page_context": {
+                        "route": "/app/videos",
+                        "page": "视频工作台",
+                        "details": ["商品图生视频", "高端静奢"],
+                        "video_tab": "single",
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            cost=1,
+        )
+        db.add(task)
+        await db.commit()
+        task_id = task.id
+
+    await exe.execute_agent_task(task_id)
+
+    assert "这个首帧适合做什么镜头" in captured["instruction"]
+    assert "[当前页面上下文]" in captured["instruction"]
+    assert "视频工作台" in captured["instruction"]
+    assert "商品图生视频" in captured["instruction"]
+    assert "single" in captured["instruction"]
 
 
 @pytest.mark.asyncio

@@ -24,10 +24,11 @@
 
 @layer base {
   :root {
-    --font-cjk: "PingFang SC", "Noto Sans SC", "Microsoft YaHei",
-      "HarmonyOS Sans SC", "MiSans", "Hiragino Sans GB", sans-serif;
+    --font-cjk: "Noto Sans SC", "MiSans", "HarmonyOS Sans SC",
+      "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei",
+      "Hiragino Sans GB", sans-serif;
     --font-latin: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-ui: var(--font-cjk), var(--font-latin), sans-serif;
+    --font-ui: var(--font-latin), var(--font-cjk), sans-serif;
     --font-data: var(--font-latin);
     --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
       monospace;
@@ -102,6 +103,8 @@
     letter-spacing: 0;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
+    font-synthesis: none;
+    font-feature-settings: "kern" 1, "calt" 1;
   }
 
   h1,

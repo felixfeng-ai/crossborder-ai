@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { Outlet, Navigate } from 'react-router-dom'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
+import { AgentSidecar } from '@/components/agent/AgentSidecar'
 import { useAuthStore } from '@/stores/authStore'
+import { useAgentSidecarStore } from '@/stores/agentSidecarStore'
 import { useEffect } from 'react'
 
 export function RootLayout() {
   const { isAuthenticated, loadUser, isLoading, token } = useAuthStore()
   const [mobileSidebar, setMobileSidebar] = useState(false)
+  const agentSidecarOpen = useAgentSidecarStore((state) => state.isOpen)
 
   useEffect(() => {
     if (token && !useAuthStore.getState().user) {
@@ -15,11 +18,20 @@ export function RootLayout() {
     }
   }, [token, loadUser])
 
-  // 移动端：侧边栏打开时禁止滚动
+  // 移动端导航或 AI 底部抽屉打开时禁止背景滚动。
   useEffect(() => {
-    document.body.style.overflow = mobileSidebar ? 'hidden' : ''
-    return () => { document.body.style.overflow = '' }
-  }, [mobileSidebar])
+    const media = window.matchMedia('(max-width: 1023px)')
+    const syncOverflow = () => {
+      document.body.style.overflow =
+        mobileSidebar || (agentSidecarOpen && media.matches) ? 'hidden' : ''
+    }
+    syncOverflow()
+    media.addEventListener('change', syncOverflow)
+    return () => {
+      media.removeEventListener('change', syncOverflow)
+      document.body.style.overflow = ''
+    }
+  }, [mobileSidebar, agentSidecarOpen])
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />
@@ -56,6 +68,8 @@ export function RootLayout() {
           <Outlet />
         </main>
       </div>
+
+      <AgentSidecar />
     </div>
   )
 }

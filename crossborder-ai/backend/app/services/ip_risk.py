@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.ip_risk import IpDeclaration, IpRiskItem, IpRiskReport
 from app.models.image_asset import ImageAsset
 from app.models.listing_draft import ListingDraft
+from app.models.persona import Persona
 from app.models.product import Product
 from app.models.user import User
 from app.services.ai.compliance import PLATFORM_EXTREME_WORDS, check_text
@@ -214,7 +215,11 @@ def _finalize_result(
             else "completed"
         ),
         "overall_risk": overall_risk,
-        "coverage": {"text": text_coverage, "image": image_coverage},
+        "coverage": {
+            "text": text_coverage,
+            "image": image_coverage,
+            "image_required": image_required,
+        },
         "summary": {
             "high": sum(item["severity"] == "high" for item in risks),
             "medium": sum(item["severity"] == "medium" for item in risks),
@@ -445,6 +450,23 @@ async def _declarations_for_product(
     ]
 
 
+async def _resolve_category_code(
+    db: AsyncSession,
+    user_id,
+    category_code: str | None,
+) -> str | None:
+    """未显式传类目时复用品牌档案，保证生成和发布判断一致。"""
+    normalized = normalize_category_code(category_code)
+    if normalized:
+        return normalized
+    persona_category = (
+        await db.execute(
+            select(Persona.product_category).where(Persona.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    return normalize_category_code(persona_category)
+
+
 def serialize_ip_report(
     report: IpRiskReport,
     items: list[IpRiskItem],
@@ -497,6 +519,14 @@ async def persist_ip_report(
     model_name: str | None = None,
 ) -> dict:
     brands, certs, categories, version = load_ip_configs()
+    category_rule = (
+        (categories.get("categories") or {}).get(category_code)
+        if category_code
+        else None
+    )
+    image_required = scope in {"image", "both"} or bool(
+        (category_rule or {}).get("image_check_required")
+    )
     result = screen_ip_text(
         text_fields,
         declarations=declarations,
@@ -510,7 +540,7 @@ async def persist_ip_report(
         [*result["risks"], *(extra_risks or [])],
         text_coverage=text_coverage,
         image_coverage=image_coverage,
-        image_required=scope in {"image", "both"},
+        image_required=image_required,
     )
 
     input_payload = {
@@ -518,6 +548,7 @@ async def persist_ip_report(
         "scope": scope,
         "platform": platform,
         "category": category_code,
+        "image_required": image_required,
         "ruleset": version,
         "listing_version": listing.version if listing else None,
         "images": sorted(image_asset_ids or []),
@@ -613,7 +644,7 @@ async def screen_product_text(
     text_fields: dict[str, str] | None = None,
     image_assets: list[ImageAsset] | None = None,
 ) -> dict:
-    category_code = normalize_category_code(category_code)
+    category_code = await _resolve_category_code(db, user.id, category_code)
     if text_fields is None:
         if listing is not None:
             try:

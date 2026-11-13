@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  CalendarClock,
   FileSearch,
   Image as ImageIcon,
   ImageOff,
@@ -19,6 +20,7 @@ import apiClient from '@/api/client'
 import { resolveMediaUrl } from '@/lib/apiUrl'
 import {
   coverageLabel,
+  evidenceExpiryState,
   ipRiskLabel,
   ipSeverityLabel,
   type IpRiskReport,
@@ -30,6 +32,7 @@ interface IpDeclaration {
   claim_value: string
   evidence_url: string | null
   evidence_status: string
+  expires_at: string | null
 }
 
 interface IpImageAsset {
@@ -55,6 +58,22 @@ function riskBboxStyle(bbox: number[] | null | undefined) {
   }
 }
 
+function EvidenceExpiryLabel({ value }: { value: string | null }) {
+  const expiry = evidenceExpiryState(value)
+  const tone =
+    expiry.status === 'expired'
+      ? 'text-destructive'
+      : expiry.status === 'expiring'
+        ? 'text-amber-500'
+        : 'text-muted-foreground'
+  return (
+    <span className={`flex items-center gap-1 ${tone}`}>
+      <CalendarClock className="h-3 w-3 shrink-0" />
+      {expiry.label}
+    </span>
+  )
+}
+
 export function IpRiskCard({
   report: initialReport,
   productId,
@@ -73,6 +92,7 @@ export function IpRiskCard({
   >('brand_authorization')
   const [claimValue, setClaimValue] = useState('')
   const [evidenceUrl, setEvidenceUrl] = useState('')
+  const [expiresAt, setExpiresAt] = useState('')
   const [selectedImageIds, setSelectedImageIds] = useState<string[]>([])
   const [error, setError] = useState('')
 
@@ -129,6 +149,9 @@ export function IpRiskCard({
         claim_value: claimValue,
         evidence_url: evidenceUrl || null,
         evidence_status: 'provided',
+        expires_at: expiresAt
+          ? new Date(`${expiresAt}T23:59:59`).toISOString()
+          : null,
       })
       return response.data
     },
@@ -136,6 +159,7 @@ export function IpRiskCard({
     onSuccess: async () => {
       setClaimValue('')
       setEvidenceUrl('')
+      setExpiresAt('')
       await queryClient.invalidateQueries({
         queryKey: ['ip-declarations', productId],
       })
@@ -311,6 +335,13 @@ export function IpRiskCard({
           报告为部分完成。未检查的项目不能视为已经通过。
         </p>
       )}
+      {report.coverage.image_required &&
+        report.coverage.image !== 'checked' && (
+          <p className="mt-3 flex items-start gap-2 border-l-2 border-amber-500 pl-2 text-[10px] leading-4 text-muted-foreground">
+            <CalendarClock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            当前商品类目要求图片检查，选择商品图完成检查后才能发布。
+          </p>
+        )}
 
       <div className="mt-3 space-y-2">
         {report.risks.length ? (
@@ -361,14 +392,19 @@ export function IpRiskCard({
               {(declarationsQuery.data?.items || []).map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between gap-2 border border-border px-2 py-1.5 text-[10px]"
+                  className="flex items-center justify-between gap-2 border border-border px-2 py-2 text-[10px]"
                 >
-                  <span className="min-w-0 truncate">
-                    {item.claim_type === 'brand_authorization'
-                      ? '品牌授权'
-                      : '认证'}{' '}
-                    · {item.claim_value} · {item.evidence_status}
-                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate">
+                      {item.claim_type === 'brand_authorization'
+                        ? '品牌授权'
+                        : '认证'}{' '}
+                      · {item.claim_value} · {item.evidence_status}
+                    </p>
+                    <div className="mt-1">
+                      <EvidenceExpiryLabel value={item.expires_at} />
+                    </div>
+                  </div>
                   <button
                     type="button"
                     className="shrink-0 text-muted-foreground hover:text-destructive"
@@ -411,6 +447,22 @@ export function IpRiskCard({
               className="h-8 text-xs sm:col-span-2"
               aria-label="证据链接"
             />
+            <div className="space-y-1 sm:col-span-2">
+              <label
+                htmlFor="ip-evidence-expiry"
+                className="text-[10px] text-muted-foreground"
+              >
+                证据有效期（可选，留空表示长期有效）
+              </label>
+              <Input
+                id="ip-evidence-expiry"
+                type="date"
+                value={expiresAt}
+                onChange={(event) => setExpiresAt(event.target.value)}
+                className="h-8 text-xs"
+                aria-label="证据有效期"
+              />
+            </div>
           </div>
           <Button
             size="sm"

@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-13.1",
+  "version": "2026-11-13.2",
   "categories": {
     "electronics": {
       "authorization_hint": "电子类商品需要确认目标市场认证、商标授权和品牌授权链。",
@@ -9,6 +9,7 @@
     "toys": {
       "authorization_hint": "玩具类商品需要确认儿童产品认证和影视/卡通 IP 授权链。",
       "severity": "medium",
+      "image_check_required": true,
       "claims": ["EN71", "CPSIA"]
     },
     "cosmetics": {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   coverageLabel,
+  evidenceExpiryState,
   ipRiskLabel,
   ipSeverityLabel,
   isIpPublishBlocked,
@@ -59,5 +60,23 @@ describe('IP risk display helpers', () => {
         report('completed', 'medium', 'checked', 'checked'),
       ),
     ).toBe(false)
+  })
+
+  it('labels evidence expiry states for UI reminders', () => {
+    const now = new Date('2026-11-13T00:00:00Z')
+
+    expect(evidenceExpiryState(null, now)).toEqual({
+      status: 'permanent',
+      label: '长期有效',
+    })
+    expect(
+      evidenceExpiryState('2026-11-12T23:59:59Z', now),
+    ).toEqual({ status: 'expired', label: '已过期' })
+    expect(
+      evidenceExpiryState('2026-12-01T00:00:00Z', now),
+    ).toEqual({ status: 'expiring', label: '18 天后到期' })
+    expect(
+      evidenceExpiryState('2027-01-15T00:00:00Z', now),
+    ).toEqual({ status: 'valid', label: '有效期至 2027-01-15' })
   })
 })

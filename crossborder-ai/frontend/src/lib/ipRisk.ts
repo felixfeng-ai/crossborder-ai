@@ -29,6 +29,7 @@ export interface IpRiskReport {
   coverage: {
     text: IpCoverageState
     image: IpCoverageState
+    image_required?: boolean
   }
   summary: Record<string, number>
   risks: IpRiskItem[]
@@ -77,4 +78,43 @@ export function ipPublishBlockedLabel(
   if (report?.overall_risk === 'high') return 'IP 高风险，禁止发布'
   if (isIpPublishBlocked(report)) return 'IP 检查未完成，禁止发布'
   return ''
+}
+
+export type EvidenceExpiryStatus =
+  | 'permanent'
+  | 'valid'
+  | 'expiring'
+  | 'expired'
+  | 'unknown'
+
+export interface EvidenceExpiryState {
+  status: EvidenceExpiryStatus
+  label: string
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+export function evidenceExpiryState(
+  value: string | null | undefined,
+  now: Date = new Date(),
+): EvidenceExpiryState {
+  if (!value) return { status: 'permanent', label: '长期有效' }
+  const expiresAt = new Date(value)
+  if (Number.isNaN(expiresAt.getTime())) {
+    return { status: 'unknown', label: '有效期未知' }
+  }
+  if (expiresAt.getTime() < now.getTime()) {
+    return { status: 'expired', label: '已过期' }
+  }
+  const days = Math.ceil((expiresAt.getTime() - now.getTime()) / DAY_MS)
+  if (days <= 30) {
+    return {
+      status: 'expiring',
+      label: days === 0 ? '今天到期' : `${days} 天后到期`,
+    }
+  }
+  return {
+    status: 'valid',
+    label: `有效期至 ${expiresAt.toISOString().slice(0, 10)}`,
+  }
 }

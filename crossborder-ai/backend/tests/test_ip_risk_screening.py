@@ -1,6 +1,7 @@
 """IP 风险初筛规则、报告和降级测试。"""
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
@@ -8,12 +9,14 @@ from sqlalchemy import select
 from app.models.marketing_campaign import MarketingCampaign
 from app.models.listing_draft import ListingDraft
 from app.models.image_asset import ImageAsset
+from app.models.persona import Persona
 from app.models.product import Product
 from app.models.user import User
 from app.services.ai.deepseek import DeepSeekService
 from app.services.ip_risk import (
     ensure_ip_report_for_publish,
     ip_publish_block_reason,
+    screen_product_text,
     screen_ip_text,
 )
 from app.services.ip_vision import visual_items_to_risks
@@ -56,6 +59,7 @@ CATEGORY_CONFIG = {
         "toys": {
             "authorization_hint": "玩具类商品需要确认儿童认证和 IP 授权链。",
             "severity": "medium",
+            "image_check_required": True,
         }
     },
 }
@@ -130,6 +134,90 @@ def test_authorized_brand_is_downgraded_but_still_explainable():
     )
     assert risk["severity"] == "info"
     assert "人工" in risk["suggestion"]
+
+
+def test_expired_brand_evidence_does_not_downgrade_risk():
+    result = screen_ip_text(
+        {"title": "Nike shoes"},
+        declarations=[
+            {
+                "claim_type": "brand_authorization",
+                "claim_value": "Nike",
+                "evidence_status": "provided",
+                "expires_at": (
+                    datetime.now(timezone.utc) - timedelta(days=1)
+                ).isoformat(),
+            }
+        ],
+        platform="amazon",
+        category_code=None,
+        brand_config=BRAND_CONFIG,
+        certification_config=CERT_CONFIG,
+        category_config=CATEGORY_CONFIG,
+    )
+
+    risk = next(
+        item for item in result["risks"] if item["code"] == "TRADEMARK_TERM"
+    )
+    assert risk["severity"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_persona_category_requires_visual_check_before_publish(db_session):
+    user = User(
+        email=f"ip-category-{uuid.uuid4().hex[:8]}@test.com",
+        username="ip-category",
+        password_hash="x",
+        plan="professional",
+    )
+    db_session.add(user)
+    await db_session.flush()
+    db_session.add(
+        Persona(
+            user_id=user.id,
+            product_category="toys",
+        )
+    )
+    product = Product(
+        user_id=user.id,
+        url=f"https://detail.1688.com/offer/{uuid.uuid4().hex}.html",
+        title="Plush collectible toy",
+    )
+    db_session.add(product)
+    await db_session.commit()
+
+    report = await screen_product_text(
+        db_session,
+        user=user,
+        product=product,
+        listing=None,
+        platform="amazon",
+        scope="text",
+    )
+
+    assert report["status"] == "partial"
+    assert report["coverage"]["image_required"] is True
+    assert report["coverage"]["image"] == "not_checked"
+    assert ip_publish_block_reason(report) == "check_incomplete"
+
+    persona = (
+        await db_session.execute(
+            select(Persona).where(Persona.user_id == user.id)
+        )
+    ).scalar_one()
+    persona.product_category = "cosmetics"
+    await db_session.commit()
+    optional_report = await screen_product_text(
+        db_session,
+        user=user,
+        product=product,
+        listing=None,
+        platform="amazon",
+        scope="text",
+    )
+    assert optional_report["status"] == "completed"
+    assert optional_report["coverage"]["image_required"] is False
+    assert ip_publish_block_reason(optional_report) is None
 
 
 def test_visual_result_keeps_bbox_without_legal_conclusion():
@@ -207,6 +295,7 @@ async def test_ip_screen_api_persists_report_and_skips_missing_vision(
     assert payload["coverage"] == {
         "text": "checked",
         "image": "not_checked",
+        "image_required": True,
     }
 
     report = await client.get(
@@ -337,6 +426,7 @@ async def test_ip_declarations_downgrade_risks(
     db_session.add(product)
     await db_session.commit()
 
+    future_expiry = datetime.now(timezone.utc) + timedelta(days=90)
     for claim_type, claim_value in [
         ("brand_authorization", "Nike"),
         ("certification", "FDA"),
@@ -349,6 +439,7 @@ async def test_ip_declarations_downgrade_risks(
                 "claim_value": claim_value,
                 "evidence_url": "https://example.com/evidence.pdf",
                 "evidence_status": "manually_verified",
+                "expires_at": future_expiry.isoformat(),
             },
             headers=auth_headers,
         )
@@ -379,6 +470,7 @@ async def test_ip_declarations_downgrade_risks(
     )
     assert listed.status_code == 200
     assert len(listed.json()["items"]) == 2
+    assert all(item["expires_at"] for item in listed.json()["items"])
     declaration_id = listed.json()["items"][0]["id"]
     deleted = await client.delete(
         f"/api/v1/ip-risk/declarations/{declaration_id}",
@@ -511,6 +603,7 @@ async def test_image_scope_without_vision_config_is_partial(
     assert report["coverage"] == {
         "text": "not_checked",
         "image": "not_checked",
+        "image_required": True,
     }
     assert any(
         item["code"] == "VISUAL_CHECK_NOT_CONFIGURED"

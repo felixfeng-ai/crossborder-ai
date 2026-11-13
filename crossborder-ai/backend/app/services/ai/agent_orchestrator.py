@@ -613,6 +613,17 @@ class AgentOrchestrator:
         {
             "type": "function",
             "function": {
+                "name": "get_operations_digest",
+                "description": (
+                    "读取当前待处理经营预警和优先整改动作。"
+                    "用户询问今天先处理什么、有哪些风险时使用，不重新扫描。"
+                ),
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "self_reflect",
                 "description": "审查生成内容的质量，评分并给出改进建议",
                 "parameters": {
@@ -901,6 +912,7 @@ class AgentOrchestrator:
 - 用户提到选品/推荐/做点什么/想做XX → 用 select_products
 - 用户提到检查店铺/巡检/看看我的商品 → 用 store_check
 - 用户提到库存/补货/毛利/预警/哪些商品要处理 → 用 monitor_products
+- 用户只问当前经营风险或今天先处理什么 → 用 get_operations_digest
 - 用户提到商品链接 + 能不能做/值不值得 → 用 analyze_product_decision
 - 用户提到商品链接 → 用 scrape_1688
 - 用户提到生成/发布/上架 → 用 generate_listing
@@ -954,6 +966,10 @@ class AgentOrchestrator:
 10. monitor_products — 运营监控
    参数: 无
    输出: SKU 毛利、库存覆盖天数、补货点和未处理预警
+
+11. get_operations_digest — 读取当前经营预警摘要
+   参数: 无
+   输出: 按优先级排序的预警、建议动作和跳转位置
 
 11. self_reflect — 内容质量自检
    参数: {"content": "要审查的内容", "platform": "目标平台"}
@@ -1023,6 +1039,8 @@ class AgentOrchestrator:
                 return await self._do_store_check(params)
             elif action == "monitor_products":
                 return await self._do_monitor_products(params)
+            elif action == "get_operations_digest":
+                return await self._do_get_operations_digest(params)
             elif action == "self_reflect":
                 return await self._do_self_reflect(params)
             elif action == "create_product":
@@ -1797,13 +1815,31 @@ class AgentOrchestrator:
         summary = (
             f"运营扫描完成：{result['sku_count']} 个 SKU，"
             f"{result['reorder_count']} 个需补货，"
-            f"{result['open_alerts']} 个待处理预警"
+            f"{result['open_alerts']} 个待处理预警。"
+            f"{result['digest']['headline']}"
         )
         return {
             "action": "monitor_products",
             "status": "success",
             "data": result,
             "summary": summary,
+            "links": [{"label": "查看运营预警", "href": "/app/operations"}],
+        }
+
+    async def _do_get_operations_digest(self, params: dict) -> dict:
+        """只读取当前预警摘要，不触发新一轮扫描。"""
+        from app.services.operation_digest import get_operation_digest
+
+        digest = await get_operation_digest(
+            self.db,
+            user_id=self.user.id,
+        )
+        return {
+            "action": "get_operations_digest",
+            "status": "success",
+            "data": digest,
+            "summary": digest["headline"],
+            "links": [{"label": "查看运营预警", "href": "/app/operations"}],
         }
 
     async def _do_analyze_product_decision(self, params: dict) -> dict:

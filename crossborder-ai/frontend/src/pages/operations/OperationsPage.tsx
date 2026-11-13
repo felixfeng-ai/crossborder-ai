@@ -15,6 +15,7 @@ import {
   Save,
   Settings2,
   TriangleAlert,
+  ListChecks,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -60,6 +61,25 @@ interface Overview {
   settings: MonitorSettings
   open_alerts: number
   last_scanned_at: string | null
+}
+
+interface OperationDigestItem {
+  id: string
+  product_id: string | null
+  sku: string | null
+  alert_type: string
+  severity: string
+  title: string
+  message: string
+  suggested_action: string
+  action_href: string
+}
+
+interface OperationDigest {
+  total: number
+  highest_severity: string | null
+  headline: string
+  priority_items: OperationDigestItem[]
 }
 
 interface ShopifySyncChannel {
@@ -108,6 +128,14 @@ export default function OperationsPage() {
     },
   })
 
+  const digestQuery = useQuery<OperationDigest>({
+    queryKey: ['operations-digest'],
+    queryFn: async () => {
+      const response = await apiClient.get('/operations/digest')
+      return response.data
+    },
+  })
+
   const shopifyChannelsQuery = useQuery<ShopifySyncChannel[]>({
     queryKey: ['operations-shopify-channels'],
     queryFn: async () => {
@@ -146,6 +174,7 @@ export default function OperationsPage() {
       setScanResult(data)
       queryClient.invalidateQueries({ queryKey: ['operations-alerts'] })
       queryClient.invalidateQueries({ queryKey: ['operations-overview'] })
+      queryClient.invalidateQueries({ queryKey: ['operations-digest'] })
     },
     onError: (error) => setActionError(toErrorMessage(error, '运营扫描失败')),
   })
@@ -239,6 +268,7 @@ export default function OperationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['operations-alerts'] })
       queryClient.invalidateQueries({ queryKey: ['operations-overview'] })
+      queryClient.invalidateQueries({ queryKey: ['operations-digest'] })
     },
     onError: (error) => setActionError(toErrorMessage(error, '预警确认失败')),
   })
@@ -327,6 +357,65 @@ export default function OperationsPage() {
           {syncMessage}
         </div>
       )}
+
+      <Card className="border-[var(--factory-accent)]/30 bg-[var(--factory-accent)]/5">
+        <CardHeader className="border-b border-border">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <ListChecks className="h-4 w-4 text-[var(--factory-accent)]" />
+              经营预警摘要
+            </CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setTab('alerts')}
+            >
+              查看全部 {digestQuery.data?.total || ''}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm font-medium">
+            {digestQuery.data?.headline || '正在读取经营预警...'}
+          </p>
+          {digestQuery.data?.priority_items?.length ? (
+            <div className="grid gap-2 lg:grid-cols-3">
+              {digestQuery.data.priority_items.slice(0, 3).map((item, index) => (
+                <div
+                  key={item.id}
+                  className="border border-border bg-background p-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="metric-number text-[10px] text-muted-foreground">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <DigestSeverityBadge severity={item.severity} />
+                  </div>
+                  <p className="mt-2 text-sm font-medium">{item.title}</p>
+                  {item.sku && (
+                    <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+                      {item.sku}
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    {item.suggested_action}
+                  </p>
+                  <a
+                    href={item.action_href}
+                    className="mt-3 inline-flex text-xs font-medium underline underline-offset-4"
+                  >
+                    去处理
+                  </a>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              当前没有需要优先处理的经营预警。
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {showSettings && (
         <Card className="border-primary/20 bg-primary/5">
@@ -642,6 +731,19 @@ function SeverityIcon({ severity }: { severity: string }) {
   if (severity === 'error') return <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
   if (severity === 'warning') return <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
   return <Bell className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+}
+
+function DigestSeverityBadge({ severity }: { severity: string }) {
+  if (severity === 'critical') {
+    return <Badge variant="destructive">立即处理</Badge>
+  }
+  if (severity === 'error') {
+    return <Badge variant="destructive">高优先级</Badge>
+  }
+  if (severity === 'warning') {
+    return <Badge variant="warning">需复核</Badge>
+  }
+  return <Badge variant="outline">提示</Badge>
 }
 
 function EmptyState({

@@ -14,6 +14,7 @@ from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.models.variant_snapshot import VariantSnapshot
 from app.services.operations_monitor import (
+    build_operation_digest,
     calculate_margin,
     calculate_replenishment,
 )
@@ -91,6 +92,59 @@ def test_replenishment_without_sales_data_is_unknown():
     assert result["status"] == "insufficient_data"
 
 
+def test_operation_digest_prioritizes_severity_and_actions():
+    digest = build_operation_digest(
+        [
+            {
+                "id": "info-alert",
+                "product_id": "product-1",
+                "variant_id": "variant-1",
+                "sku": "SKU-INFO",
+                "alert_type": "sales_data_missing",
+                "severity": "info",
+                "title": "缺少销量数据",
+                "message": "暂无销量",
+                "status": "open",
+                "created_at": "2026-11-13T01:00:00+00:00",
+            },
+            {
+                "id": "critical-alert",
+                "product_id": "product-2",
+                "variant_id": "variant-2",
+                "sku": "SKU-CRITICAL",
+                "alert_type": "out_of_stock",
+                "severity": "critical",
+                "title": "SKU 缺货",
+                "message": "库存为 0",
+                "status": "open",
+                "created_at": "2026-11-13T02:00:00+00:00",
+            },
+            {
+                "id": "warning-alert",
+                "product_id": "product-3",
+                "variant_id": "variant-3",
+                "sku": "SKU-WARNING",
+                "alert_type": "low_margin",
+                "severity": "warning",
+                "title": "毛利偏低",
+                "message": "毛利低于目标",
+                "status": "open",
+                "created_at": "2026-11-13T03:00:00+00:00",
+            },
+        ],
+        limit=2,
+    )
+
+    assert digest["total"] == 3
+    assert digest["highest_severity"] == "critical"
+    assert [item["id"] for item in digest["priority_items"]] == [
+        "critical-alert",
+        "warning-alert",
+    ]
+    assert "立即补货" in digest["priority_items"][0]["suggested_action"]
+    assert digest["headline"] == "3 项经营预警，1 项需要立即处理"
+
+
 @pytest.mark.asyncio
 async def test_scan_creates_snapshots_and_alerts(
     client: AsyncClient,
@@ -105,6 +159,8 @@ async def test_scan_creates_snapshots_and_alerts(
     data = response.json()
     assert data["sku_count"] == 1
     assert data["open_alerts"] >= 2
+    assert data["digest"]["total"] >= 2
+    assert data["digest"]["priority_items"]
 
     snapshots = (
         await db_session.execute(
@@ -121,6 +177,27 @@ async def test_scan_creates_snapshots_and_alerts(
     assert any(item.alert_type == "low_stock" for item in alerts)
     assert any(item.alert_type == "low_margin" for item in alerts)
     assert product.id == variant.product_id
+
+
+@pytest.mark.asyncio
+async def test_operations_digest_api_returns_priority_actions(
+    client: AsyncClient,
+    auth_headers: dict,
+    db_session,
+):
+    await _seed_operation_sku(db_session, stock=0, daily_sales=2)
+    await client.post("/api/v1/operations/scan", headers=auth_headers)
+
+    response = await client.get(
+        "/api/v1/operations/digest",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["total"] >= 1
+    assert payload["priority_items"][0]["suggested_action"]
+    assert payload["priority_items"][0]["action_href"].startswith("/app/")
 
 
 @pytest.mark.asyncio

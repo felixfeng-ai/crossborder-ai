@@ -13,6 +13,7 @@ from app.models.listing_draft import ListingDraft
 from app.models.marketing_campaign import MarketingCampaign
 from app.models.marketing_copy import MarketingCopyAsset
 from app.models.marketing_video import MarketingVideoProject, MarketingVideoShot
+from app.models.operation_alert import OperationAlert
 from app.models.product import Product
 from app.models.user import User
 from app.models.video_generation_task import VideoGenerationTask
@@ -80,7 +81,47 @@ def test_agent_tools_cover_creation_and_material_loop():
         "edit_listing",
         "sync_shopify_operations",
         "screen_ip_risk",
+        "get_operations_digest",
     } <= names
+
+
+@pytest.mark.asyncio
+async def test_agent_reads_operations_digest_without_rescanning(db_session):
+    user = await _make_user(
+        db_session,
+        email="agent-operations-digest@test.com",
+    )
+    product = Product(
+        user_id=user.id,
+        url="https://detail.1688.com/offer/agent-digest.html",
+        title="Operations Digest Product",
+    )
+    db_session.add(product)
+    await db_session.flush()
+    db_session.add(
+        OperationAlert(
+            user_id=user.id,
+            product_id=product.id,
+            alert_type="out_of_stock",
+            severity="critical",
+            title="SKU 缺货",
+            message="核心 SKU 库存为 0",
+            status="open",
+        )
+    )
+    await db_session.flush()
+    orchestrator = AgentOrchestrator(user=user, db=db_session)
+
+    result = await orchestrator._execute_step(
+        "get_operations_digest",
+        {},
+    )
+
+    assert result["status"] == "success"
+    assert result["data"]["total"] == 1
+    assert result["data"]["priority_items"][0]["alert_type"] == "out_of_stock"
+    assert "立即补货" in result["data"]["priority_items"][0]["suggested_action"]
+    assert result["links"][0]["href"] == "/app/operations"
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,11 @@ from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.models.variant_snapshot import VariantSnapshot
+from app.services.operation_digest import (
+    ALERT_ACTIONS,
+    build_operation_digest,
+    get_operation_digest,
+)
 from app.services import provider_config
 from app.services.scraper import scrape_1688
 
@@ -28,8 +33,6 @@ DEFAULT_SETTINGS = {
     "shipping_cost": 0.0,
     "cost_increase_alert_rate": 8.0,
 }
-
-
 def calculate_margin(
     selling_price: float | None,
     cost_price: float | None,
@@ -110,6 +113,15 @@ def serialize_alert(alert: OperationAlert) -> dict[str, Any]:
         details = json.loads(alert.details_json or "{}")
     except (json.JSONDecodeError, TypeError):
         details = {}
+    suggested_action = ALERT_ACTIONS.get(
+        alert.alert_type,
+        "打开运营监控查看详情并处理",
+    )
+    action_href = (
+        f"/app/products/{alert.product_id}"
+        if alert.product_id
+        else "/app/operations"
+    )
     return {
         "id": str(alert.id),
         "product_id": str(alert.product_id) if alert.product_id else None,
@@ -119,13 +131,13 @@ def serialize_alert(alert: OperationAlert) -> dict[str, Any]:
         "severity": alert.severity,
         "title": alert.title,
         "message": alert.message,
+        "suggested_action": suggested_action,
+        "action_href": action_href,
         "details": details,
         "status": alert.status,
         "created_at": str(alert.created_at),
         "acknowledged_at": str(alert.acknowledged_at) if alert.acknowledged_at else None,
     }
-
-
 def _alert_key(alert_type: str, variant_id, product_id) -> str:
     return f"{alert_type}:{variant_id or '-'}:{product_id or '-'}"
 
@@ -404,6 +416,7 @@ async def run_monitor_scan(db: AsyncSession, user: User) -> dict[str, Any]:
         for key in desired
         if key not in active_alerts or active_alerts[key].status == "open"
     )
+    digest = await get_operation_digest(db, user_id=user.id)
     return {
         "sku_count": len(rows),
         "low_stock_count": low_stock_count,
@@ -412,6 +425,7 @@ async def run_monitor_scan(db: AsyncSession, user: User) -> dict[str, Any]:
         "open_alerts": pending_count,
         "items": items,
         "settings": serialize_settings(setting),
+        "digest": digest,
     }
 
 

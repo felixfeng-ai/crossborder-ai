@@ -43,6 +43,14 @@ export function ipRiskLabel(risk: IpRiskLevel): string {
   return '风险未知'
 }
 
+export function ipSeverityLabel(severity: string): string {
+  if (severity === 'high') return '高风险'
+  if (severity === 'medium') return '中风险'
+  if (severity === 'low') return '低风险'
+  if (severity === 'info') return '提示'
+  return '风险未知'
+}
+
 export function coverageLabel(value: IpCoverageState): string {
   if (value === 'checked') return '已检查'
   if (value === 'failed') return '检查失败'

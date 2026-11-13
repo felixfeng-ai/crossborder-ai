@@ -369,6 +369,19 @@ async def test_ip_declarations_downgrade_risks(
         for item in screened.json()["risks"]
     )
 
+    listed = await client.get(
+        f"/api/v1/ip-risk/declarations?product_id={product.id}",
+        headers=auth_headers,
+    )
+    assert listed.status_code == 200
+    assert len(listed.json()["items"]) == 2
+    declaration_id = listed.json()["items"][0]["id"]
+    deleted = await client.delete(
+        f"/api/v1/ip-risk/declarations/{declaration_id}",
+        headers=auth_headers,
+    )
+    assert deleted.status_code == 204
+
 
 @pytest.mark.asyncio
 async def test_visual_ip_screen_returns_bbox_when_model_configured(

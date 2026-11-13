@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { coverageLabel, ipRiskLabel, isIpPublishBlocked } from './ipRisk'
+import {
+  coverageLabel,
+  ipRiskLabel,
+  ipSeverityLabel,
+  isIpPublishBlocked,
+} from './ipRisk'
 
 describe('IP risk display helpers', () => {
   it('maps risk and coverage states to clear Chinese labels', () => {
@@ -8,6 +13,7 @@ describe('IP risk display helpers', () => {
     expect(ipRiskLabel('unknown')).toBe('风险未知')
     expect(coverageLabel('checked')).toBe('已检查')
     expect(coverageLabel('not_checked')).toBe('未检查')
+    expect(ipSeverityLabel('info')).toBe('提示')
   })
 
   it('only blocks publishing for high risk', () => {

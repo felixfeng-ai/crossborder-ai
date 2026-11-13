@@ -398,7 +398,11 @@ export default function ContentPage() {
                 </Card>
               )}
 
-              <IpRiskCard report={generateMutation.data.ip_risk} />
+              <IpRiskCard
+                report={generateMutation.data.ip_risk}
+                productId={selectedProduct}
+                listingId={generateMutation.data.listing_id}
+              />
 
               {/* 标题 */}
               <Card>

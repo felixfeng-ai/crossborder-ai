@@ -187,3 +187,17 @@ async def save_ip_declaration(
         "evidence_status": row.evidence_status,
         "expires_at": row.expires_at.isoformat() if row.expires_at else None,
     }
+
+
+@router.delete("/declarations/{declaration_id}", status_code=204)
+async def delete_ip_declaration(
+    declaration_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.get(IpDeclaration, declaration_id)
+    if row is None or row.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="授权声明不存在")
+    await db.delete(row)
+    await db.flush()
+    return None

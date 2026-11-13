@@ -90,6 +90,7 @@ class GenerateResponse(BaseModel):
     blocked: bool = False
     violations: list[str] = []
     suggestions: list[dict] = []  # [{word, replacement}]
+    ip_risk: dict | None = None
 
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -233,6 +234,7 @@ async def generate_listing(
         blocked=generated.blocked,
         violations=generated.violations,
         suggestions=generated.suggestions,
+        ip_risk=generated.ip_risk,
     )
 
 

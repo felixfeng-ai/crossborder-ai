@@ -31,6 +31,8 @@ from uuid import UUID
 
 from app.core.config import settings
 from app.models.user import User
+from app.models.product import Product
+from app.models.listing_draft import ListingDraft
 from app.services.ai.deepseek import DeepSeekService
 from app.services.listing_service import (
     generate_and_persist_listing,
@@ -51,6 +53,7 @@ from app.services.shopify_operations_sync import (
     sync_shopify_operations as run_shopify_operations_sync,
 )
 from app.services.store_check_service import run_store_check as execute_store_check
+from app.services.ip_risk import screen_product_text
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -527,6 +530,40 @@ class AgentOrchestrator:
         {
             "type": "function",
             "function": {
+                "name": "screen_ip_risk",
+                "description": (
+                    "对当前用户的商品 Listing 和商品图做 IP 风险初筛。"
+                    "返回风险等级、命中证据和建议动作，不做侵权或法律结论。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "product_id": {
+                            "type": "string",
+                            "description": "商品 ID",
+                        },
+                        "listing_id": {
+                            "type": "string",
+                            "description": "可选，指定 Listing；不传则使用商品最新 Listing",
+                        },
+                        "image_asset_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "可选，要检查的商品图素材 ID",
+                        },
+                        "scope": {
+                            "type": "string",
+                            "enum": ["text", "image", "both"],
+                            "description": "检查范围，默认 text",
+                        },
+                    },
+                    "required": ["product_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "compliance_fix",
                 "description": "检查文本并自动修复违规内容",
                 "parameters": {
@@ -874,6 +911,7 @@ class AgentOrchestrator:
 - 用户提到广告文案、TikTok/Amazon/Shopify 文案或 A/B 测试 → 用 generate_marketing_copy
 - 用户提到素材、最近图片/视频 → 用 list_materials
 - 用户提到同步 Shopify 销量/库存 → 用 sync_shopify_operations
+- 用户提到商标、品牌授权、认证声称、Logo、水印或 IP 风险 → 用 screen_ip_risk
 - 用户提到利润/成本/计算 → 用 calculate_profit
 - 用户提到检查/审核 → 用 compliance_check
 - 不要使用 "answer" 工具，永远用具体工具
@@ -1007,6 +1045,8 @@ class AgentOrchestrator:
                 return await self._do_generate_marketing_copy(params)
             elif action == "compliance_check":
                 return await self._do_compliance(params)
+            elif action == "screen_ip_risk":
+                return await self._do_screen_ip_risk(params)
             elif action == "compliance_fix":
                 return await self._do_compliance_fix(params)
             elif action == "push_to_shopify":
@@ -1620,6 +1660,81 @@ class AgentOrchestrator:
             pass
 
         return {"action": "self_reflect", "status": "success", "data": {"overall": 7, "need_improve": False}, "summary": "内容自检完成"}
+
+    async def _do_screen_ip_risk(self, params: dict) -> dict:
+        """执行可解释 IP 初筛，并复用当前 Listing 版本报告。"""
+        product_id = str(params.get("product_id") or "").strip()
+        if not product_id:
+            return {
+                "action": "screen_ip_risk",
+                "status": "failed",
+                "error": "缺少商品 ID",
+            }
+        try:
+            product = await self.db.get(Product, UUID(product_id))
+        except (ValueError, TypeError):
+            product = None
+        if product is None or product.user_id != self.user.id:
+            return {
+                "action": "screen_ip_risk",
+                "status": "failed",
+                "error": "商品不存在",
+            }
+
+        listing = None
+        listing_id = str(params.get("listing_id") or "").strip()
+        if listing_id:
+            listing = await get_owned_listing(self.db, listing_id, self.user.id)
+            if listing is None:
+                return {
+                    "action": "screen_ip_risk",
+                    "status": "failed",
+                    "error": "Listing 不存在",
+                }
+        else:
+            listing = (
+                await self.db.execute(
+                    select(ListingDraft)
+                    .where(
+                        ListingDraft.product_id == product.id,
+                        ListingDraft.user_id == self.user.id,
+                    )
+                    .order_by(ListingDraft.updated_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
+        scope = str(params.get("scope") or "text").lower()
+        if scope not in {"text", "image", "both"}:
+            scope = "text"
+        report = await screen_product_text(
+            self.db,
+            user=self.user,
+            product=product,
+            listing=listing,
+            platform=listing.platform if listing else "amazon",
+            trigger="agent",
+            scope=scope,
+        )
+        return {
+            "action": "screen_ip_risk",
+            "status": "success",
+            "data": report,
+            "summary": (
+                f"IP 初筛完成：{report['overall_risk']}，"
+                f"{len(report['risks'])} 条风险"
+            ),
+            "links": [
+                {
+                    "label": "查看 Listing",
+                    "href": (
+                        f"/app/products/{product.id}?listing={listing.id}"
+                        if listing
+                        else f"/app/products/{product.id}"
+                    ),
+                }
+            ],
+        }
 
     async def _do_compliance(self, params: dict) -> dict:
         """合规审查（正则 + AI 双重检测）"""

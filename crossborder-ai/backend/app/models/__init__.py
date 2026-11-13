@@ -49,6 +49,7 @@ from app.models.automation_preference import (
     AutomationPreference,
     AutomationTaskState,
 )
+from app.models.ip_risk import IpDeclaration, IpRiskItem, IpRiskReport
 
 __all__ = [
     "User",
@@ -96,4 +97,7 @@ __all__ = [
     "VocAnalysis",
     "AutomationPreference",
     "AutomationTaskState",
+    "IpRiskReport",
+    "IpRiskItem",
+    "IpDeclaration",
 ]

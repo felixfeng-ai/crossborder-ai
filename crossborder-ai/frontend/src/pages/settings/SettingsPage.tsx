@@ -310,6 +310,7 @@ const PROVIDERS = [
     fields: [
       { key: 'api_key', label: 'DashScope API Key', secret: true },
       { key: 'model', label: '模型名称', secret: false },
+      { key: 'vision_model', label: 'IP 图片检查模型', secret: false },
     ],
   },
   {

@@ -1,0 +1,25 @@
+{
+  "version": "2026-11-13.1",
+  "categories": {
+    "electronics": {
+      "authorization_hint": "电子类商品需要确认目标市场认证、商标授权和品牌授权链。",
+      "severity": "medium",
+      "claims": ["CE", "FCC", "RoHS"]
+    },
+    "toys": {
+      "authorization_hint": "玩具类商品需要确认儿童产品认证和影视/卡通 IP 授权链。",
+      "severity": "medium",
+      "claims": ["EN71", "CPSIA"]
+    },
+    "cosmetics": {
+      "authorization_hint": "美妆个护类商品需要确认成分、标签、功效宣称和目标市场授权。",
+      "severity": "medium",
+      "claims": []
+    },
+    "automotive": {
+      "authorization_hint": "汽车配件需要确认车型适配、认证要求和品牌授权链。",
+      "severity": "medium",
+      "claims": []
+    }
+  }
+}

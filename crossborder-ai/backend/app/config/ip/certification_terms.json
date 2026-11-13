@@ -1,0 +1,35 @@
+{
+  "version": "2026-11-13.1",
+  "claims": [
+    {
+      "code": "CE",
+      "patterns": ["CE certified", "CE approved", "通过CE认证", "获得CE认证"],
+      "severity_without_evidence": "medium",
+      "evidence_type": "certification"
+    },
+    {
+      "code": "FDA",
+      "patterns": ["FDA approved", "FDA registered", "通过FDA认证", "获得FDA认证"],
+      "severity_without_evidence": "high",
+      "evidence_type": "certification"
+    },
+    {
+      "code": "UL",
+      "patterns": ["UL listed", "UL certified", "通过UL认证"],
+      "severity_without_evidence": "medium",
+      "evidence_type": "certification"
+    },
+    {
+      "code": "FCC",
+      "patterns": ["FCC compliant", "FCC certified", "通过FCC认证"],
+      "severity_without_evidence": "medium",
+      "evidence_type": "certification"
+    },
+    {
+      "code": "RoHS",
+      "patterns": ["RoHS compliant", "RoHS certified", "通过RoHS认证"],
+      "severity_without_evidence": "medium",
+      "evidence_type": "certification"
+    }
+  ]
+}

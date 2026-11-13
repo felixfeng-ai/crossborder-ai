@@ -160,6 +160,9 @@ class Settings(BaseSettings):
     # 商品图片工作台的本地素材目录；上传后统一转码并去除原始元数据。
     IMAGE_STORAGE_DIR: str = "./storage/images"
     MAX_IMAGE_UPLOAD_BYTES: int = 12 * 1024 * 1024
+    # IP 图片初筛复用百炼 Key，模型和地址由平台配置，不暴露给卖家。
+    IP_VISION_MODEL: str = "qwen3-vl-plus"
+    IP_VISION_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
     # --- MiniMax Video ---
     MINIMAX_API_KEY: Optional[str] = None

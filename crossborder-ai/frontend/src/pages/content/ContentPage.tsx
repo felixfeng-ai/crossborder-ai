@@ -10,10 +10,12 @@ import { Badge } from '@/components/ui/badge'
 import ListingDescriptionCard from '@/components/content/ListingDescriptionCard'
 import ListingSeoCard from '@/components/content/ListingSeoCard'
 import VocInsightsCard from '@/components/content/VocInsightsCard'
+import { IpRiskCard } from '@/components/content/IpRiskCard'
 import apiClient from '@/api/client'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { createIdempotencyKey } from '@/utils/idempotency'
 import { resolveMediaUrl } from '@/lib/apiUrl'
+import { isIpPublishBlocked, type IpRiskReport } from '@/lib/ipRisk'
 
 interface Product {
   id: string
@@ -37,6 +39,7 @@ interface GenerateResult {
   blocked: boolean
   violations: string[]
   suggestions: Array<{ word: string; replacement: string }>
+  ip_risk?: IpRiskReport | null
 }
 
 interface PlatformCapability {
@@ -395,6 +398,8 @@ export default function ContentPage() {
                 </Card>
               )}
 
+              <IpRiskCard report={generateMutation.data.ip_risk} />
+
               {/* 标题 */}
               <Card>
                 <CardHeader className="flex flex-row items-start justify-between">
@@ -559,6 +564,9 @@ export default function ContentPage() {
                     !selectedChannel ||
                     publishMutation.isPending ||
                     generateMutation.data.compliance_status !== 'pass' ||
+                    isIpPublishBlocked(
+                      generateMutation.data.ip_risk?.overall_risk || 'unknown',
+                    ) ||
                     !generateMutation.data.listing_id ||
                     !hasPublishableVariant ||
                     selectedVariantIds.length === 0
@@ -569,6 +577,10 @@ export default function ContentPage() {
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" />发布中...</>
                   ) : generateMutation.data.compliance_status !== 'pass' ? (
                     <><AlertTriangle className="mr-2 h-4 w-4" />合规未通过，禁止发布</>
+                  ) : isIpPublishBlocked(
+                    generateMutation.data.ip_risk?.overall_risk || 'unknown',
+                  ) ? (
+                    <><AlertTriangle className="mr-2 h-4 w-4" />IP 高风险，禁止发布</>
                   ) : !hasPublishableVariant ? (
                     <><AlertTriangle className="mr-2 h-4 w-4" />请先配置 SKU 售价</>
                   ) : selectedVariantIds.length === 0 ? (

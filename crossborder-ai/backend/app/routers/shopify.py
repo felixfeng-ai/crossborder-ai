@@ -56,6 +56,7 @@ from app.services.shopify_operations_sync import (
     ShopifyOperationsSyncError,
     sync_shopify_operations,
 )
+from app.services.ip_risk import ensure_ip_report_for_publish
 router = APIRouter(prefix="/shopify", tags=["Shopify"])
 
 # ── 违禁词正则（F8 合规审查）─────────────────────────────────
@@ -833,6 +834,25 @@ async def push_product(
 
     # 查 Shopify 渠道
     channel = await get_channel(payload.channel_id, current_user.id, db)
+
+    ip_report = await ensure_ip_report_for_publish(
+        db,
+        user=current_user,
+        product=product,
+        listing=listing,
+        platform="shopify",
+    )
+    # 高风险报告也必须在返回 409 前持久化，便于用户补证和追溯。
+    await db.commit()
+    if ip_report["overall_risk"] == "high":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "IP 风险初筛未通过，暂不能发布",
+                "ip_risk_report_id": ip_report["report_id"],
+                "risks": ip_report["risks"],
+            },
+        )
 
     # 合规审查（双重：正则 + AI 复查）
     content_title = listing.title if listing is not None else product.title

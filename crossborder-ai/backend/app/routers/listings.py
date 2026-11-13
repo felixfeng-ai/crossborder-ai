@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
+from app.models.product import Product
 from app.services.ai.persona_kit import build_persona_kit, fetch_persona
 from app.services.listing_service import (
     get_owned_listing,
@@ -16,6 +17,7 @@ from app.services.listing_service import (
     serialize_listing,
     update_listing_content,
 )
+from app.services.ip_risk import screen_product_text
 
 
 router = APIRouter(prefix="/listings", tags=["Listings"])
@@ -93,5 +95,18 @@ async def recheck_listing_compliance(
         listing,
         user_banned_words=(persona_kit or {}).get("banned_words") or [],
     )
+    product = await db.get(Product, listing.product_id)
+    ip_risk = None
+    if product is not None and product.user_id == current_user.id:
+        ip_risk = await screen_product_text(
+            db,
+            user=current_user,
+            product=product,
+            listing=listing,
+            platform=listing.platform,
+            category_code=(persona_kit or {}).get("product_category"),
+            trigger="manual",
+            scope="text",
+        )
     await db.refresh(listing)
-    return serialize_listing(listing)
+    return {**serialize_listing(listing), "ip_risk": ip_risk}

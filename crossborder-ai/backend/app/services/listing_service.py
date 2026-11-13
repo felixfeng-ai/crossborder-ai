@@ -42,6 +42,7 @@ class GeneratedListingResult:
     suggestions: list[dict]
     blocked: bool
     model_used: str
+    ip_risk: dict | None = None
 
 
 def _content_hash(
@@ -325,6 +326,18 @@ async def generate_and_persist_listing(
         blocked=blocked,
         ai_model_used=model_used,
     )
+    from app.services.ip_risk import screen_product_text
+
+    ip_risk = await screen_product_text(
+        db,
+        user=user,
+        product=product,
+        listing=draft,
+        platform=platform,
+        category_code=(persona_kit or {}).get("product_category"),
+        trigger="generation",
+        scope="text",
+    )
     return GeneratedListingResult(
         draft=draft,
         title=title,
@@ -336,6 +349,7 @@ async def generate_and_persist_listing(
         suggestions=suggestions,
         blocked=blocked,
         model_used=model_used,
+        ip_risk=ip_risk,
     )
 
 

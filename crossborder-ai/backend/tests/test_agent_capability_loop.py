@@ -79,6 +79,7 @@ def test_agent_tools_cover_creation_and_material_loop():
         "get_listing",
         "edit_listing",
         "sync_shopify_operations",
+        "screen_ip_risk",
     } <= names
 
 

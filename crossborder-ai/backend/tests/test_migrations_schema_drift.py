@@ -123,7 +123,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "043_automation_preferences"
+    assert version == "044_ip_risk_screening"
     assert "provider" in _column_names(engine, "marketing_video_projects")
     assert "workspace" in _column_names(engine, "conversations")
     assert "campaign_id" in _column_names(engine, "conversations")
@@ -167,6 +167,16 @@ def test_repair_migration_restores_stamped_schema_drift(
         "shopify_auto_sync",
         "ab_auto_pause",
     } <= _column_names(engine, "automation_preferences")
+    assert {
+        "ip_risk_reports",
+        "ip_risk_items",
+        "ip_declarations",
+    } <= set(sa.inspect(engine).get_table_names())
+    assert {
+        "input_hash",
+        "ruleset_version",
+        "overall_risk",
+    } <= _column_names(engine, "ip_risk_reports")
 
 
 def test_full_sqlite_upgrade_from_empty_database(
@@ -215,7 +225,7 @@ def test_full_sqlite_upgrade_from_empty_database(
     } <= _column_names(engine, "products")
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "043_automation_preferences"
+    assert version == "044_ip_risk_screening"
     assert "provider" in _column_names(engine, "marketing_video_projects")
     assert "workspace" in _column_names(engine, "conversations")
     assert "campaign_id" in _column_names(engine, "conversations")
@@ -258,6 +268,11 @@ def test_full_sqlite_upgrade_from_empty_database(
         "status",
         "error",
     } <= _column_names(engine, "automation_task_states")
+    assert {
+        "ip_risk_reports",
+        "ip_risk_items",
+        "ip_declarations",
+    } <= set(inspector.get_table_names())
     assert "credit_transactions" in inspector.get_table_names()
     assert {
         "credit_wallets",

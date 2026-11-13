@@ -1,0 +1,51 @@
+{
+  "version": "2026-11-13.1",
+  "authorization_claim_patterns": [
+    "official partner",
+    "authorized dealer",
+    "official reseller",
+    "official store",
+    "品牌授权店",
+    "官方授权",
+    "官方合作",
+    "独家代理"
+  ],
+  "brands": [
+    {
+      "brand_key": "nike",
+      "display_name": "Nike",
+      "aliases": ["Nike"],
+      "match_mode": "word",
+      "platforms": ["amazon", "shopify", "tiktok"],
+      "severity": "high",
+      "requires_authorization": true
+    },
+    {
+      "brand_key": "disney",
+      "display_name": "Disney",
+      "aliases": ["Disney", "Mickey Mouse", "米奇", "米老鼠"],
+      "match_mode": "phrase",
+      "platforms": ["amazon", "shopify", "tiktok"],
+      "severity": "high",
+      "requires_authorization": true
+    },
+    {
+      "brand_key": "lego",
+      "display_name": "LEGO",
+      "aliases": ["LEGO", "乐高"],
+      "match_mode": "phrase",
+      "platforms": ["amazon", "shopify", "tiktok"],
+      "severity": "high",
+      "requires_authorization": true
+    },
+    {
+      "brand_key": "coca_cola",
+      "display_name": "Coca-Cola",
+      "aliases": ["Coca-Cola", "Coca Cola", "可口可乐"],
+      "match_mode": "phrase",
+      "platforms": ["amazon", "shopify", "tiktok"],
+      "severity": "high",
+      "requires_authorization": true
+    }
+  ]
+}

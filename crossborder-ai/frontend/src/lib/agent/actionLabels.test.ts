@@ -10,5 +10,6 @@ describe('agent action labels', () => {
     expect(getActionLabel('get_listing')).toBe('读取 Listing')
     expect(getActionLabel('edit_listing')).toBe('编辑 Listing')
     expect(getActionLabel('sync_shopify_operations')).toBe('同步 Shopify 运营数据')
+    expect(getActionLabel('screen_ip_risk')).toBe('IP 风险初筛')
   })
 })

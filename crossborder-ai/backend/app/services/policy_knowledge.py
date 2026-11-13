@@ -24,6 +24,23 @@ from app.services import provider_config
 
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*|[\u4e00-\u9fff]{2,}")
+QUERY_STOPWORDS = {
+    "amazon",
+    "tiktok",
+    "shopify",
+    "shop",
+    "us",
+    "product",
+    "products",
+    "listing",
+    "listings",
+    "policy",
+    "policies",
+    "requirement",
+    "requirements",
+    "platform",
+    "market",
+}
 
 
 def normalize_policy_text(value: str) -> str:
@@ -130,6 +147,8 @@ def chunk_policy_text(
 
 def get_policy_embedding_config() -> tuple[str, str, str, int] | None:
     """读取政策 Embedding 配置；缺少 Key 时静默降级到关键词检索。"""
+    if not settings.POLICY_EMBEDDING_ENABLED:
+        return None
     api_key = (
         provider_config.get("aliyun", "api_key")
         or settings.ALIYUN_DASHSCOPE_API_KEY
@@ -279,7 +298,11 @@ async def _lexical_search(
     top_k: int,
 ) -> list[dict[str, Any]]:
     """Qdrant 不可用时使用 PostgreSQL 关键词检索。"""
-    tokens = list(dict.fromkeys(TOKEN_PATTERN.findall(query.lower())))[:8]
+    tokens = [
+        token
+        for token in dict.fromkeys(TOKEN_PATTERN.findall(query.lower()))
+        if token not in QUERY_STOPWORDS
+    ][:8]
     if not tokens:
         return []
     statement = (
@@ -297,7 +320,10 @@ async def _lexical_search(
         )
     if category:
         statement = statement.where(
-            func.lower(PolicySource.category) == category.strip().lower()
+            or_(
+                PolicySource.category.is_(None),
+                func.lower(PolicySource.category) == category.strip().lower(),
+            )
         )
     statement = statement.where(
         or_(
@@ -309,11 +335,19 @@ async def _lexical_search(
     ).limit(120)
     rows = (await db.execute(statement)).all()
     ranked: list[tuple[float, PolicyChunk, PolicySource]] = []
+    minimum_hits = 2 if len(tokens) >= 4 else 1
     for chunk, source in rows:
         haystack = f"{chunk.heading_path}\n{chunk.content}".lower()
         hits = sum(token in haystack for token in tokens)
-        if hits:
-            ranked.append((hits / len(tokens), chunk, source))
+        if hits < minimum_hits:
+            continue
+        title_tokens = set(
+            TOKEN_PATTERN.findall(source.title.lower())
+        )
+        title_bonus = len(set(tokens).intersection(title_tokens)) * 0.08
+        phrase_bonus = 0.12 if query.lower() in haystack else 0.0
+        score = min(1.0, hits / len(tokens) + title_bonus + phrase_bonus)
+        ranked.append((score, chunk, source))
     ranked.sort(
         key=lambda item: (item[0], item[1].created_at),
         reverse=True,
@@ -354,7 +388,9 @@ async def _vector_search(
         must.append(
             qdrant_models.FieldCondition(
                 key="category",
-                match=qdrant_models.MatchValue(value=category.strip().lower()),
+                match=qdrant_models.MatchAny(
+                    any=[category.strip().lower(), "general"]
+                ),
             )
         )
     results = await run_in_threadpool(
@@ -589,7 +625,7 @@ async def ingest_policy_text(
                             "source_url": source.source_url,
                             "platform": source.platform,
                             "market": source.market,
-                            "category": source.category,
+                            "category": source.category or "general",
                             "version": source.version,
                             "effective_at": (
                                 source.effective_at.isoformat()

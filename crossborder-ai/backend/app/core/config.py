@@ -164,6 +164,7 @@ class Settings(BaseSettings):
     IP_VISION_MODEL: str = "qwen3-vl-plus"
     IP_VISION_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     # 平台政策 RAG 复用阿里云百炼 Key，向量维度必须与 Qdrant Collection 一致。
+    POLICY_EMBEDDING_ENABLED: bool = True
     POLICY_EMBEDDING_MODEL: str = "text-embedding-v4"
     POLICY_EMBEDDING_DIMENSION: int = 1024
     POLICY_EMBEDDING_BASE_URL: str = (

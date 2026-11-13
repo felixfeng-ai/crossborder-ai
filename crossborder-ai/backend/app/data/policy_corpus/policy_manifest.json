@@ -1,0 +1,653 @@
+{
+  "name": "VeyaShip platform policy corpus",
+  "version": "2026-11-13",
+  "sources": [
+    {
+      "id": "amazon_main_image_requirements",
+      "title": "Amazon Main Product Image Requirements",
+      "platform": "amazon",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/help/hub/reference/external/G1881?locale=en_us",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Main Product Image Requirements\n\n## Main image / 主图\n\n商品主图必须真实、专业，准确展示商品实际比例、数量和颜色；商品应占画面约 85%，完整出现在画面内，只展示一个商品单位。主图不得使用临时占位图。Main image must accurately represent the product, show the entire product, and use a realistic professional-quality image."
+    },
+    {
+      "id": "amazon_ai_generated_people_disclosure",
+      "title": "Amazon AI-generated People Image Disclosure",
+      "platform": "amazon",
+      "market": "US",
+      "category": null,
+      "document_type": "image_disclosure_policy",
+      "source_url": "https://sellercentral.amazon.com/help/hub/reference/external/G1881?locale=en_us",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon AI-generated People Image Disclosure\n\n## Synthetic performer metadata\n\n如果商品图包含完全由 AI 生成的逼真人像，适用司法辖区可能要求披露。上传前应在 IPTC/XMP `dc:subject` 中添加 `contains-synthetic-performer` 元数据。真实人物、非写实人物或纯商品图通常不适用该标签。"
+    },
+    {
+      "id": "amazon_product_title",
+      "title": "Amazon Product Title Guidelines",
+      "platform": "amazon",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/help/hub/reference/external/G10471?language=en_US",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Product Title Guidelines\n\n## Title / 标题\n\nAmazon 商品标题应像实体包装上的有效摘要，清楚描述商品。标题必须遵守 Product title requirements，不得使用与商品无关的关键词堆砌。Product title should provide an impactful summary of the product as it would appear on physical packaging."
+    },
+    {
+      "id": "amazon_listing_standards",
+      "title": "Amazon Product Detail Page Rules",
+      "platform": "amazon",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/help/hub/reference/external/G200390640?locale=en-us",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Product Detail Page Rules\n\n## Accuracy and categorization / 准确性\n\n卖家必须确保商品被准确分类、描述并符合 Amazon listing standards。不得故意提供不准确、错误分类或欺骗性描述来规避商品和类目限制；违规可能导致包括终止销售权限在内的纠正措施。"
+    },
+    {
+      "id": "amazon_misleading_claims",
+      "title": "Amazon Misleading and Prohibited Claims",
+      "platform": "amazon",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/help/hub/reference/external/GZ93G4JTAEVEJW62",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Misleading and Prohibited Claims\n\n## Claims / 宣称\n\nAmazon 将 claim 定义为关于商品功能、工作方式或材质的陈述。禁止使用任何商品无法始终兑现的极端语言。为保持 listing 有效，应从标题、五点、描述、图片、视频和包装中删除不符合政策的 claim。"
+    },
+    {
+      "id": "amazon_disease_claims",
+      "title": "Amazon Restricted Product Disease Claims",
+      "platform": "amazon",
+      "market": "US",
+      "category": "cosmetics",
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/gp/help/external/G201707090?language=en_US",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Restricted Product Disease Claims\n\n## Disease claims / 疾病宣称\n\n除非依据 FDA 规则、联邦食品、药品和化妆品法规定或获批的新药申请允许，否则 OTC 药品不得声称诊断、治愈、缓解、治疗或预防疾病。对疾病或某类疾病产生影响的暗示也可能构成 disease claim。"
+    },
+    {
+      "id": "amazon_supplement_claims",
+      "title": "Amazon Supplement and FDA Approval Claims",
+      "platform": "amazon",
+      "market": "US",
+      "category": "cosmetics",
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/help/hub/reference/external/G201829010?ots=1",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Supplement and FDA Approval Claims\n\n## FDA approval / FDA 批准\n\n商品 listing 属性和图片不得在商品没有官方 FDA approval 时声称 `FDA approved`，也不得作出或暗示 FDA 未批准的疾病宣称。产品标签、成分、认证标志和警告信息需要与实际情况一致。"
+    },
+    {
+      "id": "amazon_cosmetic_claims",
+      "title": "Amazon Cosmetic Product Claims",
+      "platform": "amazon",
+      "market": "US",
+      "category": "cosmetics",
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/help/hub/reference/external/G200164470?locale=en-",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Cosmetic Product Claims\n\n## Cosmetic claims / 美妆宣称\n\n化妆品可以描述对产品外观的影响，但不能作出未经允许的疾病或结构功能宣称。示例：护肤产品可以声称减少皱纹外观，但不能声称消除皱纹。所有 claim 必须遵守 Amazon Misleading and prohibited claims policy。"
+    },
+    {
+      "id": "amazon_organic_certification",
+      "title": "Amazon Organic and Certification Claims",
+      "platform": "amazon",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/help/hub/reference/external/G200164550?language=en_us",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Organic and Certification Claims\n\n## Organic certification / 有机认证\n\n不得在未标明产品认证机构名称时声称商品为 organic。所有认证和限制性商品 claim 必须符合 Amazon Misleading and prohibited claims policy，并按要求提供清晰、可核验的文件。"
+    },
+    {
+      "id": "amazon_toy_safety",
+      "title": "Amazon Children's Toy Safety Requirements",
+      "platform": "amazon",
+      "market": "US",
+      "category": "toys",
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/gp/help/external/help.html?itemID=DPSRCGVBFSFY78H&language=en_US",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Children's Toy Safety Requirements\n\n## Toy safety / 玩具安全\n\nAmazon 儿童玩具合规可能要求 ASTM F963-23 或此前适用版本。页面注明 2024-04-20 之后制造的儿童玩具必须符合 ASTM F963-23；被停用的 listing 可能需要提交合规文件。"
+    },
+    {
+      "id": "amazon_children_product_certificate",
+      "title": "Amazon Children's Product Certificate",
+      "platform": "amazon",
+      "market": "US",
+      "category": "toys",
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/gp/help/external/help.html?itemID=SGB43AFZNDWD4U8&language=en_US",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Children's Product Certificate\n\n## CPC / 儿童产品证书\n\n儿童产品证书需要列明适用的消费品安全规则，并提供产品测试日期和地点。测试地点至少包含城市或行政区以及国家。Amazon 提供了儿童玩具 CPC 示例，并要求产品与测试报告主体一致。"
+    },
+    {
+      "id": "amazon_child_choking_warning",
+      "title": "Amazon Children's Product Safety Labels",
+      "platform": "amazon",
+      "market": "US",
+      "category": "toys",
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/help/hub/reference/external/GKHQEFBM7834V6AV?locale=en-US",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Children's Product Safety Labels\n\n## Choking hazard / 窒息风险\n\n儿童商品 safety requirements 可能需要测试报告、合规标志和追踪标签。示例：面向 3 至 6 岁儿童的玩具或游戏按 CPSIA 要求需要包含提示购买者窒息风险的 cautionary statements。电子产品也可能需要 FCC compliance marking。"
+    },
+    {
+      "id": "amazon_children_toy_definition",
+      "title": "Amazon Children's Toy Listing Requirements",
+      "platform": "amazon",
+      "market": "US",
+      "category": "toys",
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/help/hub/reference/external/GKJRA3FRPRKVBJJS?locale=en_IN",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Children's Toy Listing Requirements\n\n## Children's toy / 儿童玩具\n\nAmazon 将供 12 岁及以下儿童学习或玩耍的产品视为儿童玩具。儿童玩具需要符合 Amazon enhanced safety listing compliance requirements；错误分类可通过 Account Health 的 Food and Product Safety Issues 提出申诉。"
+    },
+    {
+      "id": "tiktok_product_listing_requirements",
+      "title": "TikTok Shop Product Listing Requirements",
+      "platform": "tiktok",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://seller-us.tiktok.com/university/essay?knowledge_id=4290446508967682",
+      "version": "2026-05-13",
+      "effective_at": "2026-05-13T00:00:00+00:00",
+      "content_text": "# TikTok Shop Product Listing Requirements\n\n## Required information / 必填信息\n\nTikTok Shop product listing must provide title, description, category, brand, images and videos, product and accessories, weight and dimensions, selling attributes, price and official local language. TikTok Shop listing 必须提供商品标题、描述、类目、品牌、图片和视频、商品及配件、重量和尺寸、销售属性、价格以及目标市场官方语言。listing 文字、视频和图片必须准确、公平、诚实且不误导。"
+    },
+    {
+      "id": "tiktok_listing_policy",
+      "title": "TikTok Shop Product Listing Policy",
+      "platform": "tiktok",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://seller-us.tiktok.com/university/essay?knowledge_id=3196690250417921&role=1",
+      "version": "2026-11-06",
+      "effective_at": "2026-11-06T00:00:00+00:00",
+      "content_text": "# TikTok Shop Product Listing Policy\n\n## Truthful listing / 真实性\n\nTikTok Shop 要求 listing 清晰、真实并遵守适用法律。禁止声称商品是 dupes、fakes、knock-offs 或类似仿品。商品详情页必须提供标题、描述、品牌、图片、适用变体以及法律要求的警告和披露。"
+    },
+    {
+      "id": "tiktok_listing_quality",
+      "title": "TikTok Shop Listing Quality Guidelines",
+      "platform": "tiktok",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://seller-us.tiktok.com/university/essay?knowledge_id=481891871868714&role=1",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# TikTok Shop Listing Quality Guidelines\n\n## Good quality tier / 良好 listing\n\nTikTok Shop 优质 listing 建议使用简洁、非诱导点击的标题，至少 5 张高分辨率图片且大于 600×600，描述超过 80 个字符或包含描述图片，并补充所有必需类目信息。主图不得出现文字、Logo、水印、边框或覆盖商品的图形。"
+    },
+    {
+      "id": "tiktok_images_and_titles",
+      "title": "TikTok Shop Images and Product Titles",
+      "platform": "tiktok",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://seller-us.tiktok.com/university/essay?knowledge_id=603906625865518&lang=en",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# TikTok Shop Images and Product Titles\n\n## Images / 图片\n\nTikTok Shop 图片尺寸建议至少 600×600 px，最大 10 MB，支持 JPG、JPEG、PNG；至少上传 1 张，最多 9 张。主图应展示完整商品，避免文字、图形或水印。标题长度应为 25 至 200 个字符，准确描述商品，避免卖家名称、URL 和营销短语。"
+    },
+    {
+      "id": "tiktok_product_listing_what_to_know",
+      "title": "TikTok Shop Product Listing Best Practices",
+      "platform": "tiktok",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://seller-us.tiktok.com/university/essay?from=policy&identity=1&knowledge_id=7073362639816491",
+      "version": "2026-10-09",
+      "effective_at": "2026-10-09T00:00:00+00:00",
+      "content_text": "# TikTok Shop Product Listing Best Practices\n\n## Images and edits / 图片与重大修改\n\nTikTok Shop 美国市场建议至少提供 5 张高分辨率图片，从多个角度展示商品。首图不得添加文字、图形或水印。避免通过更换图片、标题、品牌或价格而实质性改变原商品并造成误导。"
+    },
+    {
+      "id": "tiktok_prohibited_products",
+      "title": "TikTok Shop Prohibited Products Policy",
+      "platform": "tiktok",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://seller-us.tiktok.com/university/essay?identity=1&knowledge_id=1399532709988097&role=1",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# TikTok Shop Prohibited Products Policy\n\n## Prohibited products / 禁售商品\n\nTikTok Shop prohibits illegal, unsafe, counterfeit, recalled, regulated or otherwise banned products, even when the product may be legal locally. TikTok Shop 禁止销售非法、不安全、假冒、召回、受监管或政策禁止的商品，即使商品在当地合法也可能被平台禁止。酒精、烟草、尼古丁、电子烟及相关功能性吸烟配件属于禁售商品。"
+    },
+    {
+      "id": "tiktok_content_policy_claims",
+      "title": "TikTok Shop Content Policy Claims",
+      "platform": "tiktok",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://seller-us.tiktok.com/university/essay?knowledge_id=6837891779151617",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# TikTok Shop Content Policy Claims\n\n## Price and scarcity claims / 价格与稀缺宣称\n\nTikTok Shop Content Policy 禁止虚假、过期或无依据的价格、折扣、MSRP、价值、稀有度、稀缺性、销量和需求 claim。禁止虚假的独家性或稀缺性 claim，也限制描绘或推广高风险受监管商品。"
+    },
+    {
+      "id": "shopify_product_descriptions",
+      "title": "Shopify Product Descriptions",
+      "platform": "shopify",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://help.shopify.com/en/manual/products/details/product-descriptions",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Shopify Product Descriptions\n\n## Description / 商品描述\n\n商品描述应解释商品是什么以及为什么值得购买。A reseller should not copy the manufacturer's exact description; write a unique product description for the store and search engines. 经销商不应直接复制制造商原文，应让商品描述对本店和搜索引擎保持独特性。描述应真实、清楚并突出商品价值和用途。"
+    },
+    {
+      "id": "shopify_product_details_page",
+      "title": "Shopify Product Details Page",
+      "platform": "shopify",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://help.shopify.com/en/manual/products/details/product-details-page/",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Shopify Product Details Page\n\n## Product information / 商品信息\n\nShopify 商品详情页使用富文本描述，并可配置商品媒体和搜索引擎 listing。商家应维护准确、完整的商品信息，并避免直接复制制造商描述造成内容重复。归档商品会从商店前台隐藏。"
+    },
+    {
+      "id": "shopify_product_media",
+      "title": "Shopify Product Media",
+      "platform": "shopify",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://help.shopify.com/en/manual/products/product-media/add-media",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Shopify Product Media\n\n## Media / 商品媒体\n\nShopify product media should use the product media uploader instead of pasting an `<img>` tag. Media files must follow the supported file format and size requirements in the Shopify file system. Shopify 商品媒体应使用商品媒体上传器添加到描述或博客，而不是直接粘贴 `<img>` 标签。媒体文件必须符合文件系统的格式和限制要求。店铺前台公开媒体应通过 Shopify 文件系统管理。"
+    },
+    {
+      "id": "shopify_consumer_protection",
+      "title": "Shopify Consumer Protection Claims",
+      "platform": "shopify",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://help.shopify.com/en/manual/compliance/legal/consumer-protection",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Shopify Consumer Protection Claims\n\n## Pricing and purchase claims / 价格与购买宣称\n\n商品性能、营销和价格 claim 必须真实。示例：如果并非真实，不得声称“今天有 X 人购买该商品”。向相关市场销售时，最终展示价格应按适用规则包含 VAT 和进口关税等信息。"
+    },
+    {
+      "id": "shopify_product_disclosures",
+      "title": "Shopify Product Disclosures",
+      "platform": "shopify",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://help.shopify.com/en/manual/products/product-disclosures",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Shopify Product Disclosures\n\n## Product disclosures / 商品披露\n\nShopify 支持使用 Disclosures metaobject 维护商品披露标题、内容和符号，并通过 metafield 在商品页和购物车展示。商家可通过批量编辑器为多个商品添加披露。法律要求的信息应由商家确认并维护。"
+    },
+    {
+      "id": "shopify_shop_prohibited_products",
+      "title": "Shopify Shop Prohibited Products",
+      "platform": "shopify",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://help.shopify.com/en/manual/online-sales-channels/shop/eligibility/prohibited-products",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Shopify Shop Prohibited Products\n\n## Shop channel restrictions / Shop 渠道限制\n\n通过 Shop 销售商品时，除 Shopify 基础政策外还有额外的禁售商品类型。Additional prohibited products on Shop include age-restricted alcohol, tobacco and gambling products. 示例包括受年龄限制的酒精、烟草和赌博类产品。商家应同时遵守 Shopify Acceptable Use Policy。"
+    },
+    {
+      "id": "shopify_store_policies",
+      "title": "Shopify Store Policy Requirements",
+      "platform": "shopify",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://help.shopify.com/en/manual/checkout-settings/refund-privacy-tos",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Shopify Store Policy Requirements\n\n## Store policies / 店铺政策\n\nShopify automated refund, privacy and terms of service policy templates are for informational purposes only, are not legal advice and do not guarantee compliance. Shopify 自动生成的退款、隐私和服务条款模板仅供参考，不构成法律建议，也不保证合规。销售受市场特定规则约束的商品时，例如安全、标签、化妆品、电子产品、儿童产品或食品接触材料，商家需要自行审核适用政策。"
+    },
+    {
+      "id": "shopify_marketplace_connect_requirements",
+      "title": "Shopify Marketplace Product Listing Requirements",
+      "platform": "shopify",
+      "market": "US",
+      "category": null,
+      "document_type": "official_policy_extract",
+      "source_url": "https://help.shopify.com/en/manual/online-sales-channels/marketplace-connect/products/requirements",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Shopify Marketplace Product Listing Requirements\n\n## Marketplace requirements / 渠道要求\n\n通过 Shopify Marketplace Connect 向其他市场发布商品时，商品必须满足目标市场自身的标题、描述、图片和类目要求。Shopify 的 listing 通过不代表 Amazon、Walmart 或其他市场一定接受。"
+    },
+    {
+      "id": "amazon_electronics_enhanced_safety",
+      "title": "Amazon Electronics Enhanced Safety and Battery Compliance",
+      "platform": "amazon",
+      "market": "US",
+      "category": "electronics",
+      "document_type": "official_policy_extract",
+      "source_url": "https://sellercentral.amazon.com/help/hub/reference/external/GUQ848NB5HZ6M6A4?locale=en-US",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Amazon Electronics Enhanced Safety and Battery Compliance\n\n## Enhanced safety / 增强型安全上架\n\nAmazon applies enhanced safety listing compliance requirements to certain product categories, including lithium battery powered smart home and consumer electronics. 对相关电子产品，卖家必须按平台要求提交合规资料；示例包括由认可实验室出具的检测材料、UN 38.3 battery test summary（BTS），以及在 Seller Central Business Insurance verification 中有效的 Certificate of Insurance（COI）。资料缺失、型号不一致或未按要求提交时，listing 可能无法上架或被移除。\n\n## Model consistency / 型号一致性\n\nCompliance documents must match the exact product model and actual product configuration. 卖家不得用其他型号、旧版本或无法对应实际商品的资料替代。"
+    },
+    {
+      "id": "tiktok_3c_product_requirements",
+      "title": "TikTok Shop 3C Product Listing and Battery Claims",
+      "platform": "tiktok",
+      "market": "US",
+      "category": "electronics",
+      "document_type": "official_policy_extract",
+      "source_url": "https://seller-us.tiktok.com/university/essay?knowledge_id=3055494219466509",
+      "version": "updated-2026-09-25",
+      "effective_at": null,
+      "content_text": "# TikTok Shop 3C Product Listing and Battery Claims\n\n## Scope / 适用范围\n\nTikTok Shop 3C guidelines cover computers, communications and consumer electronics, including phones, tablets, audio devices, smart wearables, routers, adapters, chargers, cables and power banks. 3C listing 的标题、属性、图片和详情页必须真实、完整且相互一致。\n\n## Title and attributes / 标题与属性\n\n推荐标题结构为品牌、核心类目、关键规格、适用设备和核心卖点。充电器、数据线和移动电源应准确填写 rated power、voltage/current、capacity、interface 和 supported fast-charging protocols；商品标题、图片、属性与详情页中的容量、功率和兼容设备不得互相矛盾。\n\n## Performance claims / 性能宣称\n\nBattery, charging and performance claims must reflect real capabilities and realistic usage conditions. 禁止使用 never runs out of power、one-second full charge、never overheats 等绝对化或无法兑现的续航、充电和温控宣称。"
+    },
+    {
+      "id": "shopify_electronics_product_safety",
+      "title": "Shopify Electronics Product Safety and Battery Disclosures",
+      "platform": "shopify",
+      "market": "US",
+      "category": "electronics",
+      "document_type": "official_policy_extract",
+      "source_url": "https://help.shopify.com/en/manual/compliance/legal/consumer-protection",
+      "version": "accessed-2026-11-13",
+      "effective_at": null,
+      "content_text": "# Shopify Electronics Product Safety and Battery Disclosures\n\n## Claims and disclosures / 宣称与披露\n\nShopify requires product and service claims to be true. For electronics, some jurisdictions may require customer-facing warnings such as battery safety information, CE product marking or California Proposition 65 notices. 商家可使用 Disclosures product metafield 和 metaobject entries 在商品页展示适用警告，但仍须自行确认适用法律和披露内容。\n\n## Recalls / 召回\n\n如果电子商品被召回，商家必须立即从店铺移除相关商品；法律要求时，还必须通知购买过该商品的消费者。商家应持续遵守经营地和销售目的地的产品安全、标签与消费者保护规定。"
+    }
+  ],
+  "cases": [
+    {
+      "id": "amazon-main-image-size",
+      "query": "Amazon 主图 商品占画面 85% 完整商品",
+      "platform": "amazon",
+      "market": "US",
+      "category": "toys",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://sellercentral.amazon.com/help/hub/reference/external/G1881?locale=en_us"]
+    },
+    {
+      "id": "amazon-ai-people-disclosure",
+      "query": "Amazon AI generated photorealistic people contains-synthetic-performer disclosure",
+      "platform": "amazon",
+      "market": "US",
+      "category": "cosmetics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://sellercentral.amazon.com/help/hub/reference/external/G1881?locale=en_us"]
+    },
+    {
+      "id": "amazon-title-packaging",
+      "query": "Amazon product title 包装 摘要 关键词堆砌",
+      "platform": "amazon",
+      "market": "US",
+      "category": "electronics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://sellercentral.amazon.com/help/hub/reference/external/G10471?language=en_US"]
+    },
+    {
+      "id": "amazon-extreme-claim",
+      "query": "Amazon misleading prohibited claim extreme language title bullet images",
+      "platform": "amazon",
+      "market": "US",
+      "category": "cosmetics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://sellercentral.amazon.com/help/hub/reference/external/GZ93G4JTAEVEJW62"]
+    },
+    {
+      "id": "amazon-disease-claim",
+      "query": "Amazon OTC cure treat prevent disease claim FDA",
+      "platform": "amazon",
+      "market": "US",
+      "category": "cosmetics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://sellercentral.amazon.com/gp/help/external/G201707090?language=en_US"]
+    },
+    {
+      "id": "amazon-fda-approved",
+      "query": "Amazon FDA approved supplement listing claim official approval",
+      "platform": "amazon",
+      "market": "US",
+      "category": "cosmetics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://sellercentral.amazon.com/help/hub/reference/external/G201829010?ots=1"]
+    },
+    {
+      "id": "amazon-wrinkle-claim",
+      "query": "Amazon cosmetic reduce appearance wrinkles eliminate wrinkles claim",
+      "platform": "amazon",
+      "market": "US",
+      "category": "cosmetics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://sellercentral.amazon.com/help/hub/reference/external/G200164470?locale=en-"]
+    },
+    {
+      "id": "amazon-electronics-battery-compliance",
+      "query": "Amazon electronics lithium battery enhanced safety UN 38.3 BTS COI exact model compliance",
+      "platform": "amazon",
+      "market": "US",
+      "category": "electronics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://sellercentral.amazon.com/help/hub/reference/external/GUQ848NB5HZ6M6A4?locale=en-US"]
+    },
+    {
+      "id": "amazon-toy-astm",
+      "query": "Amazon children toys ASTM F963-23 April 20 2024",
+      "platform": "amazon",
+      "market": "US",
+      "category": "toys",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://sellercentral.amazon.com/gp/help/external/help.html?itemID=DPSRCGVBFSFY78H&language=en_US"]
+    },
+    {
+      "id": "amazon-cpc-test-location",
+      "query": "Amazon children's product certificate CPC test dates places city country",
+      "platform": "amazon",
+      "market": "US",
+      "category": "toys",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://sellercentral.amazon.com/gp/help/external/help.html?itemID=SGB43AFZNDWD4U8&language=en_US"]
+    },
+    {
+      "id": "tiktok-listing-required-fields",
+      "query": "TikTok Shop product listing required title description category brand images videos",
+      "platform": "tiktok",
+      "market": "US",
+      "category": "toys",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://seller-us.tiktok.com/university/essay?knowledge_id=4290446508967682"]
+    },
+    {
+      "id": "tiktok-dupes-fakes",
+      "query": "TikTok Shop listing dupes fakes knock-offs prohibited",
+      "platform": "tiktok",
+      "market": "US",
+      "category": "cosmetics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://seller-us.tiktok.com/university/essay?knowledge_id=3196690250417921&role=1"]
+    },
+    {
+      "id": "tiktok-3c-battery-performance",
+      "query": "TikTok Shop 3C charger power bank battery capacity charging speed voltage interface claims",
+      "platform": "tiktok",
+      "market": "US",
+      "category": "electronics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://seller-us.tiktok.com/university/essay?knowledge_id=3055494219466509"]
+    },
+    {
+      "id": "tiktok-image-size-file",
+      "query": "TikTok Shop images 600x600 10 MB JPG PNG main image watermark",
+      "platform": "tiktok",
+      "market": "US",
+      "category": "toys",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://seller-us.tiktok.com/university/essay?knowledge_id=603906625865518&lang=en"]
+    },
+    {
+      "id": "tiktok-title-length",
+      "query": "TikTok Shop product title 25 200 characters avoid seller name URL",
+      "platform": "tiktok",
+      "market": "US",
+      "category": "electronics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://seller-us.tiktok.com/university/essay?knowledge_id=603906625865518&lang=en"]
+    },
+    {
+      "id": "tiktok-prohibited-products",
+      "query": "TikTok Shop illegal unsafe counterfeit recalled regulated banned products",
+      "platform": "tiktok",
+      "market": "US",
+      "category": "cosmetics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://seller-us.tiktok.com/university/essay?identity=1&knowledge_id=1399532709988097&role=1"]
+    },
+    {
+      "id": "tiktok-false-scarcity",
+      "query": "TikTok Shop false price discount scarcity exclusivity sales demand claim",
+      "platform": "tiktok",
+      "market": "US",
+      "category": "electronics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://seller-us.tiktok.com/university/essay?knowledge_id=6837891779151617"]
+    },
+    {
+      "id": "tiktok-first-image-text",
+      "query": "TikTok Shop first image no text graphics watermark 5 images",
+      "platform": "tiktok",
+      "market": "US",
+      "category": "toys",
+      "expect_evidence": true,
+      "expected_source_urls": [
+        "https://seller-us.tiktok.com/university/essay?from=policy&identity=1&knowledge_id=7073362639816491",
+        "https://seller-us.tiktok.com/university/essay?knowledge_id=603906625865518&lang=en"
+      ]
+    },
+    {
+      "id": "shopify-description-unique",
+      "query": "Shopify product description explain product worth buying reseller unique manufacturer description",
+      "platform": "shopify",
+      "market": "US",
+      "category": "toys",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://help.shopify.com/en/manual/products/details/product-descriptions"]
+    },
+    {
+      "id": "shopify-consumer-purchase-claims",
+      "query": "Shopify consumer protection claim people bought today VAT import duties price",
+      "platform": "shopify",
+      "market": "US",
+      "category": "electronics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://help.shopify.com/en/manual/compliance/legal/consumer-protection"]
+    },
+    {
+      "id": "shopify-product-disclosures",
+      "query": "Shopify product disclosures metafield title content symbol cart",
+      "platform": "shopify",
+      "market": "US",
+      "category": "cosmetics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://help.shopify.com/en/manual/products/product-disclosures"]
+    },
+    {
+      "id": "shopify-media-upload",
+      "query": "Shopify product media uploader image tag files format",
+      "platform": "shopify",
+      "market": "US",
+      "category": "toys",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://help.shopify.com/en/manual/products/product-media/add-media"]
+    },
+    {
+      "id": "shopify-shop-prohibited",
+      "query": "Shopify Shop prohibited products alcohol tobacco gambling",
+      "platform": "shopify",
+      "market": "US",
+      "category": "electronics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://help.shopify.com/en/manual/online-sales-channels/shop/eligibility/prohibited-products"]
+    },
+    {
+      "id": "shopify-electronics-battery-disclosure",
+      "query": "Shopify electronics battery safety disclosures CE Proposition 65 recalled products",
+      "platform": "shopify",
+      "market": "US",
+      "category": "electronics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://help.shopify.com/en/manual/compliance/legal/consumer-protection"]
+    },
+    {
+      "id": "shopify-marketplace-specific",
+      "query": "Shopify Marketplace Connect target marketplace product requirements Amazon Walmart",
+      "platform": "shopify",
+      "market": "US",
+      "category": "electronics",
+      "expect_evidence": true,
+      "expected_source_urls": ["https://help.shopify.com/en/manual/online-sales-channels/marketplace-connect/products/requirements"]
+    },
+    {
+      "id": "no-evidence-crypto-license",
+      "query": "Amazon cryptocurrency exchange money transmitter license application",
+      "platform": "amazon",
+      "market": "US",
+      "category": "electronics",
+      "expect_evidence": false,
+      "expected_source_urls": []
+    },
+    {
+      "id": "no-evidence-airline-ticket",
+      "query": "TikTok Shop airline passenger ticket refund policy",
+      "platform": "tiktok",
+      "market": "US",
+      "category": "toys",
+      "expect_evidence": false,
+      "expected_source_urls": []
+    },
+    {
+      "id": "no-evidence-prescription-drug",
+      "query": "Shopify prescription opioid pharmacy license approval workflow",
+      "platform": "shopify",
+      "market": "US",
+      "category": "electronics",
+      "expect_evidence": false,
+      "expected_source_urls": []
+    },
+    {
+      "id": "no-evidence-vehicle-registration",
+      "query": "Amazon vehicle registration plate renewal government service",
+      "platform": "amazon",
+      "market": "US",
+      "category": "cosmetics",
+      "expect_evidence": false,
+      "expected_source_urls": []
+    },
+    {
+      "id": "no-evidence-real-estate",
+      "query": "Shopify real estate property title deed registration",
+      "platform": "shopify",
+      "market": "US",
+      "category": "toys",
+      "expect_evidence": false,
+      "expected_source_urls": []
+    }
+  ]
+}

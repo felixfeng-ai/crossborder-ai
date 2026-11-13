@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
@@ -15,6 +16,22 @@ from app.services.policy_knowledge import (
     embed_policy_texts,
     ingest_policy_text,
     search_policy_knowledge,
+)
+from app.services.policy_evaluation import (
+    _percentile,
+    evaluate_policy_retrieval,
+    ingest_policy_manifest,
+    load_policy_manifest,
+)
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+MANIFEST_PATH = (
+    BACKEND_DIR
+    / "app"
+    / "data"
+    / "policy_corpus"
+    / "policy_manifest.json"
 )
 
 
@@ -63,6 +80,174 @@ def test_chunk_policy_text_preserves_heading_paths():
     )
     assert all(item["content"].strip() for item in chunks)
     assert all(len(item["content"]) <= 120 for item in chunks)
+
+
+def test_policy_manifest_has_formal_source_and_eval_coverage():
+    manifest = load_policy_manifest(MANIFEST_PATH)
+
+    assert len(manifest["sources"]) >= 20
+    assert len(manifest["cases"]) == 30
+    assert {item["platform"] for item in manifest["sources"]} == {
+        "amazon",
+        "tiktok",
+        "shopify",
+    }
+    assert {"toys", "electronics", "cosmetics"} <= {
+        item.get("category") for item in manifest["sources"]
+    }
+    assert len({item["id"] for item in manifest["sources"]}) == len(
+        manifest["sources"]
+    )
+    assert all(
+        item["source_url"].startswith(
+            (
+                "https://sellercentral.amazon.com/",
+                "https://seller-us.tiktok.com/",
+                "https://help.shopify.com/",
+            )
+        )
+        for item in manifest["sources"]
+    )
+
+
+def test_policy_percentile_uses_nearest_rank():
+    """p95 使用 nearest-rank，最大值由独立指标纳入门禁。"""
+    latencies = [float(value) for value in range(1, 30)] + [261.0]
+
+    assert _percentile(latencies, 0.95) == 29.0
+    assert _percentile(latencies, 1.0) == 261.0
+
+
+def test_policy_embedding_can_be_disabled_without_api_cost(monkeypatch):
+    from app.core.config import settings
+    from app.services.policy_knowledge import get_policy_embedding_config
+
+    monkeypatch.setattr(settings, "POLICY_EMBEDDING_ENABLED", False)
+    monkeypatch.setattr(settings, "ALIYUN_DASHSCOPE_API_KEY", "unused")
+
+    assert get_policy_embedding_config() is None
+
+
+@pytest.mark.asyncio
+async def test_ingest_policy_manifest_reuses_policy_ingestion(monkeypatch):
+    manifest = {
+        "version": "test",
+        "sources": [
+            {
+                "id": "source-1",
+                "title": "Policy 1",
+                "platform": "amazon",
+                "market": "US",
+                "category": "toys",
+                "document_type": "official_policy_extract",
+                "source_url": "https://sellercentral.amazon.com/test",
+                "version": "1",
+                "effective_at": None,
+                "content_text": "Policy content long enough for ingestion.",
+            }
+        ],
+        "cases": [],
+    }
+    captured = []
+
+    async def fake_ingest(db, **kwargs):
+        captured.append(kwargs)
+        return {
+            "source_id": "source-1",
+            "changed": True,
+            "chunk_count": 1,
+            "vector_status": "degraded",
+            "sync_run_id": "run-1",
+        }
+
+    monkeypatch.setattr(
+        "app.services.policy_evaluation.ingest_policy_text",
+        fake_ingest,
+    )
+    result = await ingest_policy_manifest(None, manifest)
+
+    assert result["total"] == 1
+    assert result["changed"] == 1
+    assert captured[0]["title"] == "Policy 1"
+
+
+@pytest.mark.asyncio
+async def test_policy_retrieval_evaluation_reports_metrics():
+    manifest = {
+        "version": "test",
+        "sources": [],
+        "cases": [
+            {
+                "id": "hit",
+                "query": "hit",
+                "platform": "amazon",
+                "market": "US",
+                "category": "toys",
+                "expect_evidence": True,
+                "expected_source_urls": ["https://source.test/hit"],
+            },
+            {
+                "id": "miss",
+                "query": "miss",
+                "platform": "amazon",
+                "market": "US",
+                "category": "toys",
+                "expect_evidence": True,
+                "expected_source_urls": ["https://source.test/miss"],
+            },
+            {
+                "id": "no-evidence",
+                "query": "none",
+                "platform": "amazon",
+                "market": "US",
+                "category": "toys",
+                "expect_evidence": False,
+                "expected_source_urls": [],
+            },
+        ],
+    }
+
+    async def fake_search(db, **kwargs):
+        if kwargs["query"] == "hit":
+            return {
+                "has_evidence": True,
+                "retrieval_mode": "keywords",
+                "items": [
+                    {
+                        "source_url": "https://source.test/hit",
+                        "title": "Hit",
+                    }
+                ],
+            }
+        if kwargs["query"] == "miss":
+            return {
+                "has_evidence": True,
+                "retrieval_mode": "keywords",
+                "items": [
+                    {
+                        "source_url": "https://source.test/wrong",
+                        "title": "Wrong",
+                    }
+                ],
+            }
+        return {
+            "has_evidence": False,
+            "retrieval_mode": "none",
+            "items": [],
+        }
+
+    report = await evaluate_policy_retrieval(
+        None,
+        manifest,
+        search_fn=fake_search,
+    )
+
+    assert report["metrics"]["recall_at_5"] == 0.5
+    assert report["metrics"]["citation_accuracy"] == 0.5
+    assert report["metrics"]["no_evidence_accuracy"] == 1.0
+    assert report["metrics"]["max_latency_ms"] >= 0
+    assert report["metrics"]["p95_latency_ms"] >= 0
+    assert report["passed"] is False
 
 
 def test_chunk_policy_text_splits_oversized_sentences():

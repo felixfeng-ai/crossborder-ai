@@ -55,19 +55,19 @@ chmod 600 "$BACKUP_KEY_FILE"
 ensure_env_value "BACKUP_ENCRYPTION_KEY_FILE" "$BACKUP_KEY_FILE"
 ensure_env_value "BACKUP_ENCRYPTION_REQUIRED" "1"
 
-echo "[0/5] 生产加密密钥已就绪"
+echo "[0/6] 生产加密密钥已就绪"
 
 if [ "${VEYASHIP_SKIP_SYNC:-0}" = "1" ]; then
-  echo "[1/5] 使用 GitHub Actions 上传的代码"
+  echo "[1/6] 使用 GitHub Actions 上传的代码"
 else
   cd "$REPO_ROOT"
   for attempt in 1 2 3 4 5; do
     if timeout 45s git -c http.version=HTTP/1.1 fetch origin main; then
       git reset --hard origin/main
-      echo "[1/5] 代码已同步到 $(git log --oneline -1)"
+      echo "[1/6] 代码已同步到 $(git log --oneline -1)"
       break
     fi
-    echo "[1/5] git fetch 失败（第 ${attempt} 次），5 秒后重试..."
+    echo "[1/6] git fetch 失败（第 ${attempt} 次），5 秒后重试..."
     sleep 5
     if [ "$attempt" -eq 5 ]; then
       echo "git fetch 连续 5 次失败，终止部署"
@@ -78,14 +78,14 @@ fi
 
 cd "$PROJECT_DIR/backend"
 ./venv/bin/pip install -q -r requirements.txt
-echo "[2/5] 后端依赖就绪"
+echo "[2/6] 后端依赖就绪"
 
 cd "$PROJECT_DIR/frontend"
 npm ci --no-audit --no-fund
 npm run build
 rm -rf "$WEB_ROOT"/*
 cp -r dist/* "$WEB_ROOT/"
-echo "[3/5] 前端已发布到 $WEB_ROOT"
+echo "[3/6] 前端已发布到 $WEB_ROOT"
 
 # 迁移失败必须阻断发布，不能再 stamp head 掩盖 schema 漂移。
 cd "$PROJECT_DIR/backend"
@@ -101,17 +101,27 @@ if ! printf '%s\n' "$CURRENT_OUTPUT" | grep -Eq '[0-9]{3}_'; then
 fi
 ./venv/bin/alembic upgrade head
 ./venv/bin/alembic current
-echo "[4/5] 数据库迁移已到 head"
+echo "[4/6] 数据库迁移已到 head"
+
+# 正式政策语料按来源和版本幂等导入。
+# Embedding/Qdrant 不可用时，脚本会降级为 PostgreSQL 文本检索，不阻断主站发布。
+POLICY_INGEST_LOG="/tmp/veyaship-policy-ingest.log"
+if timeout 300s ./venv/bin/python -m scripts.ingest_policy_corpus \
+  > "$POLICY_INGEST_LOG" 2>&1; then
+  echo "[5/6] 正式政策语料已同步"
+else
+  echo "[5/6] 政策语料导入失败，主站继续发布；日志：$POLICY_INGEST_LOG"
+fi
 
 systemctl restart "$SERVICE_NAME"
 for attempt in $(seq 1 12); do
   sleep 10
   if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-    echo "[5/5] 后端健康检查通过"
+    echo "[6/6] 后端健康检查通过"
     echo "===== 部署完成 ====="
     exit 0
   fi
-  echo "[5/5] 等待后端就绪... $((attempt * 10))s"
+  echo "[6/6] 等待后端就绪... $((attempt * 10))s"
 done
 
 echo "后端 120s 内未就绪，部署失败"

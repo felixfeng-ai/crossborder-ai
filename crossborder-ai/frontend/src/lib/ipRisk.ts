@@ -57,6 +57,24 @@ export function coverageLabel(value: IpCoverageState): string {
   return '未检查'
 }
 
-export function isIpPublishBlocked(risk: IpRiskLevel): boolean {
-  return risk === 'high'
+export function isIpPublishBlocked(
+  report: IpRiskReport | null | undefined,
+): boolean {
+  if (!report) return true
+  if (report.overall_risk === 'high') return true
+  if (report.overall_risk === 'unknown') return true
+  if (report.coverage.text !== 'checked') return true
+  return (
+    report.status === 'partial' ||
+    report.status === 'failed' ||
+    report.coverage.image === 'failed'
+  )
+}
+
+export function ipPublishBlockedLabel(
+  report: IpRiskReport | null | undefined,
+): string {
+  if (report?.overall_risk === 'high') return 'IP 高风险，禁止发布'
+  if (isIpPublishBlocked(report)) return 'IP 检查未完成，禁止发布'
+  return ''
 }

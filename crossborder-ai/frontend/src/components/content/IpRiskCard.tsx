@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FileSearch,
+  Image as ImageIcon,
   ImageOff,
   Loader2,
   Plus,
   RefreshCw,
+  ScanSearch,
   ShieldAlert,
   Trash2,
 } from 'lucide-react'
@@ -14,6 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import apiClient from '@/api/client'
+import { resolveMediaUrl } from '@/lib/apiUrl'
 import {
   coverageLabel,
   ipRiskLabel,
@@ -29,14 +32,39 @@ interface IpDeclaration {
   evidence_status: string
 }
 
+interface IpImageAsset {
+  id: string
+  name: string
+  image_url: string
+  width: number
+  height: number
+}
+
+function riskBboxStyle(bbox: number[] | null | undefined) {
+  if (!bbox || bbox.length !== 4) return undefined
+  const values = bbox.map(Number)
+  if (!values.every(Number.isFinite)) return undefined
+  const [x1, y1, x2, y2] = values.map((value) =>
+    Math.max(0, Math.min(1000, value)),
+  )
+  return {
+    left: `${x1 / 10}%`,
+    top: `${y1 / 10}%`,
+    width: `${Math.max(0, x2 - x1) / 10}%`,
+    height: `${Math.max(0, y2 - y1) / 10}%`,
+  }
+}
+
 export function IpRiskCard({
   report: initialReport,
   productId,
   listingId,
+  onReportChange,
 }: {
   report: IpRiskReport | null | undefined
   productId: string
   listingId?: string
+  onReportChange?: (report: IpRiskReport) => void
 }) {
   const queryClient = useQueryClient()
   const [currentReport, setCurrentReport] = useState(initialReport)
@@ -45,11 +73,24 @@ export function IpRiskCard({
   >('brand_authorization')
   const [claimValue, setClaimValue] = useState('')
   const [evidenceUrl, setEvidenceUrl] = useState('')
+  const [selectedImageIds, setSelectedImageIds] = useState<string[]>([])
   const [error, setError] = useState('')
 
   useEffect(() => {
     setCurrentReport(initialReport)
   }, [initialReport])
+
+  useEffect(() => {
+    setSelectedImageIds([])
+  }, [productId])
+
+  const imagesQuery = useQuery<{ items: IpImageAsset[]; total: number }>({
+    queryKey: ['ip-image-assets'],
+    queryFn: async () => {
+      const response = await apiClient.get('/images/assets')
+      return response.data
+    },
+  })
 
   const declarationsQuery = useQuery<{ items: IpDeclaration[] }>({
     queryKey: ['ip-declarations', productId],
@@ -62,17 +103,21 @@ export function IpRiskCard({
   })
 
   const rerunMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (scope: 'text' | 'both') => {
       const response = await apiClient.post('/ip-risk/screen', {
         product_id: productId,
         listing_id: listingId || null,
-        scope: 'text',
+        scope,
+        image_asset_ids: scope === 'both' ? selectedImageIds : [],
         trigger: 'manual',
       })
       return response.data as IpRiskReport
     },
     onMutate: () => setError(''),
-    onSuccess: (value) => setCurrentReport(value),
+    onSuccess: (value) => {
+      setCurrentReport(value)
+      onReportChange?.(value)
+    },
     onError: () => setError('IP 风险重新检查失败，请稍后重试。'),
   })
 
@@ -94,7 +139,9 @@ export function IpRiskCard({
       await queryClient.invalidateQueries({
         queryKey: ['ip-declarations', productId],
       })
-      await rerunMutation.mutateAsync()
+      await rerunMutation.mutateAsync(
+        selectedImageIds.length ? 'both' : 'text',
+      )
     },
     onError: () => setError('授权证据保存失败，请检查后重试。'),
   })
@@ -107,8 +154,11 @@ export function IpRiskCard({
       await queryClient.invalidateQueries({
         queryKey: ['ip-declarations', productId],
       })
-      await rerunMutation.mutateAsync()
+      await rerunMutation.mutateAsync(
+        selectedImageIds.length ? 'both' : 'text',
+      )
     },
+    onError: () => setError('授权证据删除失败，请稍后重试。'),
   })
 
   if (!currentReport) return null
@@ -158,15 +208,102 @@ export function IpRiskCard({
           variant="outline"
           className="h-8"
           disabled={rerunMutation.isPending}
-          onClick={() => rerunMutation.mutate()}
+          onClick={() => rerunMutation.mutate('text')}
         >
           {rerunMutation.isPending ? (
             <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
           ) : (
             <RefreshCw className="mr-1 h-3.5 w-3.5" />
           )}
-          重新检查
+          重新检查文本
         </Button>
+        <Button
+          size="sm"
+          className="h-8"
+          disabled={
+            rerunMutation.isPending || selectedImageIds.length === 0
+          }
+          onClick={() => rerunMutation.mutate('both')}
+        >
+          {rerunMutation.isPending ? (
+            <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <ScanSearch className="mr-1 h-3.5 w-3.5" />
+          )}
+          检查所选图片
+        </Button>
+      </div>
+
+      <div className="mt-4 border-t border-border pt-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="flex items-center gap-1.5 text-[11px] font-medium">
+            <ImageIcon className="h-3.5 w-3.5" />
+            从素材库选择本次检查的商品图
+          </p>
+          <span className="text-[10px] text-muted-foreground">
+            已选 {selectedImageIds.length}/6
+          </span>
+        </div>
+        {imagesQuery.isLoading ? (
+          <p className="mt-2 text-[10px] text-muted-foreground">
+            正在加载最近图片...
+          </p>
+        ) : (imagesQuery.data?.items || []).length === 0 ? (
+          <p className="mt-2 text-[10px] text-muted-foreground">
+            素材库暂无图片，请先在图片工作台上传商品图。
+          </p>
+        ) : (
+          <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {(imagesQuery.data?.items || []).slice(0, 12).map((asset) => {
+              const selected = selectedImageIds.includes(asset.id)
+              const riskBoxes = report.risks.filter(
+                (risk) =>
+                  risk.evidence.asset_id === asset.id &&
+                  risk.evidence.bbox?.length === 4,
+              )
+              return (
+                <button
+                  key={asset.id}
+                  type="button"
+                  aria-pressed={selected}
+                  aria-label={`${selected ? '取消检查' : '选择检查'} ${asset.name}`}
+                  className={`relative aspect-square overflow-hidden border bg-[#d9dad5] transition-colors ${
+                    selected
+                      ? 'border-[var(--factory-coral)] ring-1 ring-[var(--factory-coral)]'
+                      : 'border-border hover:border-foreground/40'
+                  }`}
+                  onClick={() => {
+                    setSelectedImageIds((current) => {
+                      if (current.includes(asset.id)) {
+                        return current.filter((id) => id !== asset.id)
+                      }
+                      return current.length >= 6
+                        ? current
+                        : [...current, asset.id]
+                    })
+                  }}
+                >
+                  <img
+                    src={resolveMediaUrl(asset.image_url)}
+                    alt={asset.name}
+                    className="h-full w-full object-contain"
+                  />
+                  {riskBoxes.map((risk, index) => (
+                    <span
+                      key={`${risk.code}-${index}`}
+                      aria-label={`图片风险区域：${risk.code}`}
+                      className="pointer-events-none absolute border-2 border-destructive bg-destructive/10"
+                      style={riskBboxStyle(risk.evidence.bbox)}
+                    />
+                  ))}
+                  <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-1 py-0.5 text-left text-[9px] text-white">
+                    {asset.name}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {report.status === 'partial' && (

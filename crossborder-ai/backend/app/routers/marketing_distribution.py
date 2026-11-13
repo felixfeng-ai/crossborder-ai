@@ -45,7 +45,10 @@ from app.services.automation_settings import (
     automation_enabled_for_user,
     record_task_state,
 )
-from app.services.ip_risk import ensure_ip_report_for_publish
+from app.services.ip_risk import (
+    ensure_ip_report_for_publish,
+    ip_publish_block_reason,
+)
 from app.services.shopify_publish_service import (
     ShopifyPublishError,
     publish_shopify_product,
@@ -364,11 +367,17 @@ async def publish_campaign_copy(
             platform="amazon",
         )
         await db.commit()
-        if ip_report["overall_risk"] == "high":
+        ip_block_reason = ip_publish_block_reason(ip_report)
+        if ip_block_reason:
             raise HTTPException(
                 status_code=409,
                 detail={
-                    "message": "IP 风险初筛未通过，暂不能发布到 Amazon",
+                    "message": (
+                        "IP 高风险，暂不能发布到 Amazon"
+                        if ip_block_reason == "high_risk"
+                        else "IP 初筛未完成必要检查，暂不能发布到 Amazon"
+                    ),
+                    "reason": ip_block_reason,
                     "ip_risk_report_id": ip_report["report_id"],
                     "risks": ip_report["risks"],
                 },

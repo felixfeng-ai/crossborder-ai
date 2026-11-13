@@ -11,7 +11,11 @@ from app.models.image_asset import ImageAsset
 from app.models.product import Product
 from app.models.user import User
 from app.services.ai.deepseek import DeepSeekService
-from app.services.ip_risk import ensure_ip_report_for_publish, screen_ip_text
+from app.services.ip_risk import (
+    ensure_ip_report_for_publish,
+    ip_publish_block_reason,
+    screen_ip_text,
+)
 from app.services.ip_vision import visual_items_to_risks
 
 
@@ -512,3 +516,55 @@ async def test_image_scope_without_vision_config_is_partial(
         item["code"] == "VISUAL_CHECK_NOT_CONFIGURED"
         for item in report["risks"]
     )
+
+
+def test_ip_publish_gate_blocks_high_risk_and_incomplete_checks():
+    assert ip_publish_block_reason(
+        {
+            "status": "completed",
+            "overall_risk": "high",
+            "coverage": {"text": "checked", "image": "checked"},
+        }
+    ) == "high_risk"
+    assert ip_publish_block_reason(
+        {
+            "status": "partial",
+            "overall_risk": "unknown",
+            "coverage": {"text": "checked", "image": "not_checked"},
+        }
+    ) == "check_incomplete"
+    assert ip_publish_block_reason(
+        {
+            "status": "failed",
+            "overall_risk": "low",
+            "coverage": {"text": "checked", "image": "failed"},
+        }
+    ) == "check_incomplete"
+    assert ip_publish_block_reason(
+        {
+            "status": "completed",
+            "overall_risk": "low",
+            "coverage": {"text": "not_checked", "image": "checked"},
+        }
+    ) == "check_incomplete"
+    assert ip_publish_block_reason(
+        {
+            "status": "completed",
+            "overall_risk": "low",
+            "coverage": {"text": "checked", "image": "failed"},
+        }
+    ) == "check_incomplete"
+    assert ip_publish_block_reason(
+        {
+            "status": "completed",
+            "overall_risk": "low",
+            "coverage": {"text": "checked", "image": "not_checked"},
+        }
+    ) is None
+    assert ip_publish_block_reason(
+        {
+            "status": "completed",
+            "overall_risk": "low",
+            "coverage": {"text": "checked", "image": "checked"},
+        }
+    ) is None

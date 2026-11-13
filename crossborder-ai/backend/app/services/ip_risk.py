@@ -800,3 +800,20 @@ async def ensure_ip_report_for_publish(
         trigger="publish",
         scope="text",
     )
+
+
+def ip_publish_block_reason(report: dict) -> str | None:
+    """返回发布拦截原因；纯文本报告不会被可选的图片检查误伤。"""
+    if report.get("overall_risk") == "high":
+        return "high_risk"
+
+    coverage = report.get("coverage") or {}
+    if report.get("overall_risk") == "unknown":
+        return "check_incomplete"
+    if coverage.get("text") != "checked":
+        return "check_incomplete"
+    if report.get("status") in {"partial", "failed"}:
+        return "check_incomplete"
+    if coverage.get("image") == "failed":
+        return "check_incomplete"
+    return None

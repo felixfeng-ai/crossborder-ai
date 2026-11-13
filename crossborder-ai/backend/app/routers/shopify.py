@@ -56,7 +56,10 @@ from app.services.shopify_operations_sync import (
     ShopifyOperationsSyncError,
     sync_shopify_operations,
 )
-from app.services.ip_risk import ensure_ip_report_for_publish
+from app.services.ip_risk import (
+    ensure_ip_report_for_publish,
+    ip_publish_block_reason,
+)
 router = APIRouter(prefix="/shopify", tags=["Shopify"])
 
 # ── 违禁词正则（F8 合规审查）─────────────────────────────────
@@ -842,13 +845,19 @@ async def push_product(
         listing=listing,
         platform="shopify",
     )
-    # 高风险报告也必须在返回 409 前持久化，便于用户补证和追溯。
+    # IP 拦截报告也必须在返回 409 前持久化，便于用户补证和追溯。
     await db.commit()
-    if ip_report["overall_risk"] == "high":
+    ip_block_reason = ip_publish_block_reason(ip_report)
+    if ip_block_reason:
         raise HTTPException(
             status_code=409,
             detail={
-                "message": "IP 风险初筛未通过，暂不能发布",
+                "message": (
+                    "IP 高风险，暂不能发布"
+                    if ip_block_reason == "high_risk"
+                    else "IP 初筛未完成必要检查，暂不能发布"
+                ),
+                "reason": ip_block_reason,
                 "ip_risk_report_id": ip_report["report_id"],
                 "risks": ip_report["risks"],
             },

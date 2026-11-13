@@ -15,7 +15,11 @@ import apiClient from '@/api/client'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { createIdempotencyKey } from '@/utils/idempotency'
 import { resolveMediaUrl } from '@/lib/apiUrl'
-import { isIpPublishBlocked, type IpRiskReport } from '@/lib/ipRisk'
+import {
+  ipPublishBlockedLabel,
+  isIpPublishBlocked,
+  type IpRiskReport,
+} from '@/lib/ipRisk'
 
 interface Product {
   id: string
@@ -111,6 +115,7 @@ export default function ContentPage() {
   const [copied, setCopied] = useState('')
   const [selectedChannel, setSelectedChannel] = useState('')
   const [selectedVariantIds, setSelectedVariantIds] = useState<string[]>([])
+  const [currentIpRisk, setCurrentIpRisk] = useState<IpRiskReport | null>(null)
 
   const { data: capabilities } = useQuery<Record<string, PlatformCapability>>({
     queryKey: ['platform-capabilities'],
@@ -173,6 +178,7 @@ export default function ContentPage() {
     if (
       !generateMutation.data?.listing_id ||
       generateMutation.data.compliance_status !== 'pass' ||
+      isIpPublishBlocked(currentIpRisk) ||
       !selectedChannel ||
       !hasPublishableVariant ||
       selectedVariantIds.length === 0
@@ -192,7 +198,12 @@ export default function ContentPage() {
       })
       return res.data as GenerateResult
     },
+    onSuccess: (data) => setCurrentIpRisk(data.ip_risk || null),
   })
+
+  useEffect(() => {
+    setCurrentIpRisk(null)
+  }, [selectedProduct])
 
   const copyText = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
@@ -399,9 +410,10 @@ export default function ContentPage() {
               )}
 
               <IpRiskCard
-                report={generateMutation.data.ip_risk}
+                report={currentIpRisk}
                 productId={selectedProduct}
                 listingId={generateMutation.data.listing_id}
+                onReportChange={setCurrentIpRisk}
               />
 
               {/* 标题 */}
@@ -568,9 +580,7 @@ export default function ContentPage() {
                     !selectedChannel ||
                     publishMutation.isPending ||
                     generateMutation.data.compliance_status !== 'pass' ||
-                    isIpPublishBlocked(
-                      generateMutation.data.ip_risk?.overall_risk || 'unknown',
-                    ) ||
+                    isIpPublishBlocked(currentIpRisk) ||
                     !generateMutation.data.listing_id ||
                     !hasPublishableVariant ||
                     selectedVariantIds.length === 0
@@ -581,10 +591,8 @@ export default function ContentPage() {
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" />发布中...</>
                   ) : generateMutation.data.compliance_status !== 'pass' ? (
                     <><AlertTriangle className="mr-2 h-4 w-4" />合规未通过，禁止发布</>
-                  ) : isIpPublishBlocked(
-                    generateMutation.data.ip_risk?.overall_risk || 'unknown',
-                  ) ? (
-                    <><AlertTriangle className="mr-2 h-4 w-4" />IP 高风险，禁止发布</>
+                  ) : isIpPublishBlocked(currentIpRisk) ? (
+                    <><AlertTriangle className="mr-2 h-4 w-4" />{ipPublishBlockedLabel(currentIpRisk)}</>
                   ) : !hasPublishableVariant ? (
                     <><AlertTriangle className="mr-2 h-4 w-4" />请先配置 SKU 售价</>
                   ) : selectedVariantIds.length === 0 ? (

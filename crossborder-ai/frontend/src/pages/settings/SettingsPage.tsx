@@ -13,6 +13,8 @@ import {
   Clock3,
   ShieldCheck,
   CircleAlert,
+  BookOpenCheck,
+  Upload,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -68,6 +70,9 @@ export default function SettingsPage() {
           <TabsTrigger value="automation">自动化</TabsTrigger>
           <TabsTrigger value="connections">平台连接</TabsTrigger>
           {me?.is_admin && <TabsTrigger value="providers">服务商配置</TabsTrigger>}
+          {me?.is_admin && (
+            <TabsTrigger value="policies">政策知识库</TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="persona" className="space-y-4">
@@ -82,6 +87,11 @@ export default function SettingsPage() {
         {me?.is_admin && (
           <TabsContent value="providers" className="space-y-4">
             <ProviderSettings />
+          </TabsContent>
+        )}
+        {me?.is_admin && (
+          <TabsContent value="policies" className="space-y-4">
+            <PolicyKnowledgeSettings />
           </TabsContent>
         )}
       </Tabs>
@@ -311,6 +321,7 @@ const PROVIDERS = [
       { key: 'api_key', label: 'DashScope API Key', secret: true },
       { key: 'model', label: '模型名称', secret: false },
       { key: 'vision_model', label: 'IP 图片检查模型', secret: false },
+      { key: 'embedding_model', label: '政策 RAG Embedding 模型', secret: false },
     ],
   },
   {
@@ -483,6 +494,249 @@ function ProviderSettings() {
       {saveMutation.isError && (
         <p className="text-sm text-destructive">保存失败，请检查配置项后重试</p>
       )}
+    </div>
+  )
+}
+
+interface PolicySourceItem {
+  id: string
+  title: string
+  platform: string
+  market: string
+  category: string | null
+  version: string
+  source_url: string
+  status: string
+  updated_at: string
+}
+
+function PolicyKnowledgeSettings() {
+  const queryClient = useQueryClient()
+  const [message, setMessage] = useState('')
+  const [form, setForm] = useState({
+    title: '',
+    platform: 'amazon',
+    market: 'US',
+    category: '',
+    document_type: 'listing_policy',
+    source_url: '',
+    version: '',
+    effective_at: '',
+    content_text: '',
+  })
+
+  const sourcesQuery = useQuery<{ items: PolicySourceItem[]; total: number }>({
+    queryKey: ['policy-sources'],
+    queryFn: async () => {
+      const response = await apiClient.get('/platform-policies/sources')
+      return response.data
+    },
+  })
+
+  const ingestMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.post('/platform-policies/ingest', {
+        ...form,
+        category: form.category || null,
+        effective_at: form.effective_at
+          ? new Date(`${form.effective_at}T00:00:00`).toISOString()
+          : null,
+      })
+      return response.data as {
+        chunk_count: number
+        vector_status: string
+        changed: boolean
+      }
+    },
+    onSuccess: (data) => {
+      setMessage(
+        data.changed
+          ? `政策已入库：${data.chunk_count} 个切分，向量状态 ${data.vector_status}`
+          : '政策版本内容未变化，已跳过重复入库',
+      )
+      setForm((current) => ({
+        ...current,
+        title: '',
+        source_url: '',
+        version: '',
+        content_text: '',
+      }))
+      queryClient.invalidateQueries({ queryKey: ['policy-sources'] })
+    },
+    onError: () => setMessage('政策导入失败，请检查内容、版本和来源链接。'),
+  })
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <BookOpenCheck className="h-4 w-4" />
+            平台政策知识库
+          </CardTitle>
+          <CardDescription>
+            导入经过审核的 Amazon、TikTok Shop、Shopify 政策文本。
+            RAG 只提供引用依据，不替代确定性合规规则。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>政策标题</Label>
+              <Input
+                value={form.title}
+                onChange={(event) =>
+                  setForm({ ...form, title: event.target.value })
+                }
+                placeholder="例如 Amazon Children's Product Policy"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>平台</Label>
+              <select
+                value={form.platform}
+                onChange={(event) =>
+                  setForm({ ...form, platform: event.target.value })
+                }
+                className="h-10 w-full border border-input bg-background px-3 text-sm"
+              >
+                <option value="amazon">Amazon</option>
+                <option value="tiktok">TikTok Shop</option>
+                <option value="shopify">Shopify</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>市场</Label>
+              <Input
+                value={form.market}
+                onChange={(event) =>
+                  setForm({ ...form, market: event.target.value })
+                }
+                placeholder="US"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>类目（可选）</Label>
+              <Input
+                value={form.category}
+                onChange={(event) =>
+                  setForm({ ...form, category: event.target.value })
+                }
+                placeholder="toys"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>版本</Label>
+              <Input
+                value={form.version}
+                onChange={(event) =>
+                  setForm({ ...form, version: event.target.value })
+                }
+                placeholder="2026.11"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>生效日期</Label>
+              <Input
+                type="date"
+                value={form.effective_at}
+                onChange={(event) =>
+                  setForm({ ...form, effective_at: event.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>原始来源链接</Label>
+              <Input
+                value={form.source_url}
+                onChange={(event) =>
+                  setForm({ ...form, source_url: event.target.value })
+                }
+                placeholder="https://sellercentral.amazon.com/..."
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>政策原文（Markdown）</Label>
+            <textarea
+              value={form.content_text}
+              onChange={(event) =>
+                setForm({ ...form, content_text: event.target.value })
+              }
+              className="min-h-52 w-full border border-input bg-background px-3 py-2 text-sm"
+              placeholder="# 政策标题&#10;&#10;## 具体要求&#10;&#10;粘贴经过审核的官方政策原文..."
+            />
+          </div>
+          <Button
+            size="sm"
+            disabled={
+              ingestMutation.isPending ||
+              !form.title.trim() ||
+              !form.source_url.trim() ||
+              !form.version.trim() ||
+              form.content_text.trim().length < 20
+            }
+            onClick={() => ingestMutation.mutate()}
+          >
+            {ingestMutation.isPending ? (
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="mr-2 h-4 w-4" />
+            )}
+            导入政策
+          </Button>
+          {message && (
+            <p className="text-xs text-muted-foreground">{message}</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            已导入政策 {sourcesQuery.data?.total || 0}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {sourcesQuery.isLoading ? (
+            <p className="text-xs text-muted-foreground">加载中...</p>
+          ) : sourcesQuery.data?.items?.length ? (
+            sourcesQuery.data.items.map((item) => (
+              <div
+                key={item.id}
+                className="flex flex-wrap items-start justify-between gap-2 border border-border p-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{item.title}</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    {item.platform.toUpperCase()} · {item.market}
+                    {item.category ? ` · ${item.category}` : ''}
+                    {' · '}
+                    {item.version}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={item.status === 'active' ? 'secondary' : 'outline'}>
+                    {item.status}
+                  </Badge>
+                  <a
+                    href={item.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs underline underline-offset-4"
+                  >
+                    来源
+                  </a>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              尚未导入平台政策。
+            </p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

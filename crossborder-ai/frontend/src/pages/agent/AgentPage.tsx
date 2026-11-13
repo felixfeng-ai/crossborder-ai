@@ -18,6 +18,7 @@ import {
   Clapperboard,
   FolderOpen,
   Megaphone,
+  BookOpenCheck,
   type LucideIcon,
 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
@@ -275,7 +276,16 @@ export default function AgentPage({
     // 报告卡片步骤：所有带结构化数据的步骤都渲染为数据卡（品类分析 + 选品可并存）；
     // 历史消息的完整报告折叠为"文字版"
     const reportSteps = (msg.actionResults || []).filter((s) => s.data?.structured != null)
-    const plainSteps = (msg.actionResults || []).filter((s) => s.data?.structured == null)
+    const policySteps = (msg.actionResults || []).filter(
+      (step) =>
+        step.action === 'search_platform_policies' &&
+        Array.isArray(step.data?.items),
+    )
+    const plainSteps = (msg.actionResults || []).filter(
+      (step) =>
+        step.data?.structured == null &&
+        step.action !== 'search_platform_policies',
+    )
     const hasReportCard = reportSteps.length > 0
     const collapseText = hasReportCard && msg.content.length > 400
     return (
@@ -315,6 +325,10 @@ export default function AgentPage({
           {/* 结构化报告卡片（品类分析 + 选品可并存，逐张渲染） */}
           {reportSteps.map((step, idx) => (
             <ProductReportCard key={idx} report={step.data!.structured!} />
+          ))}
+
+          {policySteps.map((step, idx) => (
+            <PolicyEvidenceCard key={idx} step={step} />
           ))}
 
           {/* 执行步骤（非报告步骤） */}
@@ -457,6 +471,69 @@ export default function AgentPage({
         </p>
       </div>
     </div>
+  )
+}
+
+interface PolicyEvidenceItem {
+  chunk_id: string
+  title: string
+  source_url: string
+  platform: string
+  market: string
+  version: string
+  effective_at?: string | null
+  title_path: string
+  content: string
+  score: number
+}
+
+function PolicyEvidenceCard({ step }: { step: AgentStep }) {
+  const items = (step.data?.items || []) as PolicyEvidenceItem[]
+  if (!items.length) return null
+  return (
+    <Card className="space-y-3 border-primary/15 bg-background p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="flex items-center gap-2 text-xs font-medium">
+          <BookOpenCheck className="h-4 w-4 text-primary" />
+          平台政策依据
+        </p>
+        <Badge variant="outline">{items.length} 条</Badge>
+      </div>
+      {items.slice(0, 5).map((item) => (
+        <div key={item.chunk_id} className="border border-border p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-medium">{item.title}</p>
+            <Badge variant="secondary">
+              {item.platform.toUpperCase()} · {item.market}
+            </Badge>
+            <Badge variant="outline">{item.version}</Badge>
+          </div>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            {item.title_path}
+          </p>
+          <p className="mt-2 line-clamp-4 text-xs leading-5">
+            {item.content}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[10px] text-muted-foreground">
+              相似度 {Math.round(item.score * 100)}%
+              {item.effective_at
+                ? ` · 生效 ${item.effective_at.slice(0, 10)}`
+                : ''}
+            </span>
+            <a
+              href={item.source_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-[10px] font-medium text-primary underline underline-offset-4"
+            >
+              查看原文
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
+      ))}
+    </Card>
   )
 }
 

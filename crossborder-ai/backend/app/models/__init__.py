@@ -50,6 +50,11 @@ from app.models.automation_preference import (
     AutomationTaskState,
 )
 from app.models.ip_risk import IpDeclaration, IpRiskItem, IpRiskReport
+from app.models.policy_knowledge import (
+    PolicyChunk,
+    PolicySource,
+    PolicySyncRun,
+)
 
 __all__ = [
     "User",
@@ -100,4 +105,7 @@ __all__ = [
     "IpRiskReport",
     "IpRiskItem",
     "IpDeclaration",
+    "PolicySource",
+    "PolicyChunk",
+    "PolicySyncRun",
 ]

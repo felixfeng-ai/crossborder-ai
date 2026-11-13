@@ -564,6 +564,42 @@ class AgentOrchestrator:
         {
             "type": "function",
             "function": {
+                "name": "search_platform_policies",
+                "description": (
+                    "检索 Amazon、TikTok Shop、Shopify 等平台政策原文。"
+                    "用于解释认证要求、Listing 合规依据和整改动作，必须返回引用来源。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "要检索的平台政策问题",
+                        },
+                        "platform": {
+                            "type": "string",
+                            "description": "amazon、tiktok、shopify 等平台",
+                        },
+                        "market": {
+                            "type": "string",
+                            "description": "目标市场，例如 US、UK、DE",
+                        },
+                        "category": {
+                            "type": "string",
+                            "description": "可选商品类目，例如 toys、electronics",
+                        },
+                        "top_k": {
+                            "type": "integer",
+                            "description": "返回政策片段数量，默认 5",
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "compliance_fix",
                 "description": "检查文本并自动修复违规内容",
                 "parameters": {
@@ -924,6 +960,7 @@ class AgentOrchestrator:
 - 用户提到素材、最近图片/视频 → 用 list_materials
 - 用户提到同步 Shopify 销量/库存 → 用 sync_shopify_operations
 - 用户提到商标、品牌授权、认证声称、Logo、水印或 IP 风险 → 用 screen_ip_risk
+- 用户询问平台政策、认证要求或 Listing 合规依据 → 用 search_platform_policies
 - 用户提到利润/成本/计算 → 用 calculate_profit
 - 用户提到检查/审核 → 用 compliance_check
 - 不要使用 "answer" 工具，永远用具体工具
@@ -1002,7 +1039,10 @@ class AgentOrchestrator:
 19. sync_shopify_operations — 同步 Shopify 订单销量和库存
    参数: {"channel_id": "Shopify 渠道 ID", "days": 30}
 
-20. answer — 【仅当其他工具都不适用时】回答用户问题
+20. search_platform_policies — 检索平台政策原文和引用
+   参数: {"query": "...", "platform": "amazon", "market": "US", "category": "toys", "top_k": 5}
+
+21. answer — 【仅当其他工具都不适用时】回答用户问题
    参数: {"message": "回答内容"}
    注意: 这是最后选项，优先用上面的工具
 
@@ -1065,6 +1105,8 @@ class AgentOrchestrator:
                 return await self._do_compliance(params)
             elif action == "screen_ip_risk":
                 return await self._do_screen_ip_risk(params)
+            elif action == "search_platform_policies":
+                return await self._do_search_platform_policies(params)
             elif action == "compliance_fix":
                 return await self._do_compliance_fix(params)
             elif action == "push_to_shopify":
@@ -1752,6 +1794,57 @@ class AgentOrchestrator:
                     ),
                 }
             ],
+        }
+
+    async def _do_search_platform_policies(self, params: dict) -> dict:
+        """检索平台政策原文；没有依据时明确拒绝推断。"""
+        from app.services.policy_knowledge import search_policy_knowledge
+
+        query = str(params.get("query") or "").strip()
+        if len(query) < 2:
+            return {
+                "action": "search_platform_policies",
+                "status": "failed",
+                "error": "缺少要检索的平台政策问题",
+            }
+        result = await search_policy_knowledge(
+            self.db,
+            query=query,
+            platform=str(params.get("platform") or "").strip() or None,
+            market=str(params.get("market") or "").strip() or None,
+            category=str(params.get("category") or "").strip() or None,
+            top_k=int(params.get("top_k") or 5),
+        )
+        if not result["has_evidence"]:
+            return {
+                "action": "search_platform_policies",
+                "status": "success",
+                "data": result,
+                "summary": "未检索到足够可靠的平台政策依据，请补充平台、市场或类目后重试。",
+                "links": [{"label": "查看平台政策库", "href": "/app/operations"}],
+            }
+        links = []
+        seen_urls = set()
+        for item in result["items"][:3]:
+            url = item.get("source_url")
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            links.append(
+                {
+                    "label": f"政策来源：{item.get('title') or '平台政策'}",
+                    "href": url,
+                }
+            )
+        return {
+            "action": "search_platform_policies",
+            "status": "success",
+            "data": result,
+            "summary": (
+                f"检索到 {len(result['items'])} 条政策依据"
+                f"（{result['retrieval_mode']}）"
+            ),
+            "links": links,
         }
 
     async def _do_compliance(self, params: dict) -> dict:

@@ -6,6 +6,7 @@ const ACTION_LABELS: Record<string, string> = {
   compliance_check: '合规审查',
   compliance_fix: '合规修正',
   screen_ip_risk: 'IP 风险初筛',
+  search_platform_policies: '检索平台政策',
   calculate_profit: '利润测算',
   select_products: 'AI 选品',
   analyze_category: '品类市场分析',

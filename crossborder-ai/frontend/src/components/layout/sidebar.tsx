@@ -15,6 +15,7 @@ import {
   Megaphone,
   FolderOpen,
   BookOpenText,
+  MessageSquareText,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
@@ -36,6 +37,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/app/shopify': ShoppingBag,
   '/app/billing': CreditCard,
   '/app/tutorial': BookOpenText,
+  '/app/feedback': MessageSquareText,
   '/app/settings': Settings,
 }
 

@@ -26,9 +26,12 @@ from app.models.plan_upgrade import PlanUpgradeRequest
 from app.models.subscription import UserSubscription
 from app.models.user import User
 from app.services.credit_service import apply_monthly_allowance
+from app.services.plan_catalog_service import (
+    get_plan_rank,
+    list_public_credit_packs,
+    list_public_plans,
+)
 from app.services.plan_service import (
-    CREDIT_PACKS,
-    PLAN_CATALOG,
     activate_paid_plan,
     get_active_subscription,
     get_or_create_wallet,
@@ -43,9 +46,6 @@ CAMPAIGN_NAME = "2026 年末增长季"
 # UTC 时间对应北京时间 2026-11-12 00:00 至 2026-12-01 00:00。
 CAMPAIGN_START = datetime(2026, 11, 11, 16, 0, tzinfo=timezone.utc)
 CAMPAIGN_END = datetime(2026, 11, 30, 16, 0, tzinfo=timezone.utc)
-PLAN_RANK = {"free": 0, "standard": 1, "professional": 2}
-
-
 def _now() -> datetime:
     """集中时间源，便于活动资格测试与后续运营配置。"""
     return datetime.now(timezone.utc)
@@ -54,71 +54,6 @@ def _now() -> datetime:
 def _campaign_active(now: datetime | None = None) -> bool:
     current = now or _now()
     return CAMPAIGN_START <= current < CAMPAIGN_END
-
-PLANS = [
-    {
-        "id": plan,
-        "name": config["name"],
-        "price": config["price"],
-        "price_label": "免费" if config["price"] == 0 else f"¥{config['price']}/月",
-        "first_month_price": config.get("first_month_price", config["price"]),
-        "first_month_bonus_credits": config.get(
-            "first_month_bonus_credits", 0
-        ),
-        "annual_price": config.get("annual_price", config["price"] * 12),
-        "annual_full_price": config.get(
-            "annual_full_price", config["price"] * 12
-        ),
-        "monthly_credits": config["monthly_credits"],
-        "description": (
-            "试试基本功能"
-            if plan == "free"
-            else "适合个人卖家"
-            if plan == "standard"
-            else "适合工作室与专业卖家"
-        ),
-        "features": [
-            f"每月 {config['monthly_credits']:,} AI 积分",
-            *(
-                [
-                    "1688 商品抓取与利润测算",
-                    "Listing、合规与 VOC 评论洞察",
-                    "品类分析与 AI Insights 各 10 次/月",
-                ]
-                if plan == "free"
-                else []
-            ),
-            *(
-                [
-                    "AI Agent、批量处理与自动巡检",
-                    "Shopify 草稿发布与运营同步",
-                    "11 个平台 Listing 文案生成",
-                    "每月 10 次手动整店巡检",
-                    "商品抓取每月 100 次",
-                ]
-                if plan == "standard"
-                else []
-            ),
-            *(
-                [
-                    "所有 Standard 功能",
-                    "AI 图片、商品视频与营销成片",
-                    "约 6 条 30 秒 768P 高质量营销成片",
-                    "约 660 张 AI 图片",
-                    "字幕、AI 配音与素材中心",
-                    "每月 20 次手动整店巡检",
-                    "优先技术支持",
-                ]
-                if plan == "professional"
-                else []
-            ),
-        ],
-        "validity_days": config["valid_days"],
-        "recommended": plan == "professional",
-    }
-    for plan, config in PLAN_CATALOG.items()
-]
-
 
 class UpgradeRequest(BaseModel):
     plan: str = Field(..., description="目标套餐: standard, professional")
@@ -159,8 +94,9 @@ def _request_response(req: PlanUpgradeRequest) -> dict:
 
 
 @router.get("/plans")
-async def get_plans():
-    return {"plans": PLANS}
+async def get_plans(db: AsyncSession = Depends(get_db)):
+    """返回当前最新已发布套餐，数据库缺失时使用代码兜底。"""
+    return {"plans": await list_public_plans(db)}
 
 
 async def _first_month_eligible(db: AsyncSession, user: User) -> bool:
@@ -226,7 +162,7 @@ async def get_campaign(
         "ends_at": CAMPAIGN_END.isoformat(),
         "first_month_eligible": first_month_eligible,
         "trial_pack_eligible": trial_pack_eligible,
-        "plans": PLANS,
+        "plans": await list_public_plans(db),
     }
 
 
@@ -243,8 +179,9 @@ async def get_wallet(
 
 
 @router.get("/credit-packs")
-async def list_credit_packs():
-    return {"packs": list(CREDIT_PACKS)}
+async def list_credit_packs(db: AsyncSession = Depends(get_db)):
+    """返回当前最新已发布积分包。"""
+    return {"packs": await list_public_credit_packs(db)}
 
 
 def _credit_purchase_response(purchase: CreditPurchase) -> dict:
@@ -269,7 +206,8 @@ async def purchase_credit_pack(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    pack = next((item for item in CREDIT_PACKS if item["id"] == payload.pack_id), None)
+    packs = await list_public_credit_packs(db)
+    pack = next((item for item in packs if item["id"] == payload.pack_id), None)
     if pack is None:
         raise HTTPException(status_code=400, detail="积分包不存在")
     if pack.get("trial_once"):
@@ -402,9 +340,13 @@ async def upgrade_plan(
     申请落库为一条 plan_upgrade_requests 记录，用户可在
     GET /billing/upgrades 查看处理状态。
     """
-    if payload.plan not in PLAN_RANK:
+    plans = await list_public_plans(db)
+    plan_map = {item["id"]: item for item in plans}
+    if payload.plan not in plan_map:
         raise HTTPException(status_code=400, detail="无效的套餐")
-    if PLAN_RANK[payload.plan] <= PLAN_RANK.get(current_user.plan, 0):
+    target_rank = await get_plan_rank(db, payload.plan)
+    current_rank = await get_plan_rank(db, current_user.plan)
+    if target_rank <= current_rank:
         raise HTTPException(
             status_code=409,
             detail="只能申请高于当前套餐的计划，当前套餐及低档套餐无需重复申请",
@@ -423,9 +365,7 @@ async def upgrade_plan(
             "message": "你已有待处理的升级申请，客服确认转账后即开通",
         }
 
-    plan_info = next((p for p in PLANS if p["id"] == payload.plan), None)
-    if plan_info is None:
-        raise HTTPException(status_code=400, detail="无效的套餐")
+    plan_info = plan_map[payload.plan]
 
     campaign_active = _campaign_active()
     first_month_eligible = (
@@ -531,7 +471,9 @@ async def approve_upgrade(
     req = await _load_pending_request(db, request_id)
 
     user = (await db.execute(select(User).where(User.id == req.user_id))).scalar_one()
-    if PLAN_RANK.get(req.plan, 0) <= PLAN_RANK.get(user.plan, 0):
+    target_rank = await get_plan_rank(db, req.plan)
+    current_rank = await get_plan_rank(db, user.plan)
+    if target_rank <= current_rank:
         req.status = "rejected"
         req.handled_by = admin.id
         req.handled_at = datetime.now(timezone.utc)

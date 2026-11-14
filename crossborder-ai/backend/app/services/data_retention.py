@@ -13,6 +13,7 @@ from app.models.content import ContentGeneration, ContentStatus
 from app.models.data_retention import DataRetentionRun
 from app.models.image_generation_task import ImageGenerationTask
 from app.models.store_check_log import StoreCheckLog
+from app.models.traffic_event import TrafficEvent
 
 
 def _terminal_cleanup_targets() -> list[tuple[str, Any, tuple[Any, ...]]]:
@@ -94,6 +95,7 @@ async def run_retention_cleanup(
     now: datetime | None = None,
     retention_days: int | None = None,
     store_check_retention_days: int | None = None,
+    telemetry_retention_days: int | None = None,
     dry_run: bool | None = None,
     batch_size: int | None = None,
 ) -> dict[str, Any]:
@@ -106,6 +108,9 @@ async def run_retention_cleanup(
     keep_days = retention_days or settings.DATA_RETENTION_DAYS
     check_days = (
         store_check_retention_days or settings.DATA_RETENTION_STORE_CHECK_DAYS
+    )
+    telemetry_days = (
+        telemetry_retention_days or settings.DATA_RETENTION_TELEMETRY_DAYS
     )
     simulate = settings.DATA_RETENTION_DRY_RUN if dry_run is None else dry_run
     batch = max(batch_size or settings.DATA_RETENTION_BATCH_SIZE, 1)
@@ -162,6 +167,27 @@ async def run_retention_cleanup(
                 db,
                 StoreCheckLog,
                 (store_check_condition,),
+                batch,
+            )
+
+        telemetry_cutoff = current_time - timedelta(days=telemetry_days)
+        telemetry_condition = TrafficEvent.created_at < telemetry_cutoff
+        if simulate:
+            counts["traffic_events"] = int(
+                (
+                    await db.execute(
+                        select(func.count())
+                        .select_from(TrafficEvent)
+                        .where(telemetry_condition)
+                    )
+                ).scalar_one()
+                or 0
+            )
+        else:
+            counts["traffic_events"] = await _delete_condition_in_batches(
+                db,
+                TrafficEvent,
+                (telemetry_condition,),
                 batch,
             )
 

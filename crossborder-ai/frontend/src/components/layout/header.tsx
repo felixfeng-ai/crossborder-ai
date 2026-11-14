@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { LogOut, Settings, CreditCard, ChevronDown, Globe, Store, Menu, ShieldCheck } from 'lucide-react'
+import { LogOut, Settings, CreditCard, ChevronDown, Globe, Store, Menu, ShieldCheck, MessageSquareText } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -213,11 +213,15 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {user?.is_admin && (
-              <DropdownMenuItem onClick={() => navigate('/app/admin/upgrades')}>
+              <DropdownMenuItem onClick={() => navigate('/admin/overview')}>
                 <ShieldCheck className="mr-2 h-4 w-4" />
-                升级审核
+                运营后台
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem onClick={() => navigate('/app/feedback')}>
+              <MessageSquareText className="mr-2 h-4 w-4" />
+              用户反馈
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate('/app/settings')}>
               <Settings className="mr-2 h-4 w-4" />
               {t('header.settings')}

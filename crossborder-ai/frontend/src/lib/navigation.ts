@@ -60,6 +60,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
     label: '账户',
     items: [
       { label: '使用教程', path: '/app/tutorial' },
+      { label: '用户反馈', path: '/app/feedback' },
       { label: '账单', path: '/app/billing' },
       { label: '设置', path: '/app/settings' },
     ],
@@ -132,15 +133,15 @@ const HEADER_CONTEXTS: Record<string, HeaderContext> = {
     title: '使用教程',
     description: '从商品录入到发布与巡检的完整操作指南',
   },
+  '/app/feedback': {
+    group: '账户',
+    title: '用户反馈',
+    description: '提交问题、建议并查看处理状态',
+  },
   '/app/settings': {
     group: '账户',
     title: '设置',
     description: '品牌、平台连接与服务商配置',
-  },
-  '/app/admin/upgrades': {
-    group: '账户',
-    title: '升级审核',
-    description: '管理员套餐申请审核',
   },
 }
 

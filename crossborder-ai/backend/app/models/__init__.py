@@ -55,6 +55,10 @@ from app.models.policy_knowledge import (
     PolicySource,
     PolicySyncRun,
 )
+from app.models.traffic_event import TrafficEvent
+from app.models.feedback import FeedbackComment, FeedbackTicket
+from app.models.admin_audit_log import AdminAuditLog
+from app.models.plan_version import CreditPackVersion, PlanVersion
 
 __all__ = [
     "User",
@@ -108,4 +112,10 @@ __all__ = [
     "PolicySource",
     "PolicyChunk",
     "PolicySyncRun",
+    "TrafficEvent",
+    "FeedbackTicket",
+    "FeedbackComment",
+    "AdminAuditLog",
+    "PlanVersion",
+    "CreditPackVersion",
 ]

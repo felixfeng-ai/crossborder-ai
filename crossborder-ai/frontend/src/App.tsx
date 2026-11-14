@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { RouteFallback } from '@/components/common/RouteFallback'
 import { useAuthStore } from '@/stores/authStore'
+import { AdminGuard } from '@/pages/admin/AdminGuard'
 
 const PUBLIC_LEGAL_PATHS = [
   '/terms',
@@ -40,6 +41,14 @@ const CatalogPage = lazy(() => import('@/pages/catalog/CatalogPage'))
 const OperationsPage = lazy(() => import('@/pages/operations/OperationsPage'))
 const TutorialPage = lazy(() => import('@/pages/tutorial/TutorialPage'))
 const LegalDocumentPage = lazy(() => import('@/pages/legal/LegalPage'))
+const FeedbackPage = lazy(() => import('@/pages/feedback/FeedbackPage'))
+const AdminLayout = lazy(() => import('@/pages/admin/AdminLayout'))
+const AdminOverviewPage = lazy(() => import('@/pages/admin/AdminOverviewPage'))
+const AdminAnalyticsPage = lazy(() => import('@/pages/admin/AdminAnalyticsPage'))
+const AdminPerformancePage = lazy(() => import('@/pages/admin/AdminPerformancePage'))
+const AdminPlansPage = lazy(() => import('@/pages/admin/AdminPlansPage'))
+const AdminFeedbackPage = lazy(() => import('@/pages/admin/AdminFeedbackPage'))
+const AdminAuditPage = lazy(() => import('@/pages/admin/AdminAuditPage'))
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore()
@@ -62,6 +71,25 @@ export default function App() {
           element={<LegalDocumentPage path={path} />}
         />
       ))}
+
+      {/* 独立管理员后台 */}
+      <Route
+        path="/admin"
+        element={
+          <AdminGuard>
+            <AdminLayout />
+          </AdminGuard>
+        }
+      >
+        <Route index element={<Navigate to="/admin/overview" replace />} />
+        <Route path="overview" element={<AdminOverviewPage />} />
+        <Route path="analytics" element={<AdminAnalyticsPage />} />
+        <Route path="performance" element={<AdminPerformancePage />} />
+        <Route path="plans" element={<AdminPlansPage />} />
+        <Route path="orders" element={<AdminUpgradesPage />} />
+        <Route path="feedback" element={<AdminFeedbackPage />} />
+        <Route path="audit" element={<AdminAuditPage />} />
+      </Route>
 
       {/* 应用页面（需登录） */}
       <Route
@@ -94,7 +122,11 @@ export default function App() {
         <Route path="ledger" element={<LedgerPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="tutorial" element={<TutorialPage />} />
-        <Route path="admin/upgrades" element={<AdminUpgradesPage />} />
+         <Route path="feedback" element={<FeedbackPage />} />
+         <Route
+           path="admin/upgrades"
+           element={<Navigate to="/admin/orders" replace />}
+         />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
 

@@ -14,66 +14,9 @@ from app.models.credit_wallet import CreditWallet
 from app.models.feature_usage import FeatureUsageCounter
 from app.models.subscription import UserSubscription
 from app.models.user import User
+from app.services.plan_catalog_service import get_effective_plan_config
+from app.services.plan_defaults import PLAN_CATALOG
 
-
-PLAN_CATALOG: dict[str, dict] = {
-    "free": {
-        "name": "Free",
-        "price": 0,
-        "monthly_credits": 30,
-        "valid_days": 0,
-    },
-    "standard": {
-        "name": "Standard",
-        "price": 99,
-        "first_month_price": 79,
-        "annual_price": 990,
-        "annual_full_price": 1188,
-        "monthly_credits": 800,
-        "valid_days": 30,
-    },
-    "professional": {
-        "name": "Professional",
-        "price": 249,
-        "first_month_price": 199,
-        "annual_price": 2490,
-        "annual_full_price": 2988,
-        "first_month_bonus_credits": 100,
-        "monthly_credits": 3000,
-        "valid_days": 30,
-    },
-}
-
-CREDIT_PACKS = (
-    {
-        "id": "pack_trial_50",
-        "name": "首购体验包",
-        "credits": 50,
-        "price": 9.9,
-        "trial_once": True,
-    },
-    {
-        "id": "pack_200",
-        "name": "入门积分包",
-        "credits": 200,
-        "price": 19,
-        "trial_once": False,
-    },
-    {
-        "id": "pack_500",
-        "name": "常用积分包",
-        "credits": 500,
-        "price": 45,
-        "trial_once": False,
-    },
-    {
-        "id": "pack_1200",
-        "name": "专业积分包",
-        "credits": 1200,
-        "price": 99,
-        "trial_once": False,
-    },
-)
 
 ANALYSIS_LIMITS = {
     "category_analysis": 10,
@@ -208,7 +151,10 @@ async def apply_monthly_allowance(
                 )
                 .values(status="replaced")
             )
-            plan_config = PLAN_CATALOG[user.plan]
+            plan_config = (
+                await get_effective_plan_config(db, user.plan)
+                or PLAN_CATALOG[user.plan]
+            )
             db.add(
                 UserSubscription(
                     user_id=user.id,
@@ -228,9 +174,11 @@ async def apply_monthly_allowance(
         and user.credit_period_start.month == current.month
     )
     if not force and same_period and not reconciled:
-        allowance = int(
-            PLAN_CATALOG.get(user.plan, PLAN_CATALOG["free"])["monthly_credits"]
+        plan_config = (
+            await get_effective_plan_config(db, user.plan)
+            or PLAN_CATALOG.get(user.plan, PLAN_CATALOG["free"])
         )
+        allowance = int(plan_config["monthly_credits"])
         wallet = await get_or_create_wallet(db, user, lock=True)
         return await _reclassify_excess_plan_credits(
             db,
@@ -240,9 +188,11 @@ async def apply_monthly_allowance(
         )
 
     wallet = await get_or_create_wallet(db, user, lock=True)
-    allowance = int(
-        PLAN_CATALOG.get(user.plan, PLAN_CATALOG["free"])["monthly_credits"]
+    plan_config = (
+        await get_effective_plan_config(db, user.plan)
+        or PLAN_CATALOG.get(user.plan, PLAN_CATALOG["free"])
     )
+    allowance = int(plan_config["monthly_credits"])
     await _reclassify_excess_plan_credits(db, user, wallet, allowance)
     previous_total = wallet_total(wallet)
     wallet.plan_credits = allowance
@@ -355,7 +305,7 @@ async def activate_paid_plan(
     source: str = "manual_transfer",
     duration_days: int | None = None,
 ) -> UserSubscription:
-    settings = PLAN_CATALOG.get(plan)
+    settings = await get_effective_plan_config(db, plan)
     if not settings or plan == "free":
         raise ValueError("无效的付费套餐")
     current = now or datetime.now(timezone.utc)

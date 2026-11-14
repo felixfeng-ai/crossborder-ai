@@ -75,6 +75,13 @@ VeyaShip 是跨境卖家的石墨决策台：以中性近黑层级、纸白命�
 - What is intentionally not navigation: onboarding hints, recent products, billing upgrades and provider configuration stay inside their owning surface.
 - Safe areas and keyboard behaviour: `min-h-[100dvh]`, safe-area insets, visible focus rings and keyboard reachable controls.
 
+## Admin Operations
+
+- 管理员使用独立 `/admin` 壳层，沿用 232px 石墨侧栏和 58px 顶栏，但不复用卖家工作台导航。
+- 管理员页面是高密度运营工具：KPI 使用一组分隔条，不堆叠图标卡片；表格用行规则和对齐，图表只保留一个数据色。
+- 页面主角是待处理运营事实，主操作是审核、发布或处理反馈；管理页面不使用营销页式 Hero、装饰性渐变或动效入场。
+- 移动端侧栏折叠为顶部菜单抽屉，数据表在自身容器内处理溢出，页面不允许横向滚动。
+
 ## Components
 
 - Button: paper-white default for primary commands, outlined or ghost for secondary; 34px desktop height and 44px mobile touch area.

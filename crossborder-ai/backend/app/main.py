@@ -23,6 +23,14 @@ from app.core.observability import (
 )
 from app.models.user import InsufficientCreditsError
 from app.routers import auth, users, products, content, images, videos, marketing_videos, marketing_campaigns, marketing_copy, marketing_distribution, billing, shopify, batch, radar, ledger, analytics, agent, listings, platforms, product_variants, catalog, operations, voc, ip_risk, platform_policies
+from app.routers import (
+    telemetry,
+    admin_analytics,
+    feedback,
+    admin_feedback,
+    admin_plans,
+    admin_audit,
+)
 from app.routers import settings as settings_router
 
 # ── 日志配置（可观测性：所有日志自动携带 request_id）──────────
@@ -212,6 +220,12 @@ app.include_router(operations.router, prefix=API_PREFIX)
 app.include_router(voc.router, prefix=API_PREFIX)
 app.include_router(ip_risk.router, prefix=API_PREFIX)
 app.include_router(platform_policies.router, prefix=API_PREFIX)
+app.include_router(telemetry.router, prefix=API_PREFIX)
+app.include_router(admin_analytics.router, prefix=API_PREFIX)
+app.include_router(feedback.router, prefix=API_PREFIX)
+app.include_router(admin_feedback.router, prefix=API_PREFIX)
+app.include_router(admin_plans.router, prefix=API_PREFIX)
+app.include_router(admin_audit.router, prefix=API_PREFIX)
 
 
 # --- Health Check ---

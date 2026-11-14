@@ -136,6 +136,7 @@ server {
         proxy_cache_use_stale  error timeout updating http_500 http_502 http_503 http_504;
         proxy_cache_lock       on;
         proxy_cache_background_update on;
+        proxy_ignore_headers Cache-Control Expires Set-Cookie;
         proxy_hide_header Cache-Control;
         add_header Cache-Control "public, max-age=604800" always;
         add_header X-Cache-Status \$upstream_cache_status always;
@@ -157,9 +158,41 @@ server {
         proxy_cache_use_stale  error timeout updating http_500 http_502 http_503 http_504;
         proxy_cache_lock       on;
         proxy_cache_background_update on;
+        proxy_ignore_headers Cache-Control Expires Set-Cookie;
         proxy_hide_header Cache-Control;
         add_header Cache-Control "public, max-age=604800" always;
         add_header X-Cache-Status \$upstream_cache_status always;
+    }
+
+    # API 响应是动态业务数据，必须绕开 SPA 的短缓存。
+    location ^~ /api/ {
+        proxy_pass https://veyaship_origin;
+        proxy_http_version 1.1;
+        proxy_set_header Connection        "";
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$remote_addr;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host  \$host;
+        proxy_ssl_server_name off;
+        proxy_ssl_verify      off;
+
+        proxy_buffering on;
+        proxy_cache     off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # 健康检查保持实时，避免状态异常时仍命中旧的成功结果。
+    location = /health {
+        proxy_pass https://veyaship_origin;
+        proxy_http_version 1.1;
+        proxy_set_header Connection        "";
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_ssl_server_name off;
+        proxy_ssl_verify      off;
+        proxy_cache           off;
     }
 
     # 只有 Agent 任务流需要关闭缓冲，避免影响 HTML、字体和演示资源下载。
@@ -185,7 +218,7 @@ server {
         proxy_pass https://veyaship_origin;
         proxy_http_version 1.1;
         # 清空 Connection 头是启用 upstream keepalive 的必要条件；
-        # SSE 流式响应靠 proxy_buffering off 保证，不受影响。
+        # Agent SSE 已由上方独立 location 直通，这里只承载 SPA 与公开页面。
         proxy_set_header Connection        "";
 
         proxy_set_header Host              \$host;
@@ -201,7 +234,14 @@ server {
         proxy_ssl_verify      off;
 
         proxy_buffering on;
-        proxy_cache     off;
+        # SPA HTML 与公开页面内容很短且部署后无需实时变更，边缘缓存 30 秒吸收跨境回源抖动。
+        proxy_cache            veyaship_static;
+        proxy_cache_valid      200 30s;
+        proxy_cache_use_stale  error timeout updating http_500 http_502 http_503 http_504;
+        proxy_cache_lock       on;
+        proxy_cache_background_update on;
+        proxy_ignore_headers Cache-Control Expires Set-Cookie;
+        add_header X-Cache-Status \$upstream_cache_status always;
 
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;

@@ -49,6 +49,9 @@ describe('frontend performance contract', () => {
     expect(nginx).toContain('location /fonts/')
     expect(nginx).toContain('location /demo/')
     expect(nginx).toContain('location ^~ /api/v1/agent/')
+    expect(nginx).toContain('location ^~ /api/')
+    expect(nginx).toContain('proxy_ignore_headers Cache-Control Expires Set-Cookie;')
+    expect(nginx).toContain('proxy_cache_valid      200 30s;')
     expect(nginx).toContain('proxy_buffering on;')
   })
 

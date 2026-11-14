@@ -5,50 +5,42 @@ export function AssistantMark({
 }) {
   return (
     <svg
-      viewBox="0 0 128 128"
+      viewBox="0 0 24 24"
       className={className}
       role="img"
       aria-label="AI 决策助手"
       fill="none"
     >
       <path
-        d="M38 20H90L110 40V91L91 110H37L18 91V40L38 20Z"
-        fill="#151815"
-        stroke="#D8B56D"
-        strokeWidth="4"
-      />
-      <path
-        d="M86 22 106 12 103 34"
-        stroke="#D8B56D"
-        strokeWidth="4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="106" cy="12" r="4" fill="#9FC8B7" />
-      <path
-        d="M39 49 64 91 89 49"
-        stroke="#F3F0E8"
-        strokeWidth="6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="39" cy="49" r="5" fill="#F3F0E8" />
-      <circle cx="89" cy="49" r="5" fill="#9FC8B7" />
-      <circle cx="64" cy="91" r="6" fill="#D8B56D" />
-      <path
-        d="M31 72H45"
-        stroke="#9FC8B7"
-        strokeWidth="3"
+        d="M12 3.1V6.5"
+        stroke="currentColor"
+        strokeWidth="2.1"
         strokeLinecap="round"
       />
-      <path
-        d="M83 72H97"
-        stroke="#D8B56D"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeDasharray="4 5"
+      <circle cx="12" cy="2.6" r="1.25" fill="currentColor" />
+      <rect
+        x="4.2"
+        y="6.7"
+        width="15.6"
+        height="12"
+        rx="4.2"
+        stroke="currentColor"
+        strokeWidth="2.1"
       />
-      <circle cx="101" cy="72" r="3" fill="#D8B56D" />
+      <path
+        d="M4.2 11H2.4M21.6 11h-1.8"
+        stroke="currentColor"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+      />
+      <circle cx="9" cy="11.3" r="1.15" fill="currentColor" />
+      <circle cx="15" cy="11.3" r="1.15" fill="currentColor" />
+      <path
+        d="M9.2 15.1h5.6"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }

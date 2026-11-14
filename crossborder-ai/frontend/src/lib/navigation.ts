@@ -59,6 +59,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
     id: 'account',
     label: '账户',
     items: [
+      { label: '使用教程', path: '/app/tutorial' },
       { label: '账单', path: '/app/billing' },
       { label: '设置', path: '/app/settings' },
     ],
@@ -125,6 +126,11 @@ const HEADER_CONTEXTS: Record<string, HeaderContext> = {
     group: '账户',
     title: '账单',
     description: '套餐、积分与付款记录',
+  },
+  '/app/tutorial': {
+    group: '账户',
+    title: '使用教程',
+    description: '从商品录入到发布与巡检的完整操作指南',
   },
   '/app/settings': {
     group: '账户',

@@ -20,6 +20,7 @@ import VideoWorkspacePage from '@/pages/videos/VideoWorkspacePage'
 import MaterialsPage from '@/pages/assets/MaterialsPage'
 import CatalogPage from '@/pages/catalog/CatalogPage'
 import OperationsPage from '@/pages/operations/OperationsPage'
+import TutorialPage from '@/pages/tutorial/TutorialPage'
 import LegalDocumentPage from '@/pages/legal/LegalPage'
 import { LEGAL_DOCUMENTS } from '@/lib/legal'
 import { useAuthStore } from '@/stores/authStore'
@@ -75,6 +76,7 @@ export default function App() {
         <Route path="radar" element={<RadarPage />} />
         <Route path="ledger" element={<LedgerPage />} />
         <Route path="billing" element={<BillingPage />} />
+        <Route path="tutorial" element={<TutorialPage />} />
         <Route path="admin/upgrades" element={<AdminUpgradesPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

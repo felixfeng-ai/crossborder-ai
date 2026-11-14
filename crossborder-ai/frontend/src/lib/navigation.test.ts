@@ -23,6 +23,7 @@ describe('navigation architecture', () => {
     expect(paths).not.toContain('/app/batch')
     expect(paths).not.toContain('/app/content')
     expect(paths).toContain('/app/marketing-agent')
+    expect(paths).toContain('/app/tutorial')
     expect(
       NAVIGATION_GROUPS.flatMap((group) => group.items).find(
         (item) => item.path === '/app/agent',
@@ -50,6 +51,10 @@ describe('navigation architecture', () => {
     expect(getHeaderContext('/app/agent')).toMatchObject({
       group: 'AI 创作',
       title: 'AI 决策助手',
+    })
+    expect(getHeaderContext('/app/tutorial')).toMatchObject({
+      group: '账户',
+      title: '使用教程',
     })
   })
 

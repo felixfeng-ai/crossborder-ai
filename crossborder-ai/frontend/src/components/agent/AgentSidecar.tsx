@@ -89,6 +89,10 @@ export function AgentSidecar() {
     }
   }, [isOpen])
 
+  useEffect(() => {
+    if (isOpen) setHasOpened(true)
+  }, [isOpen])
+
   if (hiddenOnFullPage) return null
 
   const handleClose = () => {
@@ -111,21 +115,19 @@ export function AgentSidecar() {
         tabIndex={isOpen ? -1 : 0}
         title="AI 决策助手（Alt+A）"
         className={[
-          'fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center',
-          'rounded-2xl border border-[rgba(216,181,109,0.58)] bg-[#171a17]',
-          'shadow-[0_12px_36px_rgba(0,0,0,0.42)] transition-all duration-200',
-          'hover:-translate-y-0.5 hover:border-[rgba(216,181,109,0.9)]',
+          'fixed bottom-5 right-5 z-40 flex h-[72px] w-[72px] flex-col items-center justify-center gap-0.5',
+          'lg:h-[78px] lg:w-[78px]',
+          'rounded-full border-[1.5px] border-[rgba(216,181,109,0.9)] bg-[#181b18] text-[var(--factory-ink)]',
+          'shadow-[0_12px_32px_rgba(0,0,0,0.42)] transition-all duration-200',
+          'hover:-translate-y-0.5 hover:border-[var(--factory-accent)] hover:bg-[#20231f] hover:shadow-[0_15px_38px_rgba(0,0,0,0.46),0_0_0_4px_rgba(216,181,109,0.12)]',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           isOpen
             ? 'pointer-events-none translate-y-2 opacity-0'
             : 'translate-y-0 opacity-100',
         ].join(' ')}
       >
-        <AssistantMark className="h-9 w-9" />
-        <span
-          className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[var(--factory-mint)] ring-4 ring-[#171a17]"
-          aria-hidden="true"
-        />
+        <AssistantMark className="h-[31px] w-[31px]" />
+        <span className="text-[12px] font-semibold leading-[15px]">问 AI</span>
       </button>
 
       <button

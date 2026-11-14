@@ -1,5 +1,6 @@
 export type LandingFeatureIcon =
   | 'agent'
+  | 'assistant'
   | 'market'
   | 'compliance'
   | 'media'
@@ -48,9 +49,9 @@ export const SUPPORTED_COPY_PLATFORMS = [
 
 export const LANDING_FEATURES: LandingFeature[] = [
   {
-    icon: 'agent',
-    title: 'AI Agent 与自动化执行',
-    desc: '20 个业务工具、6 个预设工作流；长任务异步执行，并实时展示步骤、结果和失败原因。',
+    icon: 'assistant',
+    title: '全局 AI 决策助手与自动化执行',
+    desc: '在图片台、视频台和经营页面随时打开 AI 侧栏，自动带入当前页面上下文；长任务异步执行，并实时展示步骤、结果和失败原因。',
   },
   {
     icon: 'market',
@@ -59,8 +60,8 @@ export const LANDING_FEATURES: LandingFeature[] = [
   },
   {
     icon: 'compliance',
-    title: 'Listing、合规与版本闭环',
-    desc: '生成标题、描述、卖点和 SEO；合规结果绑定当前版本，内容修改后旧报告自动失效。',
+    title: 'Listing、IP 风险与政策知识库',
+    desc: '生成标题、描述、卖点和 SEO；合规检查覆盖违禁词、品牌与认证声称，并提供 IP 风险初筛和官方平台政策依据。',
   },
   {
     icon: 'media',
@@ -75,9 +76,34 @@ export const LANDING_FEATURES: LandingFeature[] = [
   {
     icon: 'ops',
     title: '运营监控与整店巡检',
-    desc: '按 SKU 检查毛利、库存覆盖、补货点、渠道异常和商品信息缺口；Standard 起支持自动巡检。',
+    desc: '按 SKU 检查毛利、库存覆盖、补货点、渠道异常和商品信息缺口；Standard 起支持自动巡检和任务开关。',
   },
 ]
+
+export const LANDING_ASSISTANT_CONTEXT = [
+  {
+    page: '图片工作台',
+    detail: '当前素材 · 平台预设',
+    result: '检查主图、建议白底处理、继续生成商品视频',
+  },
+  {
+    page: '视频工作台',
+    detail: '视频模式 · 当前首帧',
+    result: '优化镜头提示、检查首帧、估算积分',
+  },
+  {
+    page: 'Listing 中心',
+    detail: '商品 · 内容版本',
+    result: '生成内容、执行合规与 IP 风险初筛、查询政策依据',
+  },
+] as const
+
+export const LANDING_STATS = [
+  { value: '24', label: 'AI 业务工具', tone: 'text-slate-100' },
+  { value: '6', label: '预设工作流', tone: 'text-amber-400' },
+  { value: '11', label: '平台文案支持', tone: 'text-emerald-400' },
+  { value: '2', label: '真实店铺连接', tone: 'text-amber-400' },
+] as const
 
 export const LANDING_PIPELINE = [
   { step: '01', icon: 'source', title: '来源商品', detail: '链接、CSV 或手动录入' },
@@ -97,16 +123,16 @@ export const LANDING_FLOW = [
 
 export const LANDING_AGENT_EXAMPLES = [
   {
-    prompt: '"分析这批耳机评论，用户最在意什么？"',
-    steps: '导入评论 → 提炼痛点和卖点 → 识别成交异议 → 把 VOC 结论带入 Listing',
+    prompt: '"这张商品主图适合 TikTok Shop 吗？"',
+    steps: '读取当前素材与平台预设 → 检查构图和主图要求 → 给出修改建议 → 继续生成视频',
   },
   {
-    prompt: '"把这款 1688 商品做成 Amazon Listing"',
-    steps: '抓取商品 → 结合市场与 VOC → 生成标题、描述和卖点 → 合规检查',
+    prompt: '"检查这个 Listing 的 IP 和认证风险"',
+    steps: '读取内容版本 → 品牌与认证规则检查 → IP 风险初筛 → 引用官方政策依据',
   },
   {
-    prompt: '"基于商品图做一条 15 秒营销短视频"',
-    steps: '生成创意和分镜 → 预估积分 → 视频工作台成片 → SRT 字幕与 AI 配音',
+    prompt: '"优化当前商品视频的分镜衔接"',
+    steps: '读取视频模式与首帧 → 检查动作和镜头连续 → 优化提示词 → 预估积分后再生成',
   },
 ]
 

@@ -14,6 +14,7 @@ import {
   Clapperboard,
   Megaphone,
   FolderOpen,
+  BookOpenText,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
@@ -34,6 +35,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/app/operations': Activity,
   '/app/shopify': ShoppingBag,
   '/app/billing': CreditCard,
+  '/app/tutorial': BookOpenText,
   '/app/settings': Settings,
 }
 

@@ -3,6 +3,7 @@ import {
   FALLBACK_CREDIT_PACKS,
   FALLBACK_PLANS,
   LANDING_FEATURES,
+  LANDING_STATS,
   LANDING_VIDEO_MODES,
   LANDING_VIDEO_STYLES,
   SUPPORTED_COPY_PLATFORMS,
@@ -26,6 +27,18 @@ describe('landing content facts', () => {
     expect(text).toContain('配音')
     expect(text).toContain('素材中心')
     expect(text).toContain('Amazon')
+    expect(text).toContain('全局')
+    expect(text).toContain('页面上下文')
+    expect(text).toContain('IP')
+    expect(text).toContain('政策')
+  })
+
+  it('首页使用当前真实工具数量', () => {
+    expect(LANDING_STATS).toContainEqual({
+      value: '24',
+      label: 'AI 业务工具',
+      tone: 'text-slate-100',
+    })
   })
 
   it('首页视频能力覆盖三种真实工作流和结构化风格', () => {

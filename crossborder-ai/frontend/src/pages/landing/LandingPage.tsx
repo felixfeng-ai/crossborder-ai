@@ -8,18 +8,22 @@ import {
   Sparkles, Globe, ShoppingBag, Bot, DollarSign, ShieldCheck, TrendingUp, ImageIcon,
   ArrowRight, CheckCircle2, Zap, MessageSquareQuote, Clapperboard, FolderOpen,
   Play, Video,
+  BookOpenText, PanelRightOpen,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { BrandMark } from '@/components/brand/BrandMark'
+import { AssistantMark } from '@/components/brand/AssistantMark'
 import PublicLegalFooter from '@/components/legal/PublicLegalFooter'
 import apiClient from '@/api/client'
 import {
   FALLBACK_CREDIT_PACKS,
   FALLBACK_PLANS,
+  LANDING_ASSISTANT_CONTEXT,
   LANDING_AGENT_EXAMPLES,
   LANDING_FEATURES,
   LANDING_FLOW,
   LANDING_PIPELINE,
+  LANDING_STATS,
   LANDING_VIDEO_MODES,
   LANDING_VIDEO_STYLES,
   SUPPORTED_COPY_PLATFORMS,
@@ -42,6 +46,7 @@ const item = {
 
 const FEATURE_ICONS: Record<LandingFeatureIcon, LucideIcon> = {
   agent: Bot,
+  assistant: Bot,
   market: TrendingUp,
   compliance: ShieldCheck,
   media: ImageIcon,
@@ -98,6 +103,10 @@ export default function LandingPage() {
     navigate(isLoggedIn ? '/app/videos?tab=marketing' : '/register')
   }
 
+  const openTutorial = () => {
+    navigate(isLoggedIn ? '/app/tutorial' : '/register')
+  }
+
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-[var(--factory-ground)] text-foreground">
       {/* ── 导航 ────────────────────────────────────────── */}
@@ -110,6 +119,16 @@ export default function LandingPage() {
             <span className="text-sm font-semibold">VeyaShip</span>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={openTutorial}
+              className="gap-1.5"
+            >
+              <BookOpenText className="h-3.5 w-3.5" />
+              <span className="sm:hidden">教程</span>
+              <span className="hidden sm:inline">使用教程</span>
+            </Button>
             {isLoggedIn ? (
               <Button size="sm" onClick={() => navigate('/app/dashboard')}>进入应用</Button>
             ) : (
@@ -145,7 +164,7 @@ export default function LandingPage() {
                     <span className="block">的一体化 AI 运营台</span>
                   </h1>
                   <p className="max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    输入品类、商品链接或买家评论，AI Agent 串起市场判断、VOC、Listing、合规、商品图片与视频、SKU 与店铺执行，并把每一步结果留成可复核记录。
+                    输入品类、商品链接或买家评论，AI Agent 串起市场判断、VOC、Listing、合规、商品图片与视频、SKU 与店铺执行。新增全局 AI 侧栏，让助手在当前页面直接读取任务上下文。
                   </p>
                 </motion.div>
 
@@ -173,6 +192,15 @@ export default function LandingPage() {
                     <Clapperboard className="h-3.5 w-3.5" />
                     用商品图生成视频
                     <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={openTutorial}
+                    className="h-9 gap-2 px-2 text-xs text-muted-foreground"
+                  >
+                    <BookOpenText className="h-3.5 w-3.5" />
+                    查看完整教程
                   </Button>
                 </motion.div>
 
@@ -224,6 +252,69 @@ export default function LandingPage() {
                 </ol>
               </motion.div>
             </motion.div>
+          </div>
+        </section>
+
+        {/* ── 全局 AI 侧栏 ───────────────────────────────── */}
+        <section className="border-y border-border bg-[var(--factory-side)]">
+          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-center lg:py-16">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-medium text-[var(--factory-accent)]">
+                <PanelRightOpen className="h-4 w-4" />
+                全局 AI 决策助手
+              </div>
+              <h2 className="mt-3 text-2xl font-semibold leading-tight sm:text-3xl">
+                不离开当前工作，也能随时问 AI
+              </h2>
+              <p className="mt-3 max-w-xl text-sm leading-7 text-muted-foreground">
+                图片、视频、Listing 和运营页面共用同一个右下角入口。打开侧栏后，AI 会读取当前页面、选中素材和工作模式，关闭侧栏也不会取消正在执行的任务。
+              </p>
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <Button onClick={openTutorial} className="h-10 gap-2">
+                  查看使用教程
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+                <span className="text-[11px] text-muted-foreground">
+                  快捷键 Alt + A · 支持桌面与移动端
+                </span>
+              </div>
+            </div>
+
+            <div className="relative border border-border bg-[var(--factory-panel)] p-5 sm:p-6">
+              <div className="mb-4 flex items-center justify-between gap-4 border-b border-border pb-4">
+                <div>
+                  <p className="text-sm font-medium">当前页面上下文</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Agent 不再需要你重复说明正在看什么
+                  </p>
+                </div>
+                <div className="flex h-[58px] w-[58px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-full border-[1.5px] border-[rgba(216,181,109,0.9)] bg-[#181b18] text-foreground">
+                  <AssistantMark className="h-6 w-6" />
+                  <span className="text-[10px] font-semibold leading-3">问 AI</span>
+                </div>
+              </div>
+              <div>
+                {LANDING_ASSISTANT_CONTEXT.map((context, index) => (
+                  <div
+                    key={context.page}
+                    className="grid gap-2 border-b border-border py-4 last:border-b-0 sm:grid-cols-[28px_120px_minmax(0,1fr)]"
+                  >
+                    <span className="font-mono text-[10px] leading-6 text-[var(--factory-faint)]">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium">{context.page}</p>
+                      <p className="mt-0.5 text-[10px] text-[var(--factory-accent)]">
+                        {context.detail}
+                      </p>
+                    </div>
+                    <p className="text-xs leading-6 text-muted-foreground">
+                      {context.result}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </section>
 
@@ -376,8 +467,8 @@ export default function LandingPage() {
 
         {/* ── AI 智能助手 ──────────────────────────────────── */}
         <section className="max-w-5xl mx-auto px-4 py-16">
-          <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">AI 智能助手，说一句话就干活</h2>
-          <p className="text-sm text-slate-500 text-center mb-8">评论分析、Listing、营销视频和店铺任务都可以直接交给 Agent</p>
+          <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">从一句经营问题，到可复核的执行结果</h2>
+          <p className="text-sm text-slate-500 text-center mb-8">图片检查、Listing 风险、政策依据和视频任务都可以直接交给 Agent</p>
           <div className="grid md:grid-cols-3 gap-4">
             {LANDING_AGENT_EXAMPLES.map((example) => (
               <motion.div key={example.prompt} initial={false}
@@ -544,12 +635,7 @@ export default function LandingPage() {
         {/* ── 数据指标 ────────────────────────────────────── */}
         <section className="max-w-3xl mx-auto px-4 py-12">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { value: '20', label: 'AI 业务工具', tone: 'text-slate-100' },
-              { value: '6', label: '预设工作流', tone: 'text-amber-400' },
-              { value: '11', label: '平台文案支持', tone: 'text-emerald-400' },
-              { value: '2', label: '真实店铺连接', tone: 'text-amber-400' },
-            ].map((s) => (
+            {LANDING_STATS.map((s) => (
               <div key={s.label} className="rounded-xl border border-white/10 bg-white/5 p-4 text-center shadow-sm">
                 <p className={`text-2xl font-bold font-mono ${s.tone}`}>{s.value}</p>
                 <p className="text-xs text-slate-500 mt-1">{s.label}</p>
@@ -566,6 +652,10 @@ export default function LandingPage() {
             <p className="text-sm text-muted-foreground">无需信用卡，无需配置 API Key</p>
             <Button size="lg" onClick={() => navigate(isLoggedIn ? '/app/dashboard' : '/register')} className="h-11 px-6 text-sm gap-1.5 shadow-sm">
               {isLoggedIn ? '进入应用' : '创建免费账号'} <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={openTutorial} className="gap-1.5">
+              <BookOpenText className="h-3.5 w-3.5" />
+              先看使用教程
             </Button>
           </motion.div>
         </section>

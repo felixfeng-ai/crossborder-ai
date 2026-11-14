@@ -21,7 +21,7 @@ describe('石墨决策台设计契约', () => {
     expect(globals).not.toContain('Instrument Sans')
   })
 
-  it('只保留石墨决策台主题并移除旧光效 token', () => {
+  it('保留石墨默认主题并移除旧光效 token', () => {
     const globals = readSource('src/styles/globals.css')
     const themes = readSource('src/utils/themes.ts')
 
@@ -32,7 +32,9 @@ describe('石墨决策台设计契约', () => {
     expect(globals).toContain('--font-data: var(--font-latin)')
     expect(globals).not.toContain('--aurora-a')
     expect(globals).not.toContain('--gradient-from')
-    expect(themes).toContain("name: 'graphite'")
+    expect(themes).toContain("DEFAULT_THEME_MODE = 'graphite'")
+    expect(themes).toContain("'paper'")
+    expect(themes).toContain("'harbor'")
     expect(themes).not.toContain("name: 'ocean'")
     expect(themes).not.toContain("name: 'forest'")
   })

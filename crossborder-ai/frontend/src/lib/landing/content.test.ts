@@ -37,7 +37,7 @@ describe('landing content facts', () => {
     expect(LANDING_STATS).toContainEqual({
       value: '24',
       label: 'AI 业务工具',
-      tone: 'text-slate-100',
+      tone: 'text-foreground',
     })
   })
 

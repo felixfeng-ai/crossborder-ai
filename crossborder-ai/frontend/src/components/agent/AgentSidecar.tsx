@@ -117,9 +117,9 @@ export function AgentSidecar() {
         className={[
           'fixed bottom-5 right-5 z-40 flex h-[72px] w-[72px] flex-col items-center justify-center gap-0.5',
           'lg:h-[78px] lg:w-[78px]',
-          'rounded-full border-[1.5px] border-[rgba(216,181,109,0.9)] bg-[#181b18] text-[var(--factory-ink)]',
-          'shadow-[0_12px_32px_rgba(0,0,0,0.42)] transition-all duration-200',
-          'hover:-translate-y-0.5 hover:border-[var(--factory-accent)] hover:bg-[#20231f] hover:shadow-[0_15px_38px_rgba(0,0,0,0.46),0_0_0_4px_rgba(216,181,109,0.12)]',
+          'rounded-full border-[1.5px] border-[var(--factory-accent)] bg-[var(--factory-panel)] text-foreground',
+          'shadow-[0_12px_32px_rgba(0,0,0,0.3)] transition-all duration-200',
+          'hover:-translate-y-0.5 hover:bg-[var(--factory-raised)] hover:shadow-[0_15px_38px_rgba(0,0,0,0.34)]',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           isOpen
             ? 'pointer-events-none translate-y-2 opacity-0'

@@ -6,9 +6,9 @@ import ErrorBoundary from '@/components/common/ErrorBoundary'
 import { TelemetryTracker } from '@/components/telemetry/TelemetryTracker'
 import './styles/globals.css'
 import './i18n'
-import { initTheme } from '@/utils/themes'
+import { bootstrapTheme } from '@/stores/themeStore'
 
-initTheme() // 加载主题
+bootstrapTheme() // 恢复主题并监听系统变化
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

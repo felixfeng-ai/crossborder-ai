@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import apiClient from '@/api/client'
 import { getHeaderContext } from '@/lib/navigation'
 import { normalizeLanguageCode } from '@/i18n/language'
+import { ThemeSwitcher } from '@/components/theme/ThemeSwitcher'
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -143,6 +144,8 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <ThemeSwitcher />
 
         {/* 店铺切换 */}
         {stores.length > 0 && (

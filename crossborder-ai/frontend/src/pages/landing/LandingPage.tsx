@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/authStore'
 import {
-  Sparkles, Globe, ShoppingBag, Bot, DollarSign, ShieldCheck, TrendingUp, ImageIcon,
+  Sparkles, ShoppingBag, Bot, DollarSign, ShieldCheck, TrendingUp, ImageIcon,
   ArrowRight, CheckCircle2, Zap, MessageSquareQuote, Clapperboard, FolderOpen,
   Play, Video,
   BookOpenText, PanelRightOpen,
@@ -12,6 +12,9 @@ import type { LucideIcon } from 'lucide-react'
 import { BrandMark } from '@/components/brand/BrandMark'
 import { AssistantMark } from '@/components/brand/AssistantMark'
 import PublicLegalFooter from '@/components/legal/PublicLegalFooter'
+import { LandingDecisionPreview } from '@/components/landing/LandingDecisionPreview'
+import { LandingPlatformStrip } from '@/components/landing/LandingPlatformStrip'
+import { ThemeSwitcher } from '@/components/theme/ThemeSwitcher'
 import apiClient from '@/api/client'
 import {
   FALLBACK_CREDIT_PACKS,
@@ -20,11 +23,9 @@ import {
   LANDING_AGENT_EXAMPLES,
   LANDING_FEATURES,
   LANDING_FLOW,
-  LANDING_PIPELINE,
   LANDING_STATS,
   LANDING_VIDEO_MODES,
   LANDING_VIDEO_STYLES,
-  SUPPORTED_COPY_PLATFORMS,
   planDisplayName,
   planPriceLabel,
   planValidityLabel,
@@ -41,14 +42,6 @@ const FEATURE_ICONS: Record<LandingFeatureIcon, LucideIcon> = {
   media: ImageIcon,
   channel: ShoppingBag,
   ops: Zap,
-}
-
-const PIPELINE_ICONS: Record<(typeof LANDING_PIPELINE)[number]['icon'], LucideIcon> = {
-  source: Globe,
-  market: TrendingUp,
-  voice: MessageSquareQuote,
-  media: ImageIcon,
-  channel: ShoppingBag,
 }
 
 const FLOW_ICONS: LucideIcon[] = [
@@ -112,7 +105,7 @@ export default function LandingPage() {
     <div className="relative min-h-[100dvh] overflow-hidden bg-[var(--factory-ground)] text-foreground">
       {/* ── 导航 ────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 border-b border-border bg-[var(--factory-side)]">
-        <div className="max-w-5xl mx-auto flex items-center justify-between h-14 px-4 md:px-6">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 md:px-6">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded border border-border bg-secondary">
               <BrandMark className="h-4 w-4 text-foreground" />
@@ -130,6 +123,7 @@ export default function LandingPage() {
               <span className="sm:hidden">教程</span>
               <span className="hidden sm:inline">使用教程</span>
             </Button>
+            <ThemeSwitcher />
             {isLoggedIn ? (
               <Button size="sm" onClick={() => navigate('/app/dashboard')}>进入应用</Button>
             ) : (
@@ -144,111 +138,63 @@ export default function LandingPage() {
 
       <main className="relative z-10">
         {/* ── HERO ─────────────────────────────────────────── */}
-        <section className="relative overflow-hidden">
-          <div className="max-w-6xl mx-auto px-4 pt-20 pb-14 relative">
-            <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center">
-              <div className="max-w-2xl space-y-6">
-                <div>
-                  <span className="inline-flex items-center gap-1.5 rounded border border-border bg-card px-3.5 py-1 text-xs font-medium text-muted-foreground">
-                    <Sparkles className="h-3 w-3" /> 跨境电商 AI 决策与执行工作台
-                  </span>
-                </div>
+        <section data-landing-hero>
+          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(380px,0.92fr)] lg:items-center lg:py-20">
+            <div className="min-w-0 max-w-2xl">
+              <h1 className="text-[38px] font-semibold leading-[1.1] text-foreground sm:text-5xl md:text-[56px]">
+                <span className="block">从选品判断到合规上架</span>
+                <span className="block text-[var(--factory-accent)]">让 AI 跑完整条运营链路</span>
+              </h1>
+              <p className="mt-6 max-w-xl text-base leading-7 text-muted-foreground">
+                输入商品链接、品类或买家评论，自动完成市场判断、利润测算、Listing、合规、图片视频与渠道发布。
+              </p>
 
-                <div className="space-y-4">
-                  <h1 className="text-3xl font-bold leading-[1.16] tracking-normal text-foreground sm:text-4xl md:text-5xl">
-                    <span className="block">从选品判断到合规上架</span>
-                    <span className="block">的一体化 AI 运营台</span>
-                  </h1>
-                  <p className="max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    输入品类、商品链接或买家评论，AI Agent 串起市场判断、VOC、Listing、合规、商品图片与视频、SKU 与店铺执行。新增全局 AI 侧栏，让助手在当前页面直接读取任务上下文。
-                  </p>
-                </div>
-
-                {/* AI 分析输入框（真实入口，分析在登录后运行） */}
-                <div className="w-full max-w-xl space-y-3">
-                  <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-1.5">
-                    <input
-                      value={keyword}
-                      onChange={(e) => setKeyword(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
-                      placeholder="输入品类名，如：蓝牙耳机、瑜伽裤、智能手表..."
-                      className="h-10 min-w-0 flex-1 rounded bg-transparent px-3 text-sm outline-none"
-                    />
-                    <Button onClick={handleAnalyze} className="h-10 shrink-0 gap-1.5 px-4">
-                      <Sparkles className="h-4 w-4" /> AI 分析
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">Free 每月含 30 积分 · 注册后运行真实 AI 市场分析</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={openVideoWorkspace}
-                    className="h-9 gap-2 border-[color:var(--factory-accent)]/35 px-3 text-xs"
-                  >
-                    <Clapperboard className="h-3.5 w-3.5" />
-                    用商品图生成视频
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={openTutorial}
-                    className="h-9 gap-2 px-2 text-xs text-muted-foreground"
-                  >
-                    <BookOpenText className="h-3.5 w-3.5" />
-                    查看完整教程
-                  </Button>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-5 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />无需信用卡</span>
-                  <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />无需配置模型 Key</span>
-                  <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />结果可追溯</span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  {SUPPORTED_COPY_PLATFORMS.map((p) => (
-                    <span key={p} className="rounded-md border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground">
-                      {p}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-[11px] leading-5 text-muted-foreground">
-                  11 个平台支持 Listing 文案生成；Shopify 支持草稿发布，Amazon 支持 SP-API Listing 发布。
-                </p>
+              <div className="mt-7 flex max-w-xl items-center gap-2 border border-[var(--factory-line-strong)] bg-[var(--factory-panel)] p-2">
+                <input
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                  onKeyDown={(event) => event.key === 'Enter' && handleAnalyze()}
+                  placeholder="输入商品链接、品类或买家评论..."
+                  className="h-11 min-w-0 flex-1 rounded bg-transparent px-3 text-sm text-foreground outline-none placeholder:text-[var(--factory-faint)]"
+                  aria-label="商品链接、品类或买家评论"
+                />
+                <Button onClick={handleAnalyze} className="h-11 shrink-0 gap-1.5 px-5">
+                  <Sparkles className="h-4 w-4" />
+                  开始 AI 分析
+                </Button>
               </div>
 
-              {/* 右栏展示真实决策链路，填满首屏空白并给出下一段内容的视觉锚点。 */}
-              <div
-                className="border-t border-border pt-7 lg:border-l lg:border-t-0 lg:pl-8"
-                aria-label="AI 商品决策链路"
-              >
-                <div className="mb-5 flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">从商品证据到上架</p>
-                    <p className="mt-1 text-xs text-muted-foreground">每一步都留下可复核结果</p>
-                  </div>
-                  <span className="font-mono text-[11px] text-[var(--factory-accent)]">05 STEPS</span>
-                </div>
-                <ol className="space-y-4">
-                  {LANDING_PIPELINE.map((itemData) => {
-                    const Icon = PIPELINE_ICONS[itemData.icon]
-                    return (
-                      <li key={itemData.step} className="grid grid-cols-[32px_28px_minmax(0,1fr)] items-start gap-2">
-                        <span className="font-mono text-[11px] leading-6 text-muted-foreground">{itemData.step}</span>
-                        <Icon className="mt-1 h-4 w-4 text-[var(--factory-accent)]" />
-                        <div className="min-w-0 border-b border-border/70 pb-3">
-                          <p className="text-sm font-medium text-foreground">{itemData.title}</p>
-                          <p className="mt-0.5 text-xs text-muted-foreground">{itemData.detail}</p>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ol>
+              <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span>Free 每月含 30 积分</span>
+                <span>无需信用卡</span>
+                <span>无需配置模型 Key</span>
+              </p>
+
+              <div className="mt-5 flex flex-wrap items-center gap-5">
+                <button
+                  type="button"
+                  onClick={openVideoWorkspace}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-[var(--factory-accent)]"
+                >
+                  <Clapperboard className="h-3.5 w-3.5" />
+                  用商品图生成视频
+                </button>
+                <button
+                  type="button"
+                  onClick={openTutorial}
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <BookOpenText className="h-3.5 w-3.5" />
+                  查看完整教程
+                </button>
               </div>
             </div>
+
+            <LandingDecisionPreview onContinue={openVideoWorkspace} />
           </div>
         </section>
+
+        <LandingPlatformStrip />
 
         {/* ── 全局 AI 侧栏 ───────────────────────────────── */}
         <section className="deferred-section border-y border-border bg-[var(--factory-side)]">
@@ -283,7 +229,7 @@ export default function LandingPage() {
                     Agent 不再需要你重复说明正在看什么
                   </p>
                 </div>
-                <div className="flex h-[58px] w-[58px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-full border-[1.5px] border-[rgba(216,181,109,0.9)] bg-[#181b18] text-foreground">
+                <div className="flex h-[58px] w-[58px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-full border-[1.5px] border-[var(--factory-accent)] bg-[var(--factory-panel)] text-foreground">
                   <AssistantMark className="h-6 w-6" />
                   <span className="text-[10px] font-semibold leading-3">问 AI</span>
                 </div>
@@ -330,11 +276,11 @@ export default function LandingPage() {
               <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,9,9,0.08)_0%,rgba(8,9,9,0.22)_42%,rgba(8,9,9,0.94)_100%)]" />
 
               <div className="absolute left-5 right-5 top-5 flex items-center justify-between gap-3">
-                <span className="inline-flex items-center gap-2 border border-white/15 bg-black/45 px-3 py-1.5 text-xs text-white backdrop-blur-sm">
+                <span className="inline-flex items-center gap-2 border border-white/15 bg-black/65 px-3 py-1.5 text-xs text-white">
                   <Clapperboard className="h-3.5 w-3.5" />
                   视频工作台
                 </span>
-                <span className="border border-white/15 bg-black/45 px-2.5 py-1 font-mono text-[10px] text-white/75">
+                <span className="border border-white/15 bg-black/65 px-2.5 py-1 font-mono text-[10px] text-white/75">
                   9:16 · 768P
                 </span>
               </div>
@@ -420,18 +366,18 @@ export default function LandingPage() {
 
         {/* ── 流程 ────────────────────────────────────────── */}
         <section className="deferred-section max-w-4xl mx-auto px-4 py-16">
-          <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">从判断到执行，一条链路完成</h2>
-          <p className="text-sm text-slate-500 text-center mb-8">市场与利润 → VOC → Listing → 图片视频 → 店铺发布与巡检</p>
+          <h2 className="mb-1 text-center text-lg font-semibold text-foreground">从判断到执行，一条链路完成</h2>
+          <p className="mb-8 text-center text-sm text-muted-foreground">市场与利润 → VOC → Listing → 图片视频 → 店铺发布与巡检</p>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
             {LANDING_FLOW.map((step, index) => {
               const Icon = FLOW_ICONS[index]
               return (
                 <div key={step.step}
-                  className="text-center p-4 rounded-xl bg-white/5 border border-white/10 shadow-sm">
-                  <div className="text-xs font-mono text-amber-400 mb-2">{step.step}</div>
-                  <Icon className="h-5 w-5 text-amber-400 mx-auto mb-2" />
-                  <h3 className="font-medium text-sm text-slate-200 mb-0.5">{step.title}</h3>
-                  <p className="text-xs text-slate-500">{step.desc}</p>
+                  className="landing-panel rounded-lg p-4 text-center">
+                  <div className="mb-2 font-mono text-xs text-[var(--factory-accent)]">{step.step}</div>
+                  <Icon className="mx-auto mb-2 h-5 w-5 text-[var(--factory-accent)]" />
+                  <h3 className="mb-0.5 text-sm font-medium text-foreground">{step.title}</h3>
+                  <p className="text-xs text-muted-foreground">{step.desc}</p>
                 </div>
               )
             })}
@@ -440,19 +386,19 @@ export default function LandingPage() {
 
         {/* ── 功能 ────────────────────────────────────────── */}
         <section className="deferred-section max-w-5xl mx-auto px-4 py-16">
-          <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">从真实反馈到店铺执行，覆盖完整运营链路</h2>
-          <p className="text-sm text-slate-500 text-center mb-8">选品、评论洞察、内容、素材、发布和巡检使用同一套商品与任务上下文</p>
+          <h2 className="mb-1 text-center text-lg font-semibold text-foreground">从真实反馈到店铺执行，覆盖完整运营链路</h2>
+          <p className="mb-8 text-center text-sm text-muted-foreground">选品、评论洞察、内容、素材、发布和巡检使用同一套商品与任务上下文</p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
             {LANDING_FEATURES.map((feature) => {
               const Icon = FEATURE_ICONS[feature.icon]
               return (
                 <div key={feature.title}
-                  className="rounded-xl bg-white/5 border border-white/10 p-5 hover:shadow-md transition-shadow">
-                  <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center mb-3">
-                    <Icon className="h-4 w-4 text-amber-400" />
+                  className="landing-panel rounded-lg p-5 transition-colors hover:border-[var(--factory-line-strong)]">
+                  <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--factory-accent)_9%,transparent)]">
+                    <Icon className="h-4 w-4 text-[var(--factory-accent)]" />
                   </div>
-                  <h3 className="font-medium text-sm text-slate-100 mb-1">{feature.title}</h3>
-                  <p className="text-sm text-slate-500 leading-relaxed">{feature.desc}</p>
+                  <h3 className="mb-1 text-sm font-medium text-foreground">{feature.title}</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">{feature.desc}</p>
                 </div>
               )
             })}
@@ -461,17 +407,17 @@ export default function LandingPage() {
 
         {/* ── AI 智能助手 ──────────────────────────────────── */}
         <section className="deferred-section max-w-5xl mx-auto px-4 py-16">
-          <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">从一句经营问题，到可复核的执行结果</h2>
-          <p className="text-sm text-slate-500 text-center mb-8">图片检查、Listing 风险、政策依据和视频任务都可以直接交给 Agent</p>
+          <h2 className="mb-1 text-center text-lg font-semibold text-foreground">从一句经营问题，到可复核的执行结果</h2>
+          <p className="mb-8 text-center text-sm text-muted-foreground">图片检查、Listing 风险、政策依据和视频任务都可以直接交给 Agent</p>
           <div className="grid md:grid-cols-3 gap-4">
             {LANDING_AGENT_EXAMPLES.map((example) => (
               <div key={example.prompt}
-                className="rounded-xl bg-white/5 border border-white/10 p-5">
+                className="landing-panel rounded-lg p-5">
                 <div className="flex items-start gap-2">
-                  <Bot className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
+                  <Bot className="mt-0.5 h-4 w-4 shrink-0 text-[var(--factory-accent)]" />
                   <div>
-                    <p className="text-sm font-medium text-slate-100">{example.prompt}</p>
-                    <p className="text-xs text-slate-500 mt-2 leading-relaxed">{example.steps}</p>
+                    <p className="text-sm font-medium text-foreground">{example.prompt}</p>
+                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{example.steps}</p>
                   </div>
                 </div>
               </div>
@@ -481,53 +427,53 @@ export default function LandingPage() {
 
         {/* ── 产品展示 ────────────────────────────────────── */}
         <section className="deferred-section max-w-5xl mx-auto px-4 py-16">
-          <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">从真实评论证据到 Listing</h2>
-          <p className="text-sm text-slate-500 text-center mb-8">VOC 提炼买家关注点，结果自动进入后续 Listing 生成上下文</p>
+          <h2 className="mb-1 text-center text-lg font-semibold text-foreground">从真实评论证据到 Listing</h2>
+          <p className="mb-8 text-center text-sm text-muted-foreground">VOC 提炼买家关注点，结果自动进入后续 Listing 生成上下文</p>
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4 shadow-sm">
+            <div className="landing-panel rounded-lg p-4">
               <div className="flex items-center justify-between gap-2 mb-3">
-                <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">VOC 示例输入</div>
-                <span className="text-[10px] text-slate-500">示例数据</span>
+                <div className="text-xs font-medium text-muted-foreground">VOC 示例输入</div>
+                <span className="text-[10px] text-muted-foreground">示例数据</span>
               </div>
               <div className="space-y-3 text-sm">
                 <div className="flex gap-3">
-                  <div className="w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center text-slate-400">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--factory-raised)] text-muted-foreground">
                     <FolderOpen className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="font-medium text-slate-100">通勤耳机 · 3 条评论导入</p>
-                    <p className="text-slate-500 text-xs mt-1">评论、CSV 和商品事实在同一个工作区</p>
+                    <p className="font-medium text-foreground">通勤耳机 · 3 条评论导入</p>
+                    <p className="mt-1 text-xs text-muted-foreground">评论、CSV 和商品事实在同一个工作区</p>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {['续航够用', '久戴夹耳', '地铁降噪一般', '连接稳定'].map((tag) => (
-                    <span key={tag} className="border border-white/10 px-2 py-1 text-[11px] text-slate-400">
+                    <span key={tag} className="landing-chip px-2 py-1 text-[11px]">
                       {tag}
                     </span>
                   ))}
                 </div>
-                <p className="text-xs leading-5 text-slate-500">
+                <p className="text-xs leading-5 text-muted-foreground">
                   AI 自动聚合痛点、卖点、成交异议、关键词与情感倾向，并只保存聚合洞察。
                 </p>
               </div>
             </div>
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-sm">
+            <div className="landing-accent-panel rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
-                <div className="text-xs font-medium text-amber-400 uppercase tracking-wide">VOC + Listing 输出</div>
-                <span className="text-xs text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full">上下文已复用</span>
+                <div className="text-xs font-medium text-[var(--factory-accent)]">VOC + Listing 输出</div>
+                <span className="rounded bg-[color-mix(in_srgb,var(--factory-success)_14%,transparent)] px-2 py-0.5 text-xs text-[var(--factory-success)]">上下文已复用</span>
               </div>
               <div className="space-y-3 text-sm">
                 <div>
-                  <p className="text-[11px] text-amber-400">买家最在意</p>
-                  <p className="mt-1 text-slate-200">舒适佩戴、稳定连接和日常续航</p>
+                  <p className="text-[11px] text-[var(--factory-accent)]">买家最在意</p>
+                  <p className="mt-1 text-foreground">舒适佩戴、稳定连接和日常续航</p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-amber-400">Listing 生成策略</p>
-                  <p className="mt-1 text-sm leading-6 text-slate-200">
+                  <p className="text-[11px] text-[var(--factory-accent)]">Listing 生成策略</p>
+                  <p className="mt-1 text-sm leading-6 text-foreground">
                     优先表达真实使用场景，避免未经验证的绝对降噪和长时间无压宣称。
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-1.5 border-t border-amber-500/20 pt-3 text-[11px] text-slate-400">
+                <div className="flex flex-wrap gap-1.5 border-t border-[color-mix(in_srgb,var(--factory-accent)_24%,transparent)] pt-3 text-[11px] text-muted-foreground">
                   <span>痛点反哺卖点</span>
                   <span>·</span>
                   <span>异议进入合规检查</span>
@@ -537,13 +483,13 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
-          <p className="text-xs text-slate-500 text-center mt-3">示例仅展示输入与输出结构；实际结果取决于商品事实和导入评论</p>
+          <p className="mt-3 text-center text-xs text-muted-foreground">示例仅展示输入与输出结构；实际结果取决于商品事实和导入评论</p>
         </section>
 
         {/* ── 定价 ────────────────────────────────────────── */}
         <section className="deferred-section max-w-3xl mx-auto px-4 py-16">
-          <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">简单透明的定价</h2>
-          <p className="text-sm text-slate-500 text-center mb-8">
+          <h2 className="mb-1 text-center text-lg font-semibold text-foreground">简单透明的定价</h2>
+          <p className="mb-8 text-center text-sm text-muted-foreground">
             Free 30 积分起；套餐积分按 30 天周期发放，购买积分不随月度额度重置
           </p>
           <div className="grid md:grid-cols-3 gap-4">
@@ -552,32 +498,32 @@ export default function LandingPage() {
                 key={plan.id}
                 className={
                   plan.recommended
-                    ? 'rounded-xl border-2 border-amber-500/30 bg-amber-500/10 p-6 relative'
-                    : 'rounded-xl border border-white/10 bg-white/5 p-6'
+                    ? 'landing-accent-panel relative rounded-lg border-2 p-6'
+                    : 'landing-panel rounded-lg p-6'
                 }
               >
                 {plan.recommended && (
-                  <div className="absolute -top-2.5 right-4 bg-amber-500 text-white text-xs px-3 py-0.5 rounded-full">
+                  <div className="absolute -top-2.5 right-4 rounded bg-[var(--factory-accent)] px-3 py-0.5 text-xs text-[var(--factory-ground)]">
                     推荐
                   </div>
                 )}
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <h3 className="font-semibold text-slate-100">{planDisplayName(plan.id)}</h3>
-                    <p className="mt-1 text-[11px] text-slate-500">{plan.description}</p>
+                    <h3 className="font-semibold text-foreground">{planDisplayName(plan.id)}</h3>
+                    <p className="mt-1 text-[11px] text-muted-foreground">{plan.description}</p>
                   </div>
-                  <span className="shrink-0 border border-white/10 px-2 py-1 text-[10px] text-slate-500">
+                  <span className="landing-chip shrink-0 px-2 py-1 text-[10px]">
                     {planValidityLabel(plan)}
                   </span>
                 </div>
-                <p className="text-2xl font-bold text-slate-100 mt-3">
+                <p className="mt-3 text-2xl font-semibold text-foreground">
                   {planPriceLabel(plan)}
-                  {plan.price > 0 && <span className="text-sm font-normal text-slate-500">/月</span>}
+                  {plan.price > 0 && <span className="text-sm font-normal text-muted-foreground">/月</span>}
                 </p>
-                <ul className="mt-4 space-y-2 text-sm text-slate-400">
+                <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-2">
-                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--factory-success)]" />
                       <span>{feature}</span>
                     </li>
                   ))}
@@ -598,26 +544,26 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
-          <div className="mt-8 border-t border-white/10 pt-6">
+          <div className="mt-8 border-t border-border pt-6">
             <div className="flex flex-wrap items-end justify-between gap-2">
               <div>
-                <h3 className="text-sm font-semibold text-slate-100">超额积分包</h3>
-                <p className="mt-1 text-xs text-slate-500">套餐额度不足时补充，购买积分不随月度额度重置</p>
+                <h3 className="text-sm font-semibold text-foreground">超额积分包</h3>
+                <p className="mt-1 text-xs text-muted-foreground">套餐额度不足时补充，购买积分不随月度额度重置</p>
               </div>
-              <span className="text-[11px] text-slate-500">视频最低 12 积分/4 秒</span>
+              <span className="text-[11px] text-muted-foreground">视频最低 12 积分/4 秒</span>
             </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {creditPacks.map((pack) => (
-                <div key={pack.id} className="flex items-center justify-between border border-white/10 bg-white/[0.03] px-3 py-2.5">
+                <div key={pack.id} className="landing-panel flex items-center justify-between rounded-md px-3 py-2.5">
                   <div>
-                    <p className="text-xs font-medium text-slate-200">{pack.name}</p>
-                    <p className="metric-number mt-0.5 text-[11px] text-slate-500">{pack.credits.toLocaleString('zh-CN')} 积分</p>
+                    <p className="text-xs font-medium text-foreground">{pack.name}</p>
+                    <p className="metric-number mt-0.5 text-[11px] text-muted-foreground">{pack.credits.toLocaleString('zh-CN')} 积分</p>
                   </div>
-                  <p className="metric-number text-sm font-semibold text-amber-400">¥{pack.price}</p>
+                  <p className="metric-number text-sm font-semibold text-[var(--factory-accent)]">¥{pack.price}</p>
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-[11px] leading-5 text-slate-500">
+            <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
               套餐到期后自动回到 Free，未使用的购买积分继续保留。图片、视频、配音等高成本能力按实际用量扣减积分。
             </p>
           </div>
@@ -627,9 +573,9 @@ export default function LandingPage() {
         <section className="deferred-section max-w-3xl mx-auto px-4 py-12">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {LANDING_STATS.map((s) => (
-              <div key={s.label} className="rounded-xl border border-white/10 bg-white/5 p-4 text-center shadow-sm">
-                <p className={`text-2xl font-bold font-mono ${s.tone}`}>{s.value}</p>
-                <p className="text-xs text-slate-500 mt-1">{s.label}</p>
+              <div key={s.label} className="landing-panel rounded-lg p-4 text-center">
+                <p className={`font-mono text-2xl font-semibold ${s.tone}`}>{s.value}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{s.label}</p>
               </div>
             ))}
           </div>

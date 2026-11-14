@@ -6,33 +6,79 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="VeyaShip - AI 跨境运营台：商品决策、Listing 生成、图片与视频创作、素材管理和渠道发布" />
     <meta name="theme-color" content="#0d0e0e" />
+    <script>
+      ;(() => {
+        const key = 'veya-theme'
+        const allowed = ['graphite', 'paper', 'harbor', 'system']
+        let mode = 'graphite'
+        try {
+          const stored = window.localStorage.getItem(key)
+          if (allowed.includes(stored)) mode = stored
+        } catch {}
+        const resolved =
+          mode === 'system'
+            ? window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'graphite'
+              : 'paper'
+            : mode
+        const root = document.documentElement
+        root.dataset.theme = resolved
+        root.dataset.themeMode = mode
+        root.classList.toggle('dark', resolved === 'graphite')
+        root.style.colorScheme = resolved === 'graphite' ? 'dark' : 'light'
+        document
+          .querySelector('meta[name="theme-color"]')
+          ?.setAttribute('content', resolved === 'graphite' ? '#0d0e0e' : '#ffffff')
+      })()
+    </script>
     <link rel="preload" href="/fonts/inter-latin-variable.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
     <title>VeyaShip · AI 跨境运营台</title>
     <style>
+      html {
+        --boot-ground: #0d0e0e;
+        --boot-panel: #151615;
+        --boot-ink: #b4b0a8;
+        --boot-line: rgba(243, 242, 237, 0.12);
+        --boot-accent: #d8b56d;
+      }
+      html[data-theme="paper"] {
+        --boot-ground: #ffffff;
+        --boot-panel: #f7f7f4;
+        --boot-ink: #5f615b;
+        --boot-line: #e2e3de;
+        --boot-accent: #9a6918;
+      }
+      html[data-theme="harbor"] {
+        --boot-ground: #f2f7f7;
+        --boot-panel: #ffffff;
+        --boot-ink: #536a6d;
+        --boot-line: #d7e3e3;
+        --boot-accent: #16696c;
+      }
       .app-boot-shell {
         display: flex;
         min-height: 100dvh;
         align-items: center;
         justify-content: center;
-        background: #0d0e0e;
-        color: #b4b0a8;
+        background: var(--boot-ground);
+        color: var(--boot-ink);
         font: 13px/1.5 "Inter", "Noto Sans SC", "Microsoft YaHei UI", sans-serif;
       }
       .app-boot-card {
         display: flex;
         align-items: center;
         gap: 10px;
-        border: 1px solid rgba(243, 242, 237, 0.12);
-        background: #151615;
+        border: 1px solid var(--boot-line);
+        background: var(--boot-panel);
         padding: 12px 16px;
       }
       .app-boot-mark {
         width: 9px;
         height: 9px;
         border-radius: 50%;
-        background: #d8b56d;
-        box-shadow: 0 0 0 4px rgba(216, 181, 109, 0.1);
+        background: var(--boot-accent);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--boot-accent) 12%, transparent);
       }
     </style>
   </head>

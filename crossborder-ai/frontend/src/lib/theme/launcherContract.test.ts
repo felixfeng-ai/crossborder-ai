@@ -14,7 +14,8 @@ describe('AI launcher final contract', () => {
     expect(sidecar).toContain('rounded-full')
     expect(sidecar).toContain('h-[72px] w-[72px]')
     expect(sidecar).toContain('lg:h-[78px] lg:w-[78px]')
-    expect(sidecar).toContain('border-[rgba(216,181,109,0.9)]')
+    expect(sidecar).toContain('border-[var(--factory-accent)]')
+    expect(sidecar).toContain('bg-[var(--factory-panel)]')
     expect(sidecar).not.toContain(
       'absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[var(--factory-mint)]',
     )

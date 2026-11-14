@@ -32,6 +32,20 @@ VeyaShip 是跨境卖家的石墨决策台：以中性近黑层级、纸白命�
 
 ### Colour roles
 
+#### Theme modes
+
+| Mode | Role |
+| --- | --- |
+| `graphite` | Default theme. Preserves the existing graphite workspace and amber signal. |
+| `paper` | Optional white theme for daytime and general operations. |
+| `harbor` | Optional teal theme for logistics, compliance and multi-channel operations. |
+| `system` | Optional mode. Dark resolves to graphite, light resolves to paper. |
+
+- Theme changes only replace semantic tokens; layout, type, spacing, radii and component dimensions stay fixed.
+- `graphite` remains the fallback when no valid preference exists.
+- Theme choice is persisted locally and applied before React starts to prevent flashing.
+- Arbitrary user-defined colors are not supported.
+
 | Role | Value | Use |
 | --- | --- | --- |
 | Canvas | `#0D0E0E` | 页面底色 |

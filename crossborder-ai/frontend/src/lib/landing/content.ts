@@ -99,10 +99,10 @@ export const LANDING_ASSISTANT_CONTEXT = [
 ] as const
 
 export const LANDING_STATS = [
-  { value: '24', label: 'AI 业务工具', tone: 'text-slate-100' },
-  { value: '6', label: '预设工作流', tone: 'text-amber-400' },
-  { value: '11', label: '平台文案支持', tone: 'text-emerald-400' },
-  { value: '2', label: '真实店铺连接', tone: 'text-amber-400' },
+  { value: '24', label: 'AI 业务工具', tone: 'text-foreground' },
+  { value: '6', label: '预设工作流', tone: 'text-[var(--factory-accent)]' },
+  { value: '11', label: '平台文案支持', tone: 'text-[var(--factory-success)]' },
+  { value: '2', label: '真实店铺连接', tone: 'text-[var(--factory-accent)]' },
 ] as const
 
 export const LANDING_PIPELINE = [

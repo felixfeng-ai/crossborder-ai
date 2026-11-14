@@ -48,6 +48,9 @@
     --factory-danger: #d98b70;
     --factory-mint: #9dbbad;
     --factory-coral: #d98b70;
+    --factory-selection: rgba(216, 181, 109, 0.28);
+    --factory-scrollbar: #383a34;
+    --factory-scrollbar-hover: #4a4c44;
 
     --background: 120 4% 5%;
     --foreground: 50 20% 94%;
@@ -83,6 +86,94 @@
     --type-meta-line: 18px;
   }
 
+  /*
+   * paper 与 harbor 只覆盖语义 token，不改变任何布局尺寸。
+   * graphite 继续作为 :root 默认值，确保现有品牌主题不漂移。
+   */
+  html[data-theme="paper"] {
+    color-scheme: light;
+    --factory-ground: #ffffff;
+    --factory-side: #f7f7f4;
+    --factory-panel: #ffffff;
+    --factory-raised: #efefeb;
+    --factory-line: #e2e3de;
+    --factory-line-strong: #c9cbc4;
+    --factory-ink: #171815;
+    --factory-muted: #5f615b;
+    --factory-faint: #777a73;
+    --factory-accent: #9a6918;
+    --factory-warning: #9a6918;
+    --factory-success: #3f735e;
+    --factory-danger: #a55239;
+    --factory-mint: #3f735e;
+    --factory-coral: #a55239;
+    --factory-selection: rgba(154, 105, 24, 0.18);
+    --factory-scrollbar: #c9cbc4;
+    --factory-scrollbar-hover: #aeb1a9;
+
+    --background: 0 0% 100%;
+    --foreground: 80 5% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 80 5% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 80 5% 9%;
+    --primary: 80 5% 9%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 60 9% 95%;
+    --secondary-foreground: 80 5% 12%;
+    --muted: 60 10% 96%;
+    --muted-foreground: 80 3% 37%;
+    --accent: 39 58% 92%;
+    --accent-foreground: 39 75% 24%;
+    --destructive: 14 49% 43%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 75 8% 88%;
+    --input: 75 7% 78%;
+    --ring: 40 73% 35%;
+  }
+
+  html[data-theme="harbor"] {
+    color-scheme: light;
+    --factory-ground: #f2f7f7;
+    --factory-side: #e9f1f1;
+    --factory-panel: #ffffff;
+    --factory-raised: #dfeaea;
+    --factory-line: #d7e3e3;
+    --factory-line-strong: #b9cccc;
+    --factory-ink: #102426;
+    --factory-muted: #536a6d;
+    --factory-faint: #6d8082;
+    --factory-accent: #16696c;
+    --factory-warning: #9a6918;
+    --factory-success: #3f735e;
+    --factory-danger: #a55239;
+    --factory-mint: #3f735e;
+    --factory-coral: #a55239;
+    --factory-selection: rgba(22, 105, 108, 0.16);
+    --factory-scrollbar: #b9cccc;
+    --factory-scrollbar-hover: #9fb7b9;
+
+    --background: 180 25% 96%;
+    --foreground: 183 40% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 183 40% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 183 40% 10%;
+    --primary: 183 57% 16%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 180 22% 92%;
+    --secondary-foreground: 183 35% 14%;
+    --muted: 180 20% 94%;
+    --muted-foreground: 185 12% 38%;
+    --accent: 182 36% 88%;
+    --accent-foreground: 183 57% 16%;
+    --destructive: 14 49% 43%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 180 18% 87%;
+    --input: 180 17% 75%;
+    --ring: 182 66% 25%;
+  }
+
   * {
     @apply border-border;
   }
@@ -90,6 +181,11 @@
   html {
     color-scheme: dark;
     background: var(--factory-ground);
+  }
+
+  html[data-theme="paper"],
+  html[data-theme="harbor"] {
+    color-scheme: light;
   }
 
   body {
@@ -132,7 +228,7 @@
 
   ::selection {
     color: var(--factory-ink);
-    background: rgba(216, 181, 109, 0.28);
+    background: var(--factory-selection);
   }
 
   :focus-visible {
@@ -163,11 +259,11 @@
   ::-webkit-scrollbar-thumb {
     border: 3px solid var(--factory-ground);
     border-radius: 999px;
-    background: #383a34;
+    background: var(--factory-scrollbar);
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #4a4c44;
+    background: var(--factory-scrollbar-hover);
   }
 }
 
@@ -224,6 +320,27 @@
   .deferred-section {
     content-visibility: auto;
     contain-intrinsic-size: auto 760px;
+  }
+
+  .landing-panel {
+    border: 1px solid var(--factory-line);
+    background: var(--factory-panel);
+  }
+
+  .landing-soft-panel {
+    border: 1px solid var(--factory-line);
+    background: var(--factory-side);
+  }
+
+  .landing-accent-panel {
+    border: 1px solid color-mix(in srgb, var(--factory-accent) 30%, var(--factory-line));
+    background: color-mix(in srgb, var(--factory-accent) 7%, var(--factory-panel));
+  }
+
+  .landing-chip {
+    border: 1px solid var(--factory-line);
+    background: var(--factory-panel);
+    color: var(--factory-muted);
   }
 }
 

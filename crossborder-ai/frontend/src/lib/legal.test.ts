@@ -81,7 +81,7 @@ describe('公网法务与合规页面', () => {
       createElement(
         StaticRouter,
         { location: '/privacy' },
-        createElement(LegalDocumentPage, { document: getLegalDocument('/privacy') }),
+        createElement(LegalDocumentPage, { path: '/privacy' }),
       ),
     )
 
@@ -128,7 +128,7 @@ describe('公网法务与合规页面', () => {
       expect(markup).toContain(`href="${link.path}"`)
     }
     expect(landing).toContain('<PublicLegalFooter')
-    expect(app).toContain('LEGAL_DOCUMENTS.map')
+    expect(app).toContain('PUBLIC_LEGAL_PATHS.map')
     expect(app).toContain('<LegalDocumentPage')
   })
 })

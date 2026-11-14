@@ -1,3 +1,17 @@
+import {
+  LEGAL_CONTACT_EMAIL,
+  LEGAL_OPERATOR_DISCLOSURE,
+  LEGAL_OPERATOR_NAME,
+} from '@/lib/legalMeta'
+
+export {
+  LEGAL_CONTACT_EMAIL,
+  LEGAL_CONTACT_HREF,
+  LEGAL_OPERATOR_DISCLOSURE,
+  LEGAL_OPERATOR_NAME,
+  PUBLIC_LEGAL_LINKS,
+} from '@/lib/legalMeta'
+
 export type LegalSection = {
   id: string
   title: string
@@ -15,12 +29,6 @@ export type LegalDocument = {
   effectiveDate: string
   sections: LegalSection[]
 }
-
-export const LEGAL_CONTACT_EMAIL = 'admin@veyaship.com'
-export const LEGAL_CONTACT_HREF = `mailto:${LEGAL_CONTACT_EMAIL}`
-export const LEGAL_OPERATOR_NAME = '冯斯远'
-export const LEGAL_OPERATOR_DISCLOSURE =
-  `VeyaShip 由${LEGAL_OPERATOR_NAME}以个人经营者身份运营。`
 
 /**
  * 法务内容集中维护，确保公网页面、登录告知和页脚引用同一版本。
@@ -545,21 +553,6 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
     ],
   },
 ]
-
-export const PUBLIC_LEGAL_LINKS = LEGAL_DOCUMENTS.filter((document) =>
-  [
-    '/terms',
-    '/privacy',
-    '/data-processing',
-    '/ai-disclosure',
-    '/security',
-    '/report',
-    '/contact',
-  ].includes(document.path),
-).map((document) => ({
-  path: document.path,
-  label: document.shortTitle,
-}))
 
 export function getLegalDocument(pathname: string): LegalDocument {
   const document = LEGAL_DOCUMENTS.find((item) => item.path === pathname)

@@ -1,6 +1,10 @@
 import { Link } from 'react-router-dom'
 
-import { LEGAL_CONTACT_HREF, LEGAL_CONTACT_EMAIL, PUBLIC_LEGAL_LINKS } from '@/lib/legal'
+import {
+  LEGAL_CONTACT_HREF,
+  LEGAL_CONTACT_EMAIL,
+  PUBLIC_LEGAL_LINKS,
+} from '@/lib/legalMeta'
 
 /**
  * 公网页面共用法务页脚。

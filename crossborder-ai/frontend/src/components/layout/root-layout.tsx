@@ -1,11 +1,23 @@
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { Outlet, Navigate } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
 import { AgentSidecar } from '@/components/agent/AgentSidecar'
 import { useAuthStore } from '@/stores/authStore'
 import { useAgentSidecarStore } from '@/stores/agentSidecarStore'
+import { RouteFallback } from '@/components/common/RouteFallback'
 import { useEffect } from 'react'
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      staleTime: 5 * 60 * 1000,
+    },
+  },
+})
 
 export function RootLayout() {
   const { isAuthenticated, loadUser, isLoading, token } = useAuthStore()
@@ -38,10 +50,11 @@ export function RootLayout() {
   }
 
   return (
-    <div
-      data-app-shell="graphite-decision-desk"
-      className="app-canvas flex h-[100dvh] min-h-[100dvh] overflow-hidden"
-    >
+    <QueryClientProvider client={queryClient}>
+      <div
+        data-app-shell="graphite-decision-desk"
+        className="app-canvas flex h-[100dvh] min-h-[100dvh] overflow-hidden"
+      >
       {/* 桌面端侧边栏 */}
       <div className="hidden w-[232px] shrink-0 lg:flex">
         <Sidebar />
@@ -65,11 +78,14 @@ export function RootLayout() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header onOpenMenu={() => setMobileSidebar(true)} />
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
-          <Outlet />
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 
-      <AgentSidecar />
-    </div>
+        <AgentSidecar />
+      </div>
+    </QueryClientProvider>
   )
 }

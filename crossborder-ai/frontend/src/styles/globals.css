@@ -220,6 +220,11 @@
     border-radius: 50%;
     background: var(--factory-accent);
   }
+
+  .deferred-section {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 760px;
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {

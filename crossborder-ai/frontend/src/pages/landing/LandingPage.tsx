@@ -1,7 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -35,15 +33,6 @@ import {
   type LandingPlan,
 } from '@/lib/landing/content'
 
-const container = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.08 } },
-}
-const item = {
-  hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.25, 0.1, 0.25, 1] } },
-}
-
 const FEATURE_ICONS: Record<LandingFeatureIcon, LucideIcon> = {
   agent: Bot,
   assistant: Bot,
@@ -74,24 +63,36 @@ export default function LandingPage() {
   const navigate = useNavigate()
   const isLoggedIn = useAuthStore((s) => s.isAuthenticated)
   const [keyword, setKeyword] = useState('')
-  const plansQuery = useQuery<LandingPlan[]>({
-    queryKey: ['public-plans'],
-    queryFn: async () => {
-      const response = await apiClient.get('/billing/plans')
-      return response.data.plans || []
-    },
-  })
-  const creditPacksQuery = useQuery<LandingCreditPack[]>({
-    queryKey: ['public-credit-packs'],
-    queryFn: async () => {
-      const response = await apiClient.get('/billing/credit-packs')
-      return response.data.packs || []
-    },
-  })
-  const plans = plansQuery.data?.length ? plansQuery.data : FALLBACK_PLANS
-  const creditPacks = creditPacksQuery.data?.length
-    ? creditPacksQuery.data
-    : FALLBACK_CREDIT_PACKS
+  const [plans, setPlans] = useState<LandingPlan[]>(FALLBACK_PLANS)
+  const [creditPacks, setCreditPacks] =
+    useState<LandingCreditPack[]>(FALLBACK_CREDIT_PACKS)
+
+  useEffect(() => {
+    let active = true
+    const timer = window.setTimeout(async () => {
+      const [plansResult, packsResult] = await Promise.allSettled([
+        apiClient.get('/billing/plans'),
+        apiClient.get('/billing/credit-packs'),
+      ])
+      if (!active) return
+      if (
+        plansResult.status === 'fulfilled' &&
+        plansResult.value.data.plans?.length
+      ) {
+        setPlans(plansResult.value.data.plans)
+      }
+      if (
+        packsResult.status === 'fulfilled' &&
+        packsResult.value.data.packs?.length
+      ) {
+        setCreditPacks(packsResult.value.data.packs)
+      }
+    }, 1200)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [])
 
   /** 真实品类分析需要登录（后端接口要求鉴权），首页这里只做引流 */
   const handleAnalyze = () => {
@@ -145,20 +146,15 @@ export default function LandingPage() {
         {/* ── HERO ─────────────────────────────────────────── */}
         <section className="relative overflow-hidden">
           <div className="max-w-6xl mx-auto px-4 pt-20 pb-14 relative">
-            <motion.div
-              variants={container}
-              initial="hidden"
-              animate="show"
-              className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center"
-            >
+            <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center">
               <div className="max-w-2xl space-y-6">
-                <motion.div variants={item}>
+                <div>
                   <span className="inline-flex items-center gap-1.5 rounded border border-border bg-card px-3.5 py-1 text-xs font-medium text-muted-foreground">
                     <Sparkles className="h-3 w-3" /> 跨境电商 AI 决策与执行工作台
                   </span>
-                </motion.div>
+                </div>
 
-                <motion.div variants={item} className="space-y-4">
+                <div className="space-y-4">
                   <h1 className="text-3xl font-bold leading-[1.16] tracking-normal text-foreground sm:text-4xl md:text-5xl">
                     <span className="block">从选品判断到合规上架</span>
                     <span className="block">的一体化 AI 运营台</span>
@@ -166,10 +162,10 @@ export default function LandingPage() {
                   <p className="max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
                     输入品类、商品链接或买家评论，AI Agent 串起市场判断、VOC、Listing、合规、商品图片与视频、SKU 与店铺执行。新增全局 AI 侧栏，让助手在当前页面直接读取任务上下文。
                   </p>
-                </motion.div>
+                </div>
 
                 {/* AI 分析输入框（真实入口，分析在登录后运行） */}
-                <motion.div variants={item} className="w-full max-w-xl space-y-3">
+                <div className="w-full max-w-xl space-y-3">
                   <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-1.5">
                     <input
                       value={keyword}
@@ -202,29 +198,28 @@ export default function LandingPage() {
                     <BookOpenText className="h-3.5 w-3.5" />
                     查看完整教程
                   </Button>
-                </motion.div>
+                </div>
 
-                <motion.div variants={item} className="flex flex-wrap items-center gap-5 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-5 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />无需信用卡</span>
                   <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />无需配置模型 Key</span>
                   <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-[var(--factory-mint)]" />结果可追溯</span>
-                </motion.div>
+                </div>
 
-                <motion.div variants={item} className="flex flex-wrap items-center gap-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2 pt-1">
                   {SUPPORTED_COPY_PLATFORMS.map((p) => (
                     <span key={p} className="rounded-md border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground">
                       {p}
                     </span>
                   ))}
-                </motion.div>
-                <motion.p variants={item} className="text-[11px] leading-5 text-muted-foreground">
+                </div>
+                <p className="text-[11px] leading-5 text-muted-foreground">
                   11 个平台支持 Listing 文案生成；Shopify 支持草稿发布，Amazon 支持 SP-API Listing 发布。
-                </motion.p>
+                </p>
               </div>
 
               {/* 右栏展示真实决策链路，填满首屏空白并给出下一段内容的视觉锚点。 */}
-              <motion.div
-                variants={item}
+              <div
                 className="border-t border-border pt-7 lg:border-l lg:border-t-0 lg:pl-8"
                 aria-label="AI 商品决策链路"
               >
@@ -250,13 +245,13 @@ export default function LandingPage() {
                     )
                   })}
                 </ol>
-              </motion.div>
-            </motion.div>
+              </div>
+            </div>
           </div>
         </section>
 
         {/* ── 全局 AI 侧栏 ───────────────────────────────── */}
-        <section className="border-y border-border bg-[var(--factory-side)]">
+        <section className="deferred-section border-y border-border bg-[var(--factory-side)]">
           <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-center lg:py-16">
             <div>
               <div className="flex items-center gap-2 text-xs font-medium text-[var(--factory-accent)]">
@@ -320,17 +315,16 @@ export default function LandingPage() {
 
         {/* ── 视频工作台 ─────────────────────────────────── */}
         <section
-          className="max-w-6xl mx-auto px-4 py-14 sm:py-16"
+          className="deferred-section max-w-6xl mx-auto px-4 py-14 sm:py-16"
           aria-labelledby="landing-video-title"
         >
-          <motion.div
-            initial={false}
-            className="grid overflow-hidden border border-border bg-[var(--factory-panel)] lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]"
-          >
+          <div className="grid overflow-hidden border border-border bg-[var(--factory-panel)] lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
             <div className="relative min-h-[460px] overflow-hidden border-b border-border bg-[var(--factory-ground)] lg:min-h-[560px] lg:border-b-0 lg:border-r">
               <img
                 src="/demo/terra-body-oil.webp"
                 alt="Terra 身体油商品视频预览"
+                loading="lazy"
+                decoding="async"
                 className="absolute inset-0 h-full w-full object-cover"
               />
               <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,9,9,0.08)_0%,rgba(8,9,9,0.22)_42%,rgba(8,9,9,0.94)_100%)]" />
@@ -421,57 +415,57 @@ export default function LandingPage() {
                 </Button>
               </div>
             </div>
-          </motion.div>
+          </div>
         </section>
 
         {/* ── 流程 ────────────────────────────────────────── */}
-        <section className="max-w-4xl mx-auto px-4 py-16">
+        <section className="deferred-section max-w-4xl mx-auto px-4 py-16">
           <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">从判断到执行，一条链路完成</h2>
           <p className="text-sm text-slate-500 text-center mb-8">市场与利润 → VOC → Listing → 图片视频 → 店铺发布与巡检</p>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
             {LANDING_FLOW.map((step, index) => {
               const Icon = FLOW_ICONS[index]
               return (
-                <motion.div key={step.step} initial={false}
+                <div key={step.step}
                   className="text-center p-4 rounded-xl bg-white/5 border border-white/10 shadow-sm">
                   <div className="text-xs font-mono text-amber-400 mb-2">{step.step}</div>
                   <Icon className="h-5 w-5 text-amber-400 mx-auto mb-2" />
                   <h3 className="font-medium text-sm text-slate-200 mb-0.5">{step.title}</h3>
                   <p className="text-xs text-slate-500">{step.desc}</p>
-                </motion.div>
+                </div>
               )
             })}
           </div>
         </section>
 
         {/* ── 功能 ────────────────────────────────────────── */}
-        <section className="max-w-5xl mx-auto px-4 py-16">
+        <section className="deferred-section max-w-5xl mx-auto px-4 py-16">
           <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">从真实反馈到店铺执行，覆盖完整运营链路</h2>
           <p className="text-sm text-slate-500 text-center mb-8">选品、评论洞察、内容、素材、发布和巡检使用同一套商品与任务上下文</p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
             {LANDING_FEATURES.map((feature) => {
               const Icon = FEATURE_ICONS[feature.icon]
               return (
-                <motion.div key={feature.title} initial={false}
+                <div key={feature.title}
                   className="rounded-xl bg-white/5 border border-white/10 p-5 hover:shadow-md transition-shadow">
                   <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center mb-3">
                     <Icon className="h-4 w-4 text-amber-400" />
                   </div>
                   <h3 className="font-medium text-sm text-slate-100 mb-1">{feature.title}</h3>
                   <p className="text-sm text-slate-500 leading-relaxed">{feature.desc}</p>
-                </motion.div>
+                </div>
               )
             })}
           </div>
         </section>
 
         {/* ── AI 智能助手 ──────────────────────────────────── */}
-        <section className="max-w-5xl mx-auto px-4 py-16">
+        <section className="deferred-section max-w-5xl mx-auto px-4 py-16">
           <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">从一句经营问题，到可复核的执行结果</h2>
           <p className="text-sm text-slate-500 text-center mb-8">图片检查、Listing 风险、政策依据和视频任务都可以直接交给 Agent</p>
           <div className="grid md:grid-cols-3 gap-4">
             {LANDING_AGENT_EXAMPLES.map((example) => (
-              <motion.div key={example.prompt} initial={false}
+              <div key={example.prompt}
                 className="rounded-xl bg-white/5 border border-white/10 p-5">
                 <div className="flex items-start gap-2">
                   <Bot className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
@@ -480,18 +474,17 @@ export default function LandingPage() {
                     <p className="text-xs text-slate-500 mt-2 leading-relaxed">{example.steps}</p>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </section>
 
         {/* ── 产品展示 ────────────────────────────────────── */}
-        <section className="max-w-5xl mx-auto px-4 py-16">
+        <section className="deferred-section max-w-5xl mx-auto px-4 py-16">
           <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">从真实评论证据到 Listing</h2>
           <p className="text-sm text-slate-500 text-center mb-8">VOC 提炼买家关注点，结果自动进入后续 Listing 生成上下文</p>
           <div className="grid md:grid-cols-2 gap-4">
-            <motion.div initial={false}
-              className="rounded-xl border border-white/10 bg-white/5 p-4 shadow-sm">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2 mb-3">
                 <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">VOC 示例输入</div>
                 <span className="text-[10px] text-slate-500">示例数据</span>
@@ -517,9 +510,8 @@ export default function LandingPage() {
                   AI 自动聚合痛点、卖点、成交异议、关键词与情感倾向，并只保存聚合洞察。
                 </p>
               </div>
-            </motion.div>
-            <motion.div initial={false}
-              className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-sm">
+            </div>
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-xs font-medium text-amber-400 uppercase tracking-wide">VOC + Listing 输出</div>
                 <span className="text-xs text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full">上下文已复用</span>
@@ -543,22 +535,21 @@ export default function LandingPage() {
                   <span>可切换 11 个平台</span>
                 </div>
               </div>
-            </motion.div>
+            </div>
           </div>
           <p className="text-xs text-slate-500 text-center mt-3">示例仅展示输入与输出结构；实际结果取决于商品事实和导入评论</p>
         </section>
 
         {/* ── 定价 ────────────────────────────────────────── */}
-        <section className="max-w-3xl mx-auto px-4 py-16">
+        <section className="deferred-section max-w-3xl mx-auto px-4 py-16">
           <h2 className="text-lg font-semibold text-center text-slate-100 mb-1">简单透明的定价</h2>
           <p className="text-sm text-slate-500 text-center mb-8">
             Free 30 积分起；套餐积分按 30 天周期发放，购买积分不随月度额度重置
           </p>
           <div className="grid md:grid-cols-3 gap-4">
             {plans.map((plan) => (
-              <motion.div
+              <div
                 key={plan.id}
-                initial={false}
                 className={
                   plan.recommended
                     ? 'rounded-xl border-2 border-amber-500/30 bg-amber-500/10 p-6 relative'
@@ -604,7 +595,7 @@ export default function LandingPage() {
                     ? plan.id === 'free' ? '进入应用' : `选择 ${plan.name}`
                     : plan.id === 'free' ? '免费开始' : `选择 ${plan.name}`}
                 </Button>
-              </motion.div>
+              </div>
             ))}
           </div>
           <div className="mt-8 border-t border-white/10 pt-6">
@@ -633,7 +624,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── 数据指标 ────────────────────────────────────── */}
-        <section className="max-w-3xl mx-auto px-4 py-12">
+        <section className="deferred-section max-w-3xl mx-auto px-4 py-12">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {LANDING_STATS.map((s) => (
               <div key={s.label} className="rounded-xl border border-white/10 bg-white/5 p-4 text-center shadow-sm">
@@ -645,9 +636,8 @@ export default function LandingPage() {
         </section>
 
         {/* ── CTA ──────────────────────────────────────────── */}
-        <section className="max-w-lg mx-auto px-4 py-16 text-center">
-          <motion.div initial={false}
-            className="space-y-4 rounded-lg border border-border bg-card p-8">
+        <section className="deferred-section max-w-lg mx-auto px-4 py-16 text-center">
+          <div className="space-y-4 rounded-lg border border-border bg-card p-8">
             <h2 className="text-lg font-semibold text-foreground">开始免费使用</h2>
             <p className="text-sm text-muted-foreground">无需信用卡，无需配置 API Key</p>
             <Button size="lg" onClick={() => navigate(isLoggedIn ? '/app/dashboard' : '/register')} className="h-11 px-6 text-sm gap-1.5 shadow-sm">
@@ -657,7 +647,7 @@ export default function LandingPage() {
               <BookOpenText className="h-3.5 w-3.5" />
               先看使用教程
             </Button>
-          </motion.div>
+          </div>
         </section>
       </main>
 

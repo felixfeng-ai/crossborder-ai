@@ -1,29 +1,45 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { RootLayout } from '@/components/layout/root-layout'
-import LoginPage from '@/pages/auth/LoginPage'
-import RegisterPage from '@/pages/auth/RegisterPage'
-import DashboardPage from '@/pages/dashboard/DashboardPage'
-import ProductsPage from '@/pages/products/ProductsPage'
-import ProductDetailPage from '@/pages/products/ProductDetailPage'
-import SettingsPage from '@/pages/settings/SettingsPage'
-import LandingPage from '@/pages/landing/LandingPage'
-import ContentPage from '@/pages/content/ContentPage'
-import BillingPage from '@/pages/billing/BillingPage'
-import AdminUpgradesPage from '@/pages/billing/AdminUpgradesPage'
-import ShopifyPage from '@/pages/shopify/ShopifyPage'
-import BatchPage from '@/pages/batch/BatchPage'
-import RadarPage from '@/pages/radar/RadarPage'
-import LedgerPage from '@/pages/ledger/LedgerPage'
-import AgentPage from '@/pages/agent/AgentPage'
-import ImagesPage from '@/pages/images/ImagesPage'
-import VideoWorkspacePage from '@/pages/videos/VideoWorkspacePage'
-import MaterialsPage from '@/pages/assets/MaterialsPage'
-import CatalogPage from '@/pages/catalog/CatalogPage'
-import OperationsPage from '@/pages/operations/OperationsPage'
-import TutorialPage from '@/pages/tutorial/TutorialPage'
-import LegalDocumentPage from '@/pages/legal/LegalPage'
-import { LEGAL_DOCUMENTS } from '@/lib/legal'
+import { RouteFallback } from '@/components/common/RouteFallback'
 import { useAuthStore } from '@/stores/authStore'
+
+const PUBLIC_LEGAL_PATHS = [
+  '/terms',
+  '/privacy',
+  '/data-processing',
+  '/ai-disclosure',
+  '/security',
+  '/report',
+  '/contact',
+]
+
+const RootLayout = lazy(() =>
+  import('@/components/layout/root-layout').then((module) => ({
+    default: module.RootLayout,
+  })),
+)
+const LandingPage = lazy(() => import('@/pages/landing/LandingPage'))
+const LoginPage = lazy(() => import('@/pages/auth/LoginPage'))
+const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage'))
+const DashboardPage = lazy(() => import('@/pages/dashboard/DashboardPage'))
+const ProductsPage = lazy(() => import('@/pages/products/ProductsPage'))
+const ProductDetailPage = lazy(() => import('@/pages/products/ProductDetailPage'))
+const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'))
+const ContentPage = lazy(() => import('@/pages/content/ContentPage'))
+const BillingPage = lazy(() => import('@/pages/billing/BillingPage'))
+const AdminUpgradesPage = lazy(() => import('@/pages/billing/AdminUpgradesPage'))
+const ShopifyPage = lazy(() => import('@/pages/shopify/ShopifyPage'))
+const BatchPage = lazy(() => import('@/pages/batch/BatchPage'))
+const RadarPage = lazy(() => import('@/pages/radar/RadarPage'))
+const LedgerPage = lazy(() => import('@/pages/ledger/LedgerPage'))
+const AgentPage = lazy(() => import('@/pages/agent/AgentPage'))
+const ImagesPage = lazy(() => import('@/pages/images/ImagesPage'))
+const VideoWorkspacePage = lazy(() => import('@/pages/videos/VideoWorkspacePage'))
+const MaterialsPage = lazy(() => import('@/pages/assets/MaterialsPage'))
+const CatalogPage = lazy(() => import('@/pages/catalog/CatalogPage'))
+const OperationsPage = lazy(() => import('@/pages/operations/OperationsPage'))
+const TutorialPage = lazy(() => import('@/pages/tutorial/TutorialPage'))
+const LegalDocumentPage = lazy(() => import('@/pages/legal/LegalPage'))
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore()
@@ -33,16 +49,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
+    <Suspense fallback={<RouteFallback fullScreen />}>
+      <Routes>
       {/* 公开页面 */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      {LEGAL_DOCUMENTS.map((document) => (
+      {PUBLIC_LEGAL_PATHS.map((path) => (
         <Route
-          key={document.path}
-          path={document.path}
-          element={<LegalDocumentPage document={document} />}
+          key={path}
+          path={path}
+          element={<LegalDocumentPage path={path} />}
         />
       ))}
 
@@ -83,6 +100,7 @@ export default function App() {
 
       {/* 未匹配 → 跳首页 */}
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </Suspense>
   )
 }

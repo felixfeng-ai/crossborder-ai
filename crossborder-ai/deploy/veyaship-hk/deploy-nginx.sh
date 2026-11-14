@@ -67,7 +67,7 @@ sudo tee $SRV >/dev/null <<NGINX
 # 关键点：
 #   1) proxy_pass 写 IP   → 上游建连时不发 SNI，绕过备案拦截
 #   2) Host 头写真实域名  → 后端 request.base_url 拼出 https://veyaship.com，OAuth 回调正确
-#   3) proxy_buffering off → Agent 是 SSE 流式输出，开缓冲会导致前端一个字都收不到
+#   3) Agent API 定向关闭缓冲 → SSE 必须直通，其他页面和静态资源保持 Nginx 正常缓冲
 #   4) gzip_proxied any    → 系统 nginx.conf 里 gzip_types/gzip_proxied 是注释掉的，
 #                            默认只压 text/html 且不压反代响应，等于 1MB 前端产物裸传
 #   5) /assets/ 走边缘缓存 → 香港→上海 RTT 165ms，静态产物复用后不必回源
@@ -116,7 +116,69 @@ server {
         proxy_cache_valid      200 30d;
         proxy_cache_use_stale  error timeout updating http_500 http_502 http_503 http_504;
         proxy_cache_lock       on;
+        proxy_cache_background_update on;
         add_header X-Cache-Status \$upstream_cache_status always;
+    }
+
+    # 字体文件稳定且首屏会预加载，命中边缘缓存后不再回源上海。
+    location /fonts/ {
+        proxy_pass https://veyaship_origin;
+        proxy_http_version 1.1;
+        proxy_set_header Connection        "";
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Forwarded-For   \$remote_addr;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_ssl_server_name off;
+        proxy_ssl_verify      off;
+
+        proxy_cache            veyaship_static;
+        proxy_cache_valid      200 7d;
+        proxy_cache_use_stale  error timeout updating http_500 http_502 http_503 http_504;
+        proxy_cache_lock       on;
+        proxy_cache_background_update on;
+        proxy_hide_header Cache-Control;
+        add_header Cache-Control "public, max-age=604800" always;
+        add_header X-Cache-Status \$upstream_cache_status always;
+    }
+
+    # 首页演示媒体不在首屏，浏览器端已经 lazy-load，边缘侧再做 7 天缓存。
+    location /demo/ {
+        proxy_pass https://veyaship_origin;
+        proxy_http_version 1.1;
+        proxy_set_header Connection        "";
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Forwarded-For   \$remote_addr;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_ssl_server_name off;
+        proxy_ssl_verify      off;
+
+        proxy_cache            veyaship_static;
+        proxy_cache_valid      200 7d;
+        proxy_cache_use_stale  error timeout updating http_500 http_502 http_503 http_504;
+        proxy_cache_lock       on;
+        proxy_cache_background_update on;
+        proxy_hide_header Cache-Control;
+        add_header Cache-Control "public, max-age=604800" always;
+        add_header X-Cache-Status \$upstream_cache_status always;
+    }
+
+    # 只有 Agent 任务流需要关闭缓冲，避免影响 HTML、字体和演示资源下载。
+    location ^~ /api/v1/agent/ {
+        proxy_pass https://veyaship_origin;
+        proxy_http_version 1.1;
+        proxy_set_header Connection        "";
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$remote_addr;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host  \$host;
+        proxy_ssl_server_name off;
+        proxy_ssl_verify      off;
+
+        proxy_buffering off;
+        proxy_cache     off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
     }
 
     location / {
@@ -138,8 +200,7 @@ server {
         proxy_ssl_server_name off;
         proxy_ssl_verify      off;
 
-        # SSE（Agent 流式输出）必须关缓冲
-        proxy_buffering off;
+        proxy_buffering on;
         proxy_cache     off;
 
         proxy_read_timeout 300s;

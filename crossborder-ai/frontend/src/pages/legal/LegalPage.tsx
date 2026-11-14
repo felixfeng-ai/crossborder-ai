@@ -5,13 +5,12 @@ import { Link } from 'react-router-dom'
 import { BrandMark } from '@/components/brand/BrandMark'
 import PublicLegalFooter from '@/components/legal/PublicLegalFooter'
 import {
-  LEGAL_CONTACT_EMAIL,
-  LEGAL_CONTACT_HREF,
-  type LegalDocument,
+  LEGAL_DOCUMENTS,
 } from '@/lib/legal'
+import { LEGAL_CONTACT_EMAIL, LEGAL_CONTACT_HREF } from '@/lib/legalMeta'
 
 type LegalPageProps = {
-  document: LegalDocument
+  path: string
 }
 
 function formatLegalDate(value: string): string {
@@ -23,14 +22,26 @@ function formatLegalDate(value: string): string {
  * 公网法务文档页。
  * 正文是页面主角；桌面目录只做定位，移动端改为单列，避免长文档在窄屏被切碎。
  */
-export default function LegalPage({ document: legalDocument }: LegalPageProps) {
+export default function LegalPage({ path }: LegalPageProps) {
+  const legalDocument = LEGAL_DOCUMENTS.find((item) => item.path === path)
+
   useEffect(() => {
     const previousTitle = window.document.title
-    window.document.title = `${legalDocument.title} | VeyaShip`
+    window.document.title = legalDocument
+      ? `${legalDocument.title} | VeyaShip`
+      : '文档不存在 | VeyaShip'
     return () => {
       window.document.title = previousTitle
     }
   }, [legalDocument])
+
+  if (!legalDocument) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-[var(--factory-ground)] px-4 text-sm text-muted-foreground">
+        未找到对应文档
+      </div>
+    )
+  }
 
   return (
     <div

@@ -35,6 +35,7 @@ jobs:
           bash -n deploy/backup.sh
           bash -n deploy/security-check.sh
           bash -n deploy/veyaship/cicd-deploy.sh
+          bash -n deploy/veyaship-hk/deploy-nginx.sh
       - name: Run backend tests
         run: python -m pytest -q
 
@@ -104,6 +105,8 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Check initial bundle budget
+        run: npm run check:bundle
       - name: Check miniprogram syntax
         working-directory: crossborder-ai
         run: |

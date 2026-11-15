@@ -137,6 +137,9 @@ def build_system_prompt(workspace: str) -> str:
         "5. 会扣积分的操作必须先调用工具并传 confirmed=false，生成结构化待确认任务\n"
         "6. 用户确认后优先恢复待确认动作，不重新猜测任务\n"
         "7. 生成图片或视频后只报告任务状态，不声称素材已经完成\n"
+        "8. 商品图和广告图默认不生成任何文字、数字、水印或字幕\n"
+        "9. 标题、卖点、价格和 CTA 使用前端模板后处理，不交给生图模型排版\n"
+        "10. 商品主图优先使用带参考图的 generate_image_asset\n"
     )
     if workspace == "marketing":
         role = (

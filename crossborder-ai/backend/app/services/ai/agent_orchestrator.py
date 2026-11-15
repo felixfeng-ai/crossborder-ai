@@ -353,8 +353,8 @@ class AgentOrchestrator:
             "function": {
                 "name": "generate_product_image",
                 "description": (
-                    "创建商品图片生成任务。只有用户明确要求生成图片或确认后 confirmed=true 才使用。"
-                    "任务是异步的，返回 task_id、状态和图片工作台链接，不会伪造生成结果。"
+                    "兼容旧客户端的商品图片工具，禁止在新任务中主动选择。"
+                    "商品主图、场景图必须优先使用 generate_image_asset，并传入真实参考素材。"
                 ),
                 "parameters": {
                     "type": "object",
@@ -414,7 +414,7 @@ class AgentOrchestrator:
                         "use_brand_persona": {"type": "boolean"},
                         "provider": {
                             "type": "string",
-                            "enum": ["auto", "aliyun", "replicate"],
+                            "enum": ["auto", "seedream", "aliyun", "replicate"],
                         },
                         "num_outputs": {
                             "type": "integer",
@@ -1039,7 +1039,8 @@ class AgentOrchestrator:
 - 用户提到生成/发布/上架 → 用 generate_listing
 - 用户提到查看或修改已有 Listing → 用 get_listing / edit_listing
 - 用户提到商品场景图、参考图或自由创作图片 → 优先用 generate_image_asset
-- 旧客户端要求生成商品主图 → 用 generate_product_image 保持兼容
+- 商品主图、场景图 → 优先用 generate_image_asset，必须带真实参考图
+- generate_product_image 仅用于旧客户端兼容，不主动选择
 - 用户明确要求生成商品视频并接受积分 → 用 generate_product_video
 - 用户提到营销视频想法、分镜或方案 → 用 create_marketing_video_plan
 - 用户提到广告文案、TikTok/Amazon/Shopify 文案或 A/B 测试 → 用 generate_marketing_copy

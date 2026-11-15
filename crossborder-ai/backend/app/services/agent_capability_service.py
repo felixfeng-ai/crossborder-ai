@@ -27,6 +27,7 @@ from app.services.ai.persona_kit import (
     image_style_phrase,
     strip_banned_words,
 )
+from app.services.image_prompt_policy import prepare_agent_image_prompt
 from app.services.image_provider import get_image_provider
 from app.services.image_quality import (
     IMAGE_QUALITY_TIERS,
@@ -294,7 +295,11 @@ async def schedule_product_image_task(
     if user.credits < credits_cost:
         raise ValueError(f"积分不足，本次图片生成需要 {credits_cost} 积分")
 
-    enhanced_prompt = prompt.strip()
+    enhanced_prompt, effective_negative_prompt = prepare_agent_image_prompt(
+        prompt,
+        mode=mode,
+        negative_prompt=negative_prompt,
+    )
     should_use_persona = (
         use_brand_persona
         if use_brand_persona is not None
@@ -336,7 +341,7 @@ async def schedule_product_image_task(
         provider=provider_name,
         resolution=IMAGE_QUALITY_TIERS[resolved_quality].resolution,
         aspect_ratio=aspect_ratio,
-        negative_prompt=negative_prompt,
+        negative_prompt=effective_negative_prompt,
         style_preset=style_preset,
         use_brand_persona=should_use_persona,
         reference_assets_json=json.dumps(

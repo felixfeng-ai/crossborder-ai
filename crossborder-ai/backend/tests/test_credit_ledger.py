@@ -128,7 +128,13 @@ async def test_image_generation_charges_once_per_output(db_session, monkeypatch)
         ),
     )
 
-    async def fake_generate_image(self, prompt, num_outputs=1, size="1024*1024"):
+    async def fake_generate_image(
+        self,
+        prompt,
+        num_outputs=1,
+        size="1024*1024",
+        **kwargs,
+    ):
         return ["https://img.example.com/a.png", "https://img.example.com/b.png"]
 
     monkeypatch.setattr(AliyunImageService, "generate_image", fake_generate_image)

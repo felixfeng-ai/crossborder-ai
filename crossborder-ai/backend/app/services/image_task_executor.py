@@ -24,7 +24,10 @@ from app.services.image_provider import (
     ImageReferencePayload,
     get_image_provider,
 )
-from app.services.image_quality import IMAGE_QUALITY_TIERS
+from app.services.image_quality import (
+    IMAGE_QUALITY_TIERS,
+    resolve_image_resolution,
+)
 
 
 logger = logging.getLogger("veyaship")
@@ -86,7 +89,7 @@ async def run_image_generation(
             await update(
                 status="failed",
                 error=(
-                    "商品场景参考图生成服务暂不可用，请管理员检查 Replicate 配置"
+                    "商品场景参考图生成服务暂不可用，请管理员检查 Seedream 或 Replicate 配置"
                     if task.mode == "product_scene"
                     else "图片编辑服务暂未配置，请管理员检查 Replicate 编辑模型"
                     if task.mode in {"inpaint", "outpaint", "remove_object", "upscale"}
@@ -143,20 +146,14 @@ async def run_image_generation(
             except Exception as exc:
                 errors.append(f"{provider_name}: {exc}")
                 logger.warning("%s 图片生成失败: %s", provider_name, exc)
-                # 商品场景和用户指定 Provider 不允许静默切到普通文生图。
-                if task.mode == "product_scene" or task.provider != "auto":
+                # auto 模式只会在同一能力集合内降级；商品场景不会降级成普通文生图。
+                if task.provider != "auto":
                     break
 
         logger.warning("图片生成 Provider 全部失败 task=%s: %s", tid, errors)
         await update(
             status="failed",
-            error=(
-                "商品场景参考图生成失败，请稍后重试"
-                if task.mode == "product_scene"
-                else "图片编辑失败，请稍后重试"
-                if task.mode in {"inpaint", "outpaint", "remove_object", "upscale"}
-                else "图片生成失败，请稍后重试"
-            ),
+            error=_provider_failure_message(task.mode, errors),
             finished_at=datetime.now(timezone.utc),
         )
     except Exception as exc:
@@ -169,9 +166,11 @@ async def run_image_generation(
 
 
 def _provider_order(task: ImageGenerationTask) -> list[str]:
-    """商品场景只允许参考图 Provider；普通生成默认可在主备之间降级。"""
+    """按任务能力选择 Provider，商品场景只进入支持参考图的候选集合。"""
     if task.mode == "product_scene":
-        return ["replicate"]
+        if task.provider in {"seedream", "replicate"}:
+            return [task.provider]
+        return ["seedream", "replicate"]
     if task.mode == "upscale":
         return ["local"]
     if task.mode in {"inpaint", "outpaint", "remove_object"}:
@@ -179,6 +178,37 @@ def _provider_order(task: ImageGenerationTask) -> list[str]:
     if task.provider in {"aliyun", "replicate"}:
         return [task.provider]
     return ["aliyun", "replicate"]
+
+
+def _provider_failure_message(mode: str, errors: list[str]) -> str:
+    """把供应商英文异常映射为卖家可执行的提示，原始异常只保留在服务端日志。"""
+    detail = " ".join(errors).lower()
+    if "seedream" in detail and (
+        "没有模型权限" in detail
+        or "密钥无效" in detail
+    ):
+        return "Seedream 密钥无效或未开通图片模型权限，请联系管理员"
+    if "余额不足" in detail or "insufficient" in detail or "quota" in detail:
+        return "图片生成服务额度不足，请联系平台管理员充值后重试"
+    if "认证失败" in detail or "api key" in detail or "unauthorized" in detail:
+        return "图片生成服务认证失败，请联系平台管理员检查服务配置"
+    if (
+        "between 512 and 1440" in detail
+        or "resolution" in detail
+        or "image size" in detail
+    ):
+        return "当前图片模型不支持所选尺寸，请重试 1440 以内的高清尺寸"
+    if "审核" in detail or "moderation" in detail or "safety" in detail:
+        return "提示词或画面内容触发安全审核，请调整描述后重试"
+    if "限流" in detail or "429" in detail or "busy" in detail:
+        return "图片生成服务繁忙，请稍后重试"
+    if "超时" in detail or "timeout" in detail:
+        return "图片生成超时，请稍后到素材库查看结果"
+    if mode == "product_scene":
+        return "商品场景参考图生成失败，请稍后重试"
+    if mode in {"inpaint", "outpaint", "remove_object", "upscale"}:
+        return "图片编辑失败，请稍后重试"
+    return "图片生成失败，请稍后重试"
 
 
 def _build_provider_request(
@@ -194,14 +224,20 @@ def _build_provider_request(
         else "fast"
     )
     quality = IMAGE_QUALITY_TIERS.get(quality_tier)
+    aspect_ratio = task.aspect_ratio or "1:1"
+    resolution = (
+        resolve_image_resolution(quality_tier, aspect_ratio)
+        if task.mode in {"free_creation", "legacy"}
+        else task.resolution or (
+            quality.resolution if quality is not None else "1024x1024"
+        )
+    )
     return ImageProviderRequest(
         prompt=prompt,
         mode=task.mode,
         quality_tier=quality_tier,
-        resolution=task.resolution or (
-            quality.resolution if quality is not None else "1024x1024"
-        ),
-        aspect_ratio=task.aspect_ratio or "1:1",
+        resolution=resolution,
+        aspect_ratio=aspect_ratio,
         num_outputs=max(1, min(int(num_outputs or 1), 4)),
         negative_prompt=task.negative_prompt or "",
         scale=_task_scale(task),

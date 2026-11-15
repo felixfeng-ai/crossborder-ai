@@ -90,7 +90,13 @@ async def test_run_writes_completed_status(
     task_id = str(task.id)
 
     # mock 图片服务返回 URL
-    async def fake_generate_image(self, prompt: str, num_outputs: int = 1, size: str = "1024*1024"):
+    async def fake_generate_image(
+        self,
+        prompt: str,
+        num_outputs: int = 1,
+        size: str = "1024*1024",
+        **kwargs,
+    ):
         return ["https://img.example.com/out/1.png"]
 
     monkeypatch.setattr(AliyunImageService, "generate_image", fake_generate_image)

@@ -54,10 +54,10 @@ from app.services.image_processing import (
     normalize_uploaded_image,
 )
 from app.services.image_quality import (
-    IMAGE_QUALITY_TIERS,
     estimate_image_cost_micros,
     image_generation_credits as calculate_image_credits,
     public_image_capabilities,
+    resolve_image_resolution,
 )
 from app.services.image_editing_service import create_image_edit_task
 from app.services.image_provider import list_image_provider_capabilities
@@ -87,7 +87,7 @@ class GenerateImageRequest(BaseModel):
     negative_prompt: str = Field(default="", max_length=2000)
     style_preset: Optional[str] = Field(default=None, max_length=80)
     use_brand_persona: Optional[bool] = None
-    provider: Literal["auto", "aliyun", "replicate"] = "auto"
+    provider: Literal["auto", "seedream", "aliyun", "replicate"] = "auto"
     num_outputs: int = Field(default=1, ge=1, le=4)
     campaign_id: Optional[str] = Field(None, description="营销活动 ID")
     idempotency_key: Optional[str] = Field(
@@ -715,6 +715,31 @@ def _image_quality_tier(payload: GenerateImageRequest, mode: str) -> Optional[st
     return payload.quality_tier or "standard"
 
 
+_REALISM_HINTS = (
+    "真人",
+    "写实",
+    "照片",
+    "摄影",
+    "人像",
+    "自然皮肤",
+    "皮肤质感",
+)
+_REALISM_NEGATIVE_PROMPT = (
+    "塑料皮肤，蜡像感，过度磨皮，五官失真，错误手指，肢体畸形，"
+    "卡通，插画，CGI感"
+)
+
+
+def _enhance_realism_negative_prompt(prompt: str, negative_prompt: str) -> str:
+    """识别写实意图时补充通用负面约束，避免人物呈现蜡像或过度磨皮。"""
+    if not any(hint in prompt for hint in _REALISM_HINTS):
+        return negative_prompt
+    existing = negative_prompt.strip()
+    if not existing:
+        return _REALISM_NEGATIVE_PROMPT
+    return f"{existing}，{_REALISM_NEGATIVE_PROMPT}"
+
+
 async def _resolve_reference_assets(
     db: AsyncSession,
     payload: GenerateImageRequest,
@@ -748,7 +773,7 @@ async def _resolve_reference_assets(
     return assets
 
 
-def _configured_image_providers() -> tuple[bool, bool, str]:
+def _configured_image_providers() -> dict[str, bool]:
     aliyun_key = provider_config.get(
         "aliyun",
         "api_key",
@@ -764,7 +789,15 @@ def _configured_image_providers() -> tuple[bool, bool, str]:
         "reference_model",
         settings.REPLICATE_IMAGE_REFERENCE_MODEL or "",
     )
-    return bool(aliyun_key), bool(replicate_key), reference_model
+    from app.services.ai.seedream_image import get_seedream_image_config
+
+    seedream_key = get_seedream_image_config()["api_key"]
+    return {
+        "aliyun": bool(aliyun_key),
+        "replicate": bool(replicate_key),
+        "replicate_reference": bool(replicate_key and reference_model),
+        "seedream": bool(seedream_key),
+    }
 
 
 @router.post("/generate", response_model=TaskResponse)
@@ -827,25 +860,49 @@ async def generate_image(
         payload,
         current_user.id,
     )
-    aliyun_configured, replicate_configured, reference_model = (
-        _configured_image_providers()
-    )
+    provider_status = _configured_image_providers()
     if mode == "product_scene":
         if payload.provider == "aliyun":
             raise HTTPException(
                 status_code=400,
-                detail="商品场景参考图暂不支持阿里云 Provider，请切换 Replicate",
+                detail="商品场景参考图请选择 Seedream 或 Replicate",
             )
-        if not replicate_configured or not reference_model:
+        if payload.provider == "seedream" and not provider_status["seedream"]:
             raise HTTPException(
                 status_code=400,
-                detail="商品场景参考图生成服务暂未配置，请管理员配置 Replicate 参考图模型",
+                detail="Seedream 图片服务暂未配置，请管理员检查方舟 API Key",
             )
-    elif payload.provider == "aliyun" and not aliyun_configured:
+        if (
+            payload.provider == "replicate"
+            and not provider_status["replicate_reference"]
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Replicate 参考图服务暂未配置，请管理员检查 API Key 和参考图模型",
+            )
+        if (
+            payload.provider == "auto"
+            and not provider_status["seedream"]
+            and not provider_status["replicate_reference"]
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="商品场景参考图服务暂未配置，请管理员配置 Seedream 或 Replicate",
+            )
+    elif payload.provider == "aliyun" and not provider_status["aliyun"]:
         raise HTTPException(status_code=400, detail="阿里云图片生成服务暂未配置")
-    elif payload.provider == "replicate" and not replicate_configured:
+    elif payload.provider == "replicate" and not provider_status["replicate"]:
         raise HTTPException(status_code=400, detail="Replicate 图片生成服务暂未配置")
-    elif mode != "platform_white" and not aliyun_configured and not replicate_configured:
+    elif payload.provider == "seedream":
+        raise HTTPException(
+            status_code=400,
+            detail="Seedream 当前仅用于商品场景参考图生成",
+        )
+    elif (
+        mode != "platform_white"
+        and not provider_status["aliyun"]
+        and not provider_status["replicate"]
+    ):
         raise HTTPException(status_code=400, detail="图片生成功能暂未配置")
 
     try:
@@ -864,6 +921,10 @@ async def generate_image(
 
     # 拼接品牌调性：image_style 优先，否则 tone + style；补 brand identity；去品牌禁词
     enhanced_prompt = payload.prompt
+    negative_prompt = _enhance_realism_negative_prompt(
+        payload.prompt,
+        payload.negative_prompt,
+    )
     use_brand_persona = (
         payload.use_brand_persona
         if payload.use_brand_persona is not None
@@ -883,9 +944,9 @@ async def generate_image(
             if kit.get("brand_name"):
                 enhanced_prompt = f"{enhanced_prompt}, {kit['brand_name']} brand identity"
 
-    quality_spec = IMAGE_QUALITY_TIERS.get(quality_tier or "fast")
-    resolution = payload.resolution or (
-        quality_spec.resolution if quality_spec is not None else "1024x1024"
+    resolution = payload.resolution or resolve_image_resolution(
+        quality_tier or "fast",
+        payload.aspect_ratio,
     )
 
     task_id = await schedule_image_task(
@@ -899,7 +960,7 @@ async def generate_image(
         provider=payload.provider,
         resolution=resolution,
         aspect_ratio=payload.aspect_ratio,
-        negative_prompt=payload.negative_prompt,
+        negative_prompt=negative_prompt,
         style_preset=payload.style_preset,
         use_brand_persona=use_brand_persona,
         reference_asset_ids=[

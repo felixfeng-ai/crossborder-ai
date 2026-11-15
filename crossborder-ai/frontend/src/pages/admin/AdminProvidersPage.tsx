@@ -109,6 +109,17 @@ const PROVIDER_GROUPS: ProviderGroup[] = [
           { key: 'resolution', label: '默认清晰度', secret: false },
         ],
       },
+      {
+        id: 'seedream',
+        label: 'Seedream 图片',
+        description:
+          '火山方舟商品参考图 Provider；API Key 留空时复用即梦 Ark Key。',
+        fields: [
+          { key: 'api_key', label: '方舟 API Key（可选）', secret: true },
+          { key: 'base_url', label: 'Base URL', secret: false },
+          { key: 'model', label: '图片模型', secret: false },
+        ],
+      },
     ],
   },
   {

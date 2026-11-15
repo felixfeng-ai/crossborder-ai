@@ -78,3 +78,58 @@
 - When 打开图片工作台
 - Then 两类素材都在素材库中可见
 - And 用户可以选择任一素材进入预览区
+
+### CAP-06 图片质量与失败提示
+
+#### Requirement
+
+图片质量档位必须映射为 Provider 实际支持的画布尺寸，并按画幅等比计算。任务失败时必须把供应商异常转换为卖家可执行的中文提示，原始英文异常只写入服务端日志。
+
+#### Scenario
+
+- Given 用户选择高清自由创作和 4:5 画幅
+- When 提交生成任务
+- Then Provider 收到不超过 1440 长边的画布尺寸
+- And 高清档不会被转换为 2048 长边
+
+#### Scenario
+
+- Given 图片 Provider 返回尺寸超出范围
+- When 任务执行失败
+- Then 任务记录返回包含尺寸原因的中文提示
+- And 不把供应商原始英文异常展示给卖家
+
+#### Scenario
+
+- Given 用户选择标准或高清自由创作
+- When 系统调用阿里云图片服务
+- Then 使用万相 2.2 专业模型而不是低质量极速模型
+- And 写实人物提示会自动补充塑料皮肤、蜡像感和错误手部等负面约束
+
+### CAP-07 商品场景多 Provider 路由
+
+#### Requirement
+
+商品场景必须按 Provider 能力和配置选择参考图模型，不得写死单一供应商。Seedream
+直连使用火山方舟图片生成 API，Replicate Seedream 作为备用参考图通道；自动模式
+可以在两个参考图 Provider 之间降级，但禁止降级为普通文生图。
+
+#### Scenario
+
+- Given 管理员配置了火山方舟 Seedream API Key 和模型
+- When 用户提交商品场景参考图任务且 Provider 选择自动
+- Then 系统优先调用 Seedream 直连
+- And 任务记录保存 Provider 为 `seedream`
+
+#### Scenario
+
+- Given Seedream 直连调用失败且 Replicate 参考图模型已配置
+- When 商品场景任务处于自动模式
+- Then 系统继续尝试 Replicate Seedream
+- And 不会改为不带参考图的文生图
+
+#### Scenario
+
+- Given Seedream 和管理员 Key 均未配置
+- When 用户提交商品场景任务
+- Then 接口返回需要管理员配置参考图 Provider 的中文错误

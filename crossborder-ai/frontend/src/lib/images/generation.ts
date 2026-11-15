@@ -4,7 +4,7 @@ export type ImageGenerationMode =
   | 'platform_white'
 
 export type ImageQualityTier = 'fast' | 'standard' | 'hd'
-export type ImageGenerationProvider = 'auto' | 'aliyun' | 'replicate'
+export type ImageGenerationProvider = 'auto' | 'seedream' | 'aliyun' | 'replicate'
 
 export interface ImageGenerationModeOption {
   id: ImageGenerationMode
@@ -99,7 +99,7 @@ export const IMAGE_QUALITY_TIERS: Record<
   hd: {
     id: 'hd',
     label: '高清',
-    resolution: '2048x2048',
+    resolution: '1440x1440',
     description: '适合主图、详情页和高质量素材沉淀',
     credits: {
       free_creation: 8,

@@ -54,7 +54,8 @@ IMAGE_QUALITY_TIERS: dict[str, ImageQualitySpec] = {
     "hd": ImageQualitySpec(
         id="hd",
         label="高清",
-        resolution="2048x2048",
+        # 通义万相单边上限为 1440，高清档使用当前可稳定生成的最高尺寸。
+        resolution="1440x1440",
         description="适合主图、详情页和高质量素材沉淀",
         credits={"free_creation": 8, "product_scene": 12, "platform_white": 0},
         estimated_cost_micros={"free_creation": 48_000, "product_scene": 120_000},
@@ -69,6 +70,28 @@ IMAGE_EDIT_CREDITS: dict[str, int] = {
     "remove_object": 5,
     "upscale": 2,
 }
+
+
+def resolve_image_resolution(quality_tier: str, aspect_ratio: str) -> str:
+    """按质量档和画幅计算最终画布，避免 Provider 收到超出上限的尺寸。"""
+    spec = IMAGE_QUALITY_TIERS.get(quality_tier)
+    if spec is None:
+        raise ValueError("未知的图片质量档位")
+
+    ratio = aspect_ratio if aspect_ratio in IMAGE_ASPECT_RATIOS else "1:1"
+    ratio_width, ratio_height = (int(part) for part in ratio.split(":", 1))
+    max_width, max_height = (
+        int(part) for part in spec.resolution.split("x", 1)
+    )
+
+    # 以质量档给出的长边为上限，短边按画幅等比计算并取偶数。
+    if ratio_width >= ratio_height:
+        width = max_width
+        height = round(max_width * ratio_height / ratio_width / 2) * 2
+    else:
+        height = max_height
+        width = round(max_height * ratio_width / ratio_height / 2) * 2
+    return f"{max(2, width)}x{max(2, height)}"
 
 
 def image_generation_credits(

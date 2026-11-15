@@ -81,6 +81,12 @@ const IMAGE_STYLE_PRESETS = [
   { id: 'clean_studio', label: '干净棚拍', prompt: 'clean commercial studio lighting' },
   { id: 'warm_lifestyle', label: '暖调生活', prompt: 'warm lifestyle photography, natural window light' },
   { id: 'editorial', label: '编辑大片', prompt: 'editorial campaign photography, refined art direction' },
+  {
+    id: 'realistic_photo',
+    label: '真人摄影',
+    prompt:
+      'photorealistic editorial photography, natural skin texture, realistic facial proportions, true-to-life anatomy, soft daylight, 50mm lens, shallow depth of field, no beautification, no illustration',
+  },
   { id: 'festive', label: '节日氛围', prompt: 'subtle festive atmosphere, premium seasonal styling' },
 ] as const
 
@@ -344,7 +350,10 @@ export default function ImagesPage() {
     } else {
       setUseBrandPersona(true)
     }
-    if (nextMode === 'product_scene' && provider === 'aliyun') {
+    if (
+      (nextMode === 'product_scene' && provider === 'aliyun') ||
+      (nextMode !== 'product_scene' && provider === 'seedream')
+    ) {
       setProvider('auto')
     }
     if (
@@ -574,14 +583,14 @@ export default function ImagesPage() {
                       >
                         <option value="auto">自动选择可用服务</option>
                         <option
-                          value="aliyun"
+                          value="seedream"
                           disabled={
-                            mode === 'product_scene' ||
+                            mode !== 'product_scene' ||
                             (providerCapabilities.length > 0 &&
-                              !availableProviderNames.has('aliyun'))
+                              !availableProviderNames.has('seedream'))
                           }
                         >
-                          阿里云通义万相
+                          Seedream 直连（火山方舟）
                         </option>
                         <option
                           value="replicate"
@@ -590,7 +599,17 @@ export default function ImagesPage() {
                             !availableProviderNames.has('replicate')
                           }
                         >
-                          Replicate
+                          Replicate Seedream
+                        </option>
+                        <option
+                          value="aliyun"
+                          disabled={
+                            mode === 'product_scene' ||
+                            (providerCapabilities.length > 0 &&
+                              !availableProviderNames.has('aliyun'))
+                          }
+                        >
+                          阿里云通义万相
                         </option>
                       </select>
                     </label>

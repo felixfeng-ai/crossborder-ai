@@ -164,7 +164,7 @@ class Settings(BaseSettings):
 
     # --- Aliyun DashScope (通义万相) ---
     ALIYUN_DASHSCOPE_API_KEY: Optional[str] = None
-    ALIYUN_IMAGE_MODEL: str = "wanx2.1-t2i-turbo"
+    ALIYUN_IMAGE_MODEL: str = "wan2.2-t2i-plus"
     # 商品图片工作台的本地素材目录；上传后统一转码并去除原始元数据。
     IMAGE_STORAGE_DIR: str = "./storage/images"
     MAX_IMAGE_UPLOAD_BYTES: int = 12 * 1024 * 1024
@@ -196,6 +196,12 @@ class Settings(BaseSettings):
     JIMENG_VIDEO_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
     JIMENG_VIDEO_MODEL: str = "doubao-seedance-2-0-260128"
     JIMENG_VIDEO_RESOLUTION: str = "720P"
+
+    # --- Seedream 图片（火山方舟）---
+    # 独立 Key 可选；未配置时复用同一个 Ark 账号下的 JIMENG_API_KEY。
+    SEEDREAM_API_KEY: Optional[str] = None
+    SEEDREAM_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
+    SEEDREAM_IMAGE_MODEL: str = "doubao-seedream-4-0-250828"
     VIDEO_STORAGE_DIR: str = "./storage/videos"
 
     # --- Shopify ---

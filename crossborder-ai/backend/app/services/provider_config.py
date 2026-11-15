@@ -43,6 +43,7 @@ PROVIDER_FIELDS: dict[str, tuple[str, ...]] = {
         "resolution",
     ),
     "jimeng": ("api_key", "base_url", "model", "resolution"),
+    "seedream": ("api_key", "base_url", "model"),
 }
 
 
@@ -85,6 +86,14 @@ def _env_fallback(provider: str, field: str) -> str:
         ("jimeng", "base_url"): settings.JIMENG_VIDEO_BASE_URL,
         ("jimeng", "model"): settings.JIMENG_VIDEO_MODEL,
         ("jimeng", "resolution"): settings.JIMENG_VIDEO_RESOLUTION,
+        # 方舟图片和视频属于同一账号时可直接复用视频 Key。
+        ("seedream", "api_key"): (
+            settings.SEEDREAM_API_KEY or settings.JIMENG_API_KEY or ""
+        ),
+        ("seedream", "base_url"): (
+            settings.SEEDREAM_BASE_URL or settings.JIMENG_VIDEO_BASE_URL
+        ),
+        ("seedream", "model"): settings.SEEDREAM_IMAGE_MODEL,
     }
     return fallbacks.get((provider, field), "")
 
@@ -100,6 +109,14 @@ def get(provider: str, field: str, default: str | None = None) -> str:
     values = _cache.get(provider)
     if values is not None and field in values:
         return values[field]
+    # Seedream 与 Seedance 同属火山方舟账号，未单独配置时可复用即梦凭据。
+    if provider == "seedream" and field in {"api_key", "base_url"}:
+        seedream_value = _env_fallback("seedream", field)
+        if seedream_value:
+            return seedream_value
+        jimeng_value = get("jimeng", field, "")
+        if jimeng_value:
+            return jimeng_value
     if default is not None:
         return default
     return _env_fallback(provider, field)

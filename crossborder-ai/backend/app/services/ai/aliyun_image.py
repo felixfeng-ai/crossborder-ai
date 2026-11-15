@@ -18,13 +18,13 @@ TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks/"
 class AliyunImageService:
     """阿里云通义万相图片生成服务"""
 
-    def __init__(self):
+    def __init__(self, model: str | None = None):
         self.api_key = provider_config.get(
             "aliyun",
             "api_key",
             settings.ALIYUN_DASHSCOPE_API_KEY or "",
         )
-        self.model = provider_config.get(
+        self.model = model or provider_config.get(
             "aliyun",
             "model",
             settings.ALIYUN_IMAGE_MODEL,
@@ -44,14 +44,18 @@ class AliyunImageService:
         prompt: str,
         num_outputs: int = 1,
         size: str = "1024*1024",
+        negative_prompt: str = "",
     ) -> List[str]:
         """生成商品图片（异步提交 + 轮询结果）"""
         if not self.api_key:
             raise RuntimeError("阿里云通义万相 API Key 未配置")
 
+        input_data = {"prompt": prompt}
+        if negative_prompt.strip():
+            input_data["negative_prompt"] = negative_prompt.strip()
         body = {
             "model": self.model,
-            "input": {"prompt": prompt},
+            "input": input_data,
             "parameters": {"size": size, "n": min(num_outputs, 4)},
         }
 

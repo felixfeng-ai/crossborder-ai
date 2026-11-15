@@ -128,6 +128,38 @@ async def test_free_creation_does_not_inject_brand_persona(
 
 
 @pytest.mark.asyncio
+async def test_realistic_free_creation_gets_photoreal_negative_prompt(
+    client: AsyncClient,
+    auth_headers: dict,
+    db_session,
+    monkeypatch,
+):
+    await _prepare_user(db_session)
+    monkeypatch.setattr(settings, "ALIYUN_DASHSCOPE_API_KEY", "test-key")
+    monkeypatch.setattr(images_router, "_execute_image_task", _noop_execute)
+
+    response = await client.post(
+        "/api/v1/images/generate",
+        json={
+            "mode": "free_creation",
+            "prompt": "女团跳舞，要求人物真实，真人感，自然皮肤",
+            "quality_tier": "standard",
+            "negative_prompt": "",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    task = await db_session.get(
+        ImageGenerationTask,
+        uuid.UUID(response.json()["task_id"]),
+    )
+    assert "蜡像感" in task.negative_prompt
+    assert "塑料皮肤" in task.negative_prompt
+
+
+@pytest.mark.asyncio
 async def test_product_scene_requires_owned_reference_and_uses_scene_credit(
     client: AsyncClient,
     auth_headers: dict,
@@ -167,6 +199,43 @@ async def test_product_scene_requires_owned_reference_and_uses_scene_credit(
     assert reference_id in task.reference_assets_json
     assert task.reference_coverage == "provided"
     assert task.credits_cost == 12
+
+
+@pytest.mark.asyncio
+async def test_product_scene_accepts_seedream_without_replicate(
+    client: AsyncClient,
+    auth_headers: dict,
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    await _prepare_user(db_session)
+    reference_id = await _upload_asset(client, auth_headers, tmp_path, monkeypatch)
+    monkeypatch.setattr(settings, "SEEDREAM_API_KEY", "ark-test-key")
+    monkeypatch.setattr(settings, "REPLICATE_API_KEY", "")
+    monkeypatch.setattr(settings, "REPLICATE_IMAGE_REFERENCE_MODEL", "")
+    monkeypatch.setattr(images_router, "_execute_image_task", _noop_execute)
+
+    response = await client.post(
+        "/api/v1/images/generate",
+        json={
+            "mode": "product_scene",
+            "prompt": "保持商品一致，生成冬季客厅场景",
+            "reference_asset_ids": [reference_id],
+            "quality_tier": "standard",
+            "provider": "seedream",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    task = await db_session.get(
+        ImageGenerationTask,
+        uuid.UUID(response.json()["task_id"]),
+    )
+    assert task.provider == "seedream"
+    assert task.mode == "product_scene"
 
 
 @pytest.mark.asyncio

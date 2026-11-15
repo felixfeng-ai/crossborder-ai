@@ -75,6 +75,21 @@ describe('image generation modes', () => {
     expect(request.aspect_ratio).toBe('4:5')
     expect(request.negative_prompt).toContain('logo')
     expect(request.idempotency_key).toBe('request-1')
+    expect(IMAGE_QUALITY_TIERS.hd.resolution).toBe('1440x1440')
     expect(IMAGE_QUALITY_TIERS.hd.credits.free_creation).toBe(8)
+  })
+
+  it('keeps the direct Seedream provider in the request', () => {
+    const request = buildImageGenerationRequest({
+      mode: 'product_scene',
+      prompt: '保持商品一致，生成冬季客厅',
+      referenceAssetIds: ['asset-1'],
+      qualityTier: 'standard',
+      provider: 'seedream',
+      idempotencyKey: 'request-seedream',
+    })
+
+    expect(request.provider).toBe('seedream')
+    expect(request.reference_asset_ids).toEqual(['asset-1'])
   })
 })

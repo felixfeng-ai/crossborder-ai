@@ -78,7 +78,13 @@ async def test_generated_image_outputs_are_materialized_idempotently(
         ),
     )
 
-    async def fake_generate_image(self, prompt, num_outputs=1, size="1024*1024"):
+    async def fake_generate_image(
+        self,
+        prompt,
+        num_outputs=1,
+        size="1024*1024",
+        **kwargs,
+    ):
         return [
             "https://cdn.example.com/generated-a.png",
             "https://cdn.example.com/generated-b.png",
@@ -133,7 +139,13 @@ async def test_one_materialization_failure_does_not_fail_generation(
         ),
     )
 
-    async def fake_generate_image(self, prompt, num_outputs=1, size="1024*1024"):
+    async def fake_generate_image(
+        self,
+        prompt,
+        num_outputs=1,
+        size="1024*1024",
+        **kwargs,
+    ):
         return [
             "https://cdn.example.com/broken.png",
             "https://cdn.example.com/valid.png",

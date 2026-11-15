@@ -8,7 +8,10 @@ from PIL import Image, ImageOps
 
 from app.core.config import settings
 from app.services import provider_config
-from app.services.image_quality import estimate_image_cost_micros
+from app.services.image_quality import (
+    estimate_image_cost_micros,
+    resolve_image_resolution,
+)
 
 
 @dataclass(frozen=True)
@@ -66,6 +69,17 @@ class AliyunImageProvider:
     """通义万相纯文生图适配器；不支持商品参考图。"""
 
     name = "aliyun"
+    _QUALITY_MODELS = {
+        "fast": "wan2.2-t2i-flash",
+        "standard": "wan2.2-t2i-plus",
+        "hd": "wan2.2-t2i-plus",
+    }
+    _AUTO_MODELS = {
+        "",
+        "wanx2.1-t2i-turbo",
+        "wan2.2-t2i-flash",
+        "wan2.2-t2i-plus",
+    }
 
     def _api_key(self) -> str:
         return provider_config.get(
@@ -81,6 +95,16 @@ class AliyunImageProvider:
             settings.ALIYUN_IMAGE_MODEL,
         )
 
+    def model_for_quality(self, quality_tier: str) -> str:
+        """快速档走极速模型，标准和高清档走稳定与真实感更好的专业模型。"""
+        configured = self._model().strip()
+        if configured not in self._AUTO_MODELS:
+            return configured
+        return self._QUALITY_MODELS.get(
+            quality_tier,
+            self._QUALITY_MODELS["standard"],
+        )
+
     def is_configured(self) -> bool:
         return bool(self._api_key())
 
@@ -90,7 +114,8 @@ class AliyunImageProvider:
             "configured": self.is_configured(),
             "modes": ["free_creation", "legacy"],
             "reference_images": False,
-            "model": self._model(),
+            "model": self.model_for_quality("standard"),
+            "quality_models": dict(self._QUALITY_MODELS),
         }
 
     def supports(self, mode: str, quality_tier: str) -> bool:
@@ -113,15 +138,20 @@ class AliyunImageProvider:
             raise ValueError("阿里云图片 Provider 不支持当前生成模式")
         from app.services.ai.aliyun_image import AliyunImageService
 
-        urls = await AliyunImageService().generate_image(
+        model = self.model_for_quality(request.quality_tier)
+        urls = await AliyunImageService(model=model).generate_image(
             prompt=request.prompt,
             num_outputs=request.num_outputs,
-            size=request.resolution.replace("x", "*"),
+            size=resolve_image_resolution(
+                request.quality_tier,
+                request.aspect_ratio,
+            ).replace("x", "*"),
+            negative_prompt=request.negative_prompt,
         )
         return ImageProviderResult(
             urls=list(urls),
             provider=self.name,
-            model=self._model(),
+            model=model,
             actual_cost_micros=self.estimate_cost_micros(
                 request.mode,
                 request.quality_tier,
@@ -276,6 +306,79 @@ class ReplicateImageProvider:
         )
 
 
+class SeedreamImageProvider:
+    """火山方舟 Seedream 直连；商品场景不依赖 Replicate。"""
+
+    name = "seedream"
+    max_reference_images = 14
+
+    def _api_key(self) -> str:
+        from app.services.ai.seedream_image import get_seedream_image_config
+
+        return get_seedream_image_config()["api_key"]
+
+    def _model(self) -> str:
+        from app.services.ai.seedream_image import get_seedream_image_config
+
+        return get_seedream_image_config()["model"]
+
+    def is_configured(self) -> bool:
+        return bool(self._api_key())
+
+    def capabilities(self) -> dict[str, Any]:
+        return {
+            "provider": self.name,
+            "configured": self.is_configured(),
+            "modes": ["product_scene"],
+            "reference_images": True,
+            "max_reference_images": self.max_reference_images,
+            "model": self._model(),
+        }
+
+    def supports(self, mode: str, quality_tier: str) -> bool:
+        return (
+            self.is_configured()
+            and mode == "product_scene"
+            and quality_tier in {"fast", "standard", "hd"}
+        )
+
+    def estimate_cost_micros(
+        self,
+        mode: str,
+        quality_tier: str,
+        num_outputs: int,
+    ) -> int:
+        # 内部成本估算按方舟 Seedream 4.0 约 0.20 元/张记录。
+        return 200_000 * max(1, min(int(num_outputs or 1), 4))
+
+    async def generate(self, request: ImageProviderRequest) -> ImageProviderResult:
+        if not self.supports(request.mode, request.quality_tier):
+            raise ValueError("Seedream 图片 Provider 不支持当前生成模式")
+        if not request.references:
+            raise ValueError("Seedream 商品场景参考图不能为空")
+        from app.services.ai.seedream_image import generate_seedream_images
+
+        urls, model = await generate_seedream_images(
+            prompt=request.prompt,
+            reference_images=[
+                (item.data, item.mime)
+                for item in request.references
+            ],
+            quality_tier=request.quality_tier,
+            num_outputs=request.num_outputs,
+        )
+        return ImageProviderResult(
+            urls=urls,
+            provider=self.name,
+            model=model,
+            actual_cost_micros=self.estimate_cost_micros(
+                request.mode,
+                request.quality_tier,
+                request.num_outputs,
+            ),
+        )
+
+
 class LocalImageProvider:
     """无需外部服务的本地图片处理 Provider。"""
 
@@ -335,6 +438,7 @@ class LocalImageProvider:
 _PROVIDERS: dict[str, ImageProvider] = {
     "aliyun": AliyunImageProvider(),
     "replicate": ReplicateImageProvider(),
+    "seedream": SeedreamImageProvider(),
     "local": LocalImageProvider(),
 }
 

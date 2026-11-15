@@ -348,15 +348,19 @@ class SeedreamImageProvider:
         quality_tier: str,
         num_outputs: int,
     ) -> int:
-        # 内部成本估算按方舟 Seedream 4.0 约 0.20 元/张记录。
-        return 200_000 * max(1, min(int(num_outputs or 1), 4))
+        from app.services.ai.seedream_image import estimate_seedream_cost_micros
+
+        return estimate_seedream_cost_micros(quality_tier, num_outputs)
 
     async def generate(self, request: ImageProviderRequest) -> ImageProviderResult:
         if not self.supports(request.mode, request.quality_tier):
             raise ValueError("Seedream 图片 Provider 不支持当前生成模式")
         if request.mode == "product_scene" and not request.references:
             raise ValueError("Seedream 商品场景参考图不能为空")
-        from app.services.ai.seedream_image import generate_seedream_images
+        from app.services.ai.seedream_image import (
+            estimate_seedream_cost_micros,
+            generate_seedream_images,
+        )
 
         urls, model = await generate_seedream_images(
             prompt=request.prompt,
@@ -371,10 +375,10 @@ class SeedreamImageProvider:
             urls=urls,
             provider=self.name,
             model=model,
-            actual_cost_micros=self.estimate_cost_micros(
-                request.mode,
+            actual_cost_micros=estimate_seedream_cost_micros(
                 request.quality_tier,
                 request.num_outputs,
+                len(request.references),
             ),
         )
 

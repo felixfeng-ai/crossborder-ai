@@ -29,7 +29,7 @@ def test_seedream_request_uses_ark_image_api_and_reference_images():
     assert request.url.endswith("/images/generations")
     assert request.headers["Authorization"] == "Bearer ark-test-key"
     assert request.body["model"] == "doubao-seedream-4-0-250828"
-    assert request.body["size"] == "4K"
+    assert request.body["size"] == "2K"
     assert "sequential_image_generation" not in request.body
     assert request.body["watermark"] is False
     assert request.body["image"][0].startswith("data:image/png;base64,")
@@ -47,7 +47,7 @@ def test_seedream_request_supports_free_creation_without_reference_image():
         quality_tier="standard",
     )
 
-    assert request.body["size"] == "2K"
+    assert request.body["size"] == "1.5K"
     assert "image" not in request.body
 
 
@@ -164,5 +164,5 @@ async def test_seedream_http_request_calls_ark_images_endpoint(monkeypatch):
     assert model == "doubao-seedream-4-0-250828"
     assert len(captured) == 2
     assert captured[0]["url"].endswith("/images/generations")
-    assert captured[0]["body"]["size"] == "4K"
+    assert captured[0]["body"]["size"] == "2K"
     assert captured[0]["body"]["image"][0].startswith("data:image/png;base64,")

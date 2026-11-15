@@ -31,12 +31,24 @@ def get_seedream_image_config() -> dict[str, str]:
 
 
 def _quality_size(quality_tier: str) -> str:
-    """Seedream 4.0 支持 1K、2K、4K 三档原生输出。"""
+    """Seedream 5.5 支持 1K、1.5K、2K 三档原生输出。"""
     return {
         "fast": "1K",
-        "standard": "2K",
-        "hd": "4K",
-    }.get(quality_tier, "2K")
+        "standard": "1.5K",
+        "hd": "2K",
+    }.get(quality_tier, "1.5K")
+
+
+def estimate_seedream_cost_micros(
+    quality_tier: str,
+    num_outputs: int,
+    reference_count: int = 0,
+) -> int:
+    """按方舟 Seedream 5.5 官方图片计费项估算内部成本。"""
+    count = max(1, min(int(num_outputs or 1), 4))
+    output_price = 230_000 if quality_tier == "hd" else 130_000
+    input_price = max(0, int(reference_count or 0)) * 50_000
+    return (output_price + input_price) * count
 
 
 def _image_data_uri(data: bytes, mime: str) -> str:

@@ -34,6 +34,7 @@ def get_vision_config() -> tuple[str, str, str] | None:
 
 
 def _asset_path(asset: ImageAsset) -> Path:
+    """把数据库里的相对路径限制在图片存储根目录内，防止路径穿越。"""
     base = Path(settings.IMAGE_STORAGE_DIR).resolve()
     target = (base / asset.storage_key).resolve()
     if base not in target.parents:
@@ -42,6 +43,7 @@ def _asset_path(asset: ImageAsset) -> Path:
 
 
 def _extract_json(text: str) -> dict:
+    """模型偶尔返回代码围栏或解释文字，只提取第一个完整 JSON 对象。"""
     match = re.search(r"\{.*\}", text or "", re.DOTALL)
     if not match:
         return {}
@@ -72,6 +74,8 @@ async def analyze_image_asset(asset: ImageAsset) -> list[dict]:
         '"bbox":[x1,y1,x2,y2],"reason":"可见依据"}]}。'
         "bbox 使用 0-1000 归一化坐标；无法定位区域时 bbox=null。"
     )
+    # Data URI 直接把用户图片送给平台视觉模型，不落第三方临时图床。
+    # temperature=0 用于降低同一图片识别结果的漂移。
     async with httpx.AsyncClient(timeout=25) as client:
         response = await client.post(
             f"{base_url}/chat/completions",
@@ -112,6 +116,7 @@ async def analyze_image_asset(asset: ImageAsset) -> list[dict]:
 
 
 def _valid_bbox(value) -> list[float] | None:
+    """只接受坐标完整且在 0-1000 归一化范围内的 bbox。"""
     if not isinstance(value, list) or len(value) != 4:
         return None
     try:
@@ -137,6 +142,7 @@ def visual_items_to_risks(
     }
     risks = []
     for item in items:
+        # 模型输出视为不可信输入：逐字段校验，不完整项直接忽略或降级。
         if not isinstance(item, dict):
             continue
         item_type = str(item.get("type") or "").lower()
@@ -154,6 +160,7 @@ def visual_items_to_risks(
             "bbox_format": "normalized_1000" if bbox else None,
         }
         is_authorized = bool(label) and label.lower() in authorized
+        # Logo/商标文字只在置信度较高时升级为 high；有授权证据仍提示人工核验。
         if item_type in {"logo", "trademark_text"}:
             code = "IMAGE_TRADEMARK_SUSPECTED"
             category = "trademark"
@@ -177,6 +184,7 @@ def visual_items_to_risks(
             suggestion = "疑似影视/卡通 IP 形象，请人工核实角色授权后再发布"
         else:
             continue
+        # 没有可靠区域时保留风险但降低证据强度，前端必须提示整图复核。
         if bbox is None:
             code = "VISION_REGION_UNVERIFIED"
             severity = "medium"

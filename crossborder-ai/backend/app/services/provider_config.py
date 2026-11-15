@@ -26,6 +26,9 @@ PROVIDER_FIELDS: dict[str, tuple[str, ...]] = {
         "model",
         "reference_model",
         "reference_input_field",
+        "inpaint_model",
+        "outpaint_model",
+        "remove_model",
     ),
     "shopify": ("api_key", "api_secret", "redirect_uri"),
     "amazon": ("app_id", "client_id", "client_secret", "redirect_uri"),
@@ -60,6 +63,9 @@ def _env_fallback(provider: str, field: str) -> str:
         ("replicate", "reference_input_field"): (
             settings.REPLICATE_IMAGE_REFERENCE_INPUT_FIELD
         ),
+        ("replicate", "inpaint_model"): settings.REPLICATE_IMAGE_INPAINT_MODEL,
+        ("replicate", "outpaint_model"): settings.REPLICATE_IMAGE_OUTPAINT_MODEL,
+        ("replicate", "remove_model"): settings.REPLICATE_IMAGE_REMOVE_MODEL,
         ("shopify", "api_key"): settings.SHOPIFY_API_KEY or "",
         ("shopify", "api_secret"): settings.SHOPIFY_API_SECRET or "",
         ("shopify", "redirect_uri"): settings.SHOPIFY_REDIRECT_URI or "",

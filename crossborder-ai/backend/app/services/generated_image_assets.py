@@ -115,3 +115,54 @@ async def materialize_image_task_assets(
         by_variant[variant_index] = asset
 
     return [by_variant[index] for index in sorted(by_variant)]
+
+
+async def materialize_image_bytes(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    task_id: UUID,
+    prompt: str,
+    images: list[bytes],
+) -> list[ImageAsset]:
+    """把本地 Provider 生成的二进制图片直接写入素材库。"""
+    existing = (
+        await db.execute(
+            select(ImageAsset)
+            .where(ImageAsset.generation_task_id == task_id)
+            .order_by(ImageAsset.variant_index)
+        )
+    ).scalars().all()
+    by_variant = {
+        int(asset.variant_index): asset
+        for asset in existing
+        if asset.variant_index is not None
+    }
+
+    for variant_index, data in enumerate(images[:4]):
+        if variant_index in by_variant:
+            continue
+        storage_key, width, height, file_size = await asyncio.to_thread(
+            _write_generated_asset,
+            user_id=user_id,
+            task_id=task_id,
+            variant_index=variant_index,
+            data=data,
+        )
+        asset = ImageAsset(
+            user_id=user_id,
+            name=f"AI 图片编辑 · {prompt[:80]} · {variant_index + 1}"[:255],
+            kind="generated",
+            storage_key=storage_key,
+            content_type="image/webp",
+            width=width,
+            height=height,
+            file_size=file_size,
+            generation_task_id=task_id,
+            variant_index=variant_index,
+        )
+        db.add(asset)
+        await db.flush()
+        by_variant[variant_index] = asset
+
+    return [by_variant[index] for index in sorted(by_variant)]

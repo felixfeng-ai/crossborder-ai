@@ -19,6 +19,7 @@ import {
   CAMPAIGN_ASSET_LABELS,
   campaignAssetStatusLabel,
   flattenCampaignImageVariants,
+  marketingSuitePlatformLabel,
   type CampaignAsset,
   type CampaignAssetsResponse,
   type CampaignImageBoardVariant,
@@ -99,7 +100,7 @@ export function MarketingAssetBoard({
           {variants.map((variant) => (
             <article
               key={variant.asset_id}
-              className="w-32 shrink-0 overflow-hidden border border-border bg-background"
+            className="relative w-32 shrink-0 overflow-hidden border border-border bg-background"
             >
               <a
                 href={resolveMediaUrl(variant.download_url)}
@@ -115,6 +116,11 @@ export function MarketingAssetBoard({
                   loading="lazy"
                 />
               </a>
+              {variant.platform && (
+                <span className="absolute left-1 top-1 border border-border bg-background/90 px-1.5 py-0.5 text-[11px] font-medium">
+                  {marketingSuitePlatformLabel(variant.platform)}
+                </span>
+              )}
               {editingId === variant.asset_id ? (
                 <form
                   className="space-y-1 p-1.5"
@@ -238,7 +244,12 @@ export function MarketingAssetBoard({
 
 function TaskPlaceholder({ asset }: { asset: CampaignAsset }) {
   return (
-    <div className="flex aspect-[4/5] w-32 shrink-0 flex-col overflow-hidden border border-border bg-background text-center">
+    <div className="relative flex aspect-[4/5] w-32 shrink-0 flex-col overflow-hidden border border-border bg-background text-center">
+      {asset.platform && (
+        <span className="absolute left-1 top-1 z-10 border border-border bg-background/90 px-1.5 py-0.5 text-[11px] font-medium">
+          {marketingSuitePlatformLabel(asset.platform)}
+        </span>
+      )}
       {asset.thumbnail_url ? (
         <img
           src={resolveMediaUrl(asset.thumbnail_url)}

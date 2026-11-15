@@ -15,7 +15,10 @@ from app.models.image_asset import ImageAsset
 from app.models.image_generation_task import ImageGenerationTask
 from app.models.user import User
 from app.services import provider_config  # 保留兼容入口，供运行时配置与旧测试替换。
-from app.services.generated_image_assets import materialize_image_task_assets
+from app.services.generated_image_assets import (
+    materialize_image_bytes,
+    materialize_image_task_assets,
+)
 from app.services.image_provider import (
     ImageProviderRequest,
     ImageReferencePayload,
@@ -85,6 +88,8 @@ async def run_image_generation(
                 error=(
                     "商品场景参考图生成服务暂不可用，请管理员检查 Replicate 配置"
                     if task.mode == "product_scene"
+                    else "图片编辑服务暂未配置，请管理员检查 Replicate 编辑模型"
+                    if task.mode in {"inpaint", "outpaint", "remove_object", "upscale"}
                     else "暂无可用图片生成服务，请稍后重试"
                 ),
                 finished_at=datetime.now(timezone.utc),
@@ -96,28 +101,43 @@ async def run_image_generation(
             try:
                 provider = get_image_provider(provider_name)
                 result = await provider.generate(request)
-                if not result.urls:
+                if not result.urls and not result.local_outputs:
                     raise ValueError("图片 Provider 未返回可用结果")
+                if result.local_outputs:
+                    local_assets = await materialize_image_bytes(
+                        db,
+                        user_id=task.user_id,
+                        task_id=tid,
+                        prompt=prompt,
+                        images=result.local_outputs,
+                    )
+                    result_urls = [
+                        f"{settings.API_V1_PREFIX}/images/assets/{asset.id}/file"
+                        for asset in local_assets
+                    ]
+                else:
+                    result_urls = result.urls
                 await update(
                     status="completed",
-                    image_urls=json.dumps(result.urls, ensure_ascii=False),
+                    image_urls=json.dumps(result_urls, ensure_ascii=False),
                     model_used=result.model,
                     provider=result.provider,
                     actual_cost_micros=result.actual_cost_micros,
                     error=None,
                     finished_at=datetime.now(timezone.utc),
                 )
-                try:
-                    await materialize_image_task_assets(
-                        db,
-                        user_id=task.user_id,
-                        task_id=tid,
-                        prompt=prompt,
-                        image_urls=result.urls,
-                    )
-                except Exception as exc:
-                    # 生成成功优先；素材入库异常不能把任务改成失败。
-                    logger.warning("生成图片自动入库异常 task=%s: %s", tid, exc)
+                if not result.local_outputs:
+                    try:
+                        await materialize_image_task_assets(
+                            db,
+                            user_id=task.user_id,
+                            task_id=tid,
+                            prompt=prompt,
+                            image_urls=result.urls,
+                        )
+                    except Exception as exc:
+                        # 生成成功优先；素材入库异常不能把任务改成失败。
+                        logger.warning("生成图片自动入库异常 task=%s: %s", tid, exc)
                 await _charge_completed_image_task(db, tid)
                 return
             except Exception as exc:
@@ -133,6 +153,8 @@ async def run_image_generation(
             error=(
                 "商品场景参考图生成失败，请稍后重试"
                 if task.mode == "product_scene"
+                else "图片编辑失败，请稍后重试"
+                if task.mode in {"inpaint", "outpaint", "remove_object", "upscale"}
                 else "图片生成失败，请稍后重试"
             ),
             finished_at=datetime.now(timezone.utc),
@@ -150,6 +172,10 @@ def _provider_order(task: ImageGenerationTask) -> list[str]:
     """商品场景只允许参考图 Provider；普通生成默认可在主备之间降级。"""
     if task.mode == "product_scene":
         return ["replicate"]
+    if task.mode == "upscale":
+        return ["local"]
+    if task.mode in {"inpaint", "outpaint", "remove_object"}:
+        return ["replicate"]
     if task.provider in {"aliyun", "replicate"}:
         return [task.provider]
     return ["aliyun", "replicate"]
@@ -162,7 +188,11 @@ def _build_provider_request(
     num_outputs: int,
     references: list[ImageReferencePayload],
 ) -> ImageProviderRequest:
-    quality_tier = task.quality_tier or "fast"
+    quality_tier = task.quality_tier or (
+        "standard"
+        if task.mode in {"inpaint", "outpaint", "remove_object"}
+        else "fast"
+    )
     quality = IMAGE_QUALITY_TIERS.get(quality_tier)
     return ImageProviderRequest(
         prompt=prompt,
@@ -174,8 +204,20 @@ def _build_provider_request(
         aspect_ratio=task.aspect_ratio or "1:1",
         num_outputs=max(1, min(int(num_outputs or 1), 4)),
         negative_prompt=task.negative_prompt or "",
+        scale=_task_scale(task),
         references=references,
     )
+
+
+def _task_scale(task: ImageGenerationTask) -> int:
+    try:
+        params = json.loads(task.generation_params_json or "{}")
+    except (TypeError, json.JSONDecodeError):
+        return 2
+    try:
+        return max(2, min(int(params.get("scale") or 2), 4))
+    except (TypeError, ValueError):
+        return 2
 
 
 async def _load_task_references(

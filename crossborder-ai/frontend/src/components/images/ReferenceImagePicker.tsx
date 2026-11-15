@@ -13,6 +13,8 @@ export function ReferenceImagePicker({
   onUpload,
   max = 4,
   disabled = false,
+  label = '商品参考图',
+  description,
 }: {
   assets: WorkbenchAsset[]
   selectedIds: string[]
@@ -20,6 +22,8 @@ export function ReferenceImagePicker({
   onUpload: () => void
   max?: number
   disabled?: boolean
+  label?: string
+  description?: string
 }) {
   const toggle = (assetId: string) => {
     if (disabled) return
@@ -35,9 +39,10 @@ export function ReferenceImagePicker({
     <div>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium">商品参考图</p>
+          <p className="text-sm font-medium">{label}</p>
           <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
-            选择 1-{max} 张本人素材，生成时保持商品主体和关键细节一致
+            {description ||
+              `选择 1-${max} 张本人素材，生成时保持商品主体和关键细节一致`}
           </p>
         </div>
         <span className="metric-number shrink-0 text-[11px] text-muted-foreground">

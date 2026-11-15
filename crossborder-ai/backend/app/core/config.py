@@ -157,6 +157,10 @@ class Settings(BaseSettings):
     # 参考图商品场景必须显式配置支持图像输入的模型；缺失时明确报错而非降级。
     REPLICATE_IMAGE_REFERENCE_MODEL: str = "bytedance/seedream-4"
     REPLICATE_IMAGE_REFERENCE_INPUT_FIELD: str = "image_input"
+    # 图片编辑模型按操作拆分；未配置时明确关闭对应能力。
+    REPLICATE_IMAGE_INPAINT_MODEL: str = ""
+    REPLICATE_IMAGE_OUTPAINT_MODEL: str = ""
+    REPLICATE_IMAGE_REMOVE_MODEL: str = ""
 
     # --- Aliyun DashScope (通义万相) ---
     ALIYUN_DASHSCOPE_API_KEY: Optional[str] = None

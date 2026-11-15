@@ -130,7 +130,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "047_image_generation_modes"
+    assert version == "048_marketing_image_suites"
     assert {
         "traffic_events",
         "feedback_tickets",
@@ -216,6 +216,8 @@ def test_full_sqlite_upgrade_from_empty_database(
 
     inspector = sa.inspect(engine)
     assert "data_retention_runs" in inspector.get_table_names()
+    assert "marketing_image_suites" in inspector.get_table_names()
+    assert "marketing_image_suite_items" in inspector.get_table_names()
     assert "reference_assets_json" in _column_names(
         engine,
         "marketing_video_projects",
@@ -243,7 +245,7 @@ def test_full_sqlite_upgrade_from_empty_database(
     } <= _column_names(engine, "products")
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "047_image_generation_modes"
+    assert version == "048_marketing_image_suites"
     assert {
         "traffic_events",
         "feedback_tickets",

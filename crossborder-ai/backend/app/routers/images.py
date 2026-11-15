@@ -31,6 +31,10 @@ from app.models.user import User
 from app.models.image_generation_task import ImageGenerationTask
 from app.models.image_asset import ImageAsset
 from app.models.marketing_campaign import MarketingCampaign
+from app.models.marketing_image_suite import (
+    MarketingImageSuite,
+    MarketingImageSuiteItem,
+)
 from app.services.image_task_executor import (
     execute_image_generation_task,
     run_image_generation,
@@ -55,7 +59,13 @@ from app.services.image_quality import (
     image_generation_credits as calculate_image_credits,
     public_image_capabilities,
 )
+from app.services.image_editing_service import create_image_edit_task
 from app.services.image_provider import list_image_provider_capabilities
+from app.services.marketing_image_suite_service import (
+    create_marketing_image_suite,
+    normalize_suite_platforms,
+    serialize_marketing_image_suite,
+)
 from app.core.access_control import check_feature_access
 from pydantic import BaseModel, Field
 
@@ -148,6 +158,50 @@ class PlatformPresetItem(BaseModel):
     note: str
 
 
+class MarketingImageSuiteRequest(BaseModel):
+    """营销套图请求；平台至少两个，参考图 1-4 张。"""
+
+    campaign_id: str
+    title: str = Field(..., min_length=1, max_length=255)
+    direction: Literal[
+        "conversion",
+        "lifestyle",
+        "campaign",
+        "premium",
+    ] = "conversion"
+    theme: str = Field(default="", max_length=80)
+    platforms: list[str] = Field(..., min_length=2, max_length=5)
+    reference_asset_ids: list[str] = Field(..., min_length=1, max_length=4)
+    quality_tier: Literal["fast", "standard", "hd"] = "fast"
+    note: str = Field(default="", max_length=800)
+    idempotency_key: Optional[str] = Field(
+        default=None,
+        min_length=8,
+        max_length=100,
+    )
+
+
+class ImageEditRequest(BaseModel):
+    """图片编辑请求；蒙版仅局部编辑需要。"""
+
+    source_asset_id: str
+    operation: Literal[
+        "inpaint",
+        "outpaint",
+        "remove_object",
+        "upscale",
+    ]
+    mask_asset_id: Optional[str] = None
+    prompt: str = Field(default="", max_length=2000)
+    aspect_ratio: str = Field(default="", max_length=12)
+    scale: int = Field(default=2, ge=2, le=4)
+    idempotency_key: Optional[str] = Field(
+        default=None,
+        min_length=8,
+        max_length=128,
+    )
+
+
 def _parse_urls(raw: Optional[str]) -> list[str]:
     """把 DB 里 image_urls JSON 文本解析为列表（空/损坏返回 []）。"""
     if not raw:
@@ -226,6 +280,135 @@ async def get_image_capabilities(
     payload = public_image_capabilities()
     payload["providers"] = list_image_provider_capabilities()
     return payload
+
+
+@router.post("/marketing-suites", status_code=201)
+async def create_image_marketing_suite(
+    payload: MarketingImageSuiteRequest,
+    current_user: User = Depends(get_current_user),
+    _ratelimit=Depends(RateLimit("ai_generate")),
+    db: AsyncSession = Depends(get_db),
+):
+    """创建营销多平台套图；校验、建套图和多任务在同一事务内完成。"""
+    try:
+        # 路由层先校验平台，避免无效请求进入后续素材和活动查询。
+        normalize_suite_platforms(payload.platforms)
+        suite = await create_marketing_image_suite(
+            db,
+            current_user,
+            campaign_id=payload.campaign_id,
+            title=payload.title,
+            direction=payload.direction,
+            theme=payload.theme,
+            platform_ids=payload.platforms,
+            reference_asset_ids=payload.reference_asset_ids,
+            quality_tier=payload.quality_tier,
+            note=payload.note,
+            idempotency_key=payload.idempotency_key,
+        )
+        data = await serialize_marketing_image_suite(db, suite)
+        await db.commit()
+        return data
+    except PermissionError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        await db.rollback()
+        status_code = 402 if "积分不足" in str(exc) else 404 if (
+            "不存在" in str(exc)
+        ) else 400
+        raise HTTPException(status_code=status_code, detail=str(exc))
+
+
+@router.post("/edit", status_code=201)
+async def create_image_edit(
+    payload: ImageEditRequest,
+    current_user: User = Depends(get_current_user),
+    _ratelimit=Depends(RateLimit("ai_generate")),
+    db: AsyncSession = Depends(get_db),
+):
+    """创建局部重绘、扩图、消除或本地放大任务。"""
+    try:
+        task = await create_image_edit_task(
+            db,
+            current_user,
+            source_asset_id=payload.source_asset_id,
+            operation=payload.operation,
+            mask_asset_id=payload.mask_asset_id,
+            prompt=payload.prompt,
+            aspect_ratio=payload.aspect_ratio,
+            scale=payload.scale,
+            idempotency_key=payload.idempotency_key,
+        )
+        await db.commit()
+        return TaskResponse(
+            task_id=str(task.id),
+            status=task.status,
+            image_urls=_parse_urls(task.image_urls),
+            model_used=task.model_used or "",
+            error=task.error,
+        )
+    except PermissionError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        await db.rollback()
+        message = str(exc)
+        status_code = 402 if "积分不足" in message else 404 if (
+            "素材不存在" in message
+        ) else 400
+        raise HTTPException(status_code=status_code, detail=message)
+
+
+@router.get("/marketing-suites")
+async def list_image_marketing_suites(
+    campaign_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """按活动列出当前用户的套图摘要。"""
+    query = select(MarketingImageSuite).where(
+        MarketingImageSuite.user_id == current_user.id
+    )
+    if campaign_id:
+        try:
+            campaign_uuid = uuid.UUID(campaign_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="营销活动不存在")
+        query = query.where(MarketingImageSuite.campaign_id == campaign_uuid)
+    suites = (
+        await db.execute(
+            query.order_by(desc(MarketingImageSuite.created_at)).limit(50)
+        )
+    ).scalars().all()
+    items = [
+        await serialize_marketing_image_suite(db, suite)
+        for suite in suites
+    ]
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/marketing-suites/{suite_id}")
+async def get_image_marketing_suite(
+    suite_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        parsed_id = uuid.UUID(suite_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="营销套图不存在")
+    suite = (
+        await db.execute(
+            select(MarketingImageSuite).where(
+                MarketingImageSuite.id == parsed_id,
+                MarketingImageSuite.user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if suite is None:
+        raise HTTPException(status_code=404, detail="营销套图不存在")
+    return await serialize_marketing_image_suite(db, suite)
 
 
 @router.post("/assets/upload", response_model=ImageAssetItem, status_code=201)

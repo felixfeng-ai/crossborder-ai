@@ -63,6 +63,13 @@ IMAGE_QUALITY_TIERS: dict[str, ImageQualitySpec] = {
 
 IMAGE_ASPECT_RATIOS: tuple[str, ...] = ("1:1", "4:5", "3:4", "16:9", "9:16")
 
+IMAGE_EDIT_CREDITS: dict[str, int] = {
+    "inpaint": 6,
+    "outpaint": 6,
+    "remove_object": 5,
+    "upscale": 2,
+}
+
 
 def image_generation_credits(
     mode: str,
@@ -73,6 +80,8 @@ def image_generation_credits(
     count = max(1, min(int(num_outputs or 1), 4))
     if mode == "legacy":
         return count * 3
+    if mode in IMAGE_EDIT_CREDITS:
+        return count * IMAGE_EDIT_CREDITS[mode]
     spec = IMAGE_QUALITY_TIERS.get(quality_tier)
     if spec is None:
         raise ValueError("未知的图片质量档位")
@@ -90,6 +99,12 @@ def estimate_image_cost_micros(
     """估算服务商成本；白底本地处理不产生模型调用成本。"""
     if mode == "platform_white":
         return 0
+    if mode == "upscale":
+        return 0
+    if mode in {"inpaint", "outpaint"}:
+        return 80_000 * max(1, min(int(num_outputs or 1), 4))
+    if mode == "remove_object":
+        return 60_000 * max(1, min(int(num_outputs or 1), 4))
     spec = IMAGE_QUALITY_TIERS.get(quality_tier)
     if spec is None:
         return 0
@@ -115,4 +130,11 @@ def public_image_capabilities() -> dict:
         ],
         "aspect_ratios": list(IMAGE_ASPECT_RATIOS),
         "reference_image_limit": {"min": 1, "max": 4},
+        "edit_operations": [
+            {
+                "id": operation,
+                "credits": credits,
+            }
+            for operation, credits in IMAGE_EDIT_CREDITS.items()
+        ],
     }

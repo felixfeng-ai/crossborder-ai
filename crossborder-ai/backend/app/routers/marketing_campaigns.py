@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.models.image_asset import ImageAsset
 from app.models.marketing_campaign import MarketingCampaign
+from app.models.marketing_image_suite import MarketingImageSuiteItem
 from app.models.marketing_video import MarketingVideoProject
 from app.models.product import Product
 from app.models.user import User
@@ -204,6 +205,19 @@ async def list_campaign_assets(
             .limit(30)
         )
     ).scalars().all()
+    suite_items = (
+        await db.execute(
+            select(MarketingImageSuiteItem).where(
+                MarketingImageSuiteItem.image_task_id.in_(
+                    [task.id for task in image_tasks]
+                )
+            )
+        )
+    ).scalars().all() if image_tasks else []
+    suite_item_by_task = {
+        item.image_task_id: item
+        for item in suite_items
+    }
     projects = (
         await db.execute(
             select(MarketingVideoProject)
@@ -232,6 +246,7 @@ async def list_campaign_assets(
         image_task_count += 1
         image_variant_count += max(1, len(task_assets))
         generated_asset = task_assets[0] if task_assets else None
+        suite_item = suite_item_by_task.get(task.id)
         thumbnail_url = (
             f"{settings.API_V1_PREFIX}/images/assets/{generated_asset.id}/file"
             if generated_asset is not None
@@ -246,6 +261,15 @@ async def list_campaign_assets(
             "thumbnail_url": thumbnail_url,
             "image_asset_id": (
                 str(generated_asset.id) if generated_asset is not None else None
+            ),
+            "suite_id": (
+                str(suite_item.suite_id) if suite_item is not None else None
+            ),
+            "platform": (
+                suite_item.platform if suite_item is not None else None
+            ),
+            "aspect_ratio": (
+                suite_item.aspect_ratio if suite_item is not None else None
             ),
             "variants": [
                 {

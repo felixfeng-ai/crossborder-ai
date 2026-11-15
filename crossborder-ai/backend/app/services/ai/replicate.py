@@ -209,6 +209,43 @@ class ReplicateService:
 
         return await self._run_prediction(reference_model, input_data)
 
+    async def generate_edit_image(
+        self,
+        *,
+        model: str,
+        mode: str,
+        prompt: str,
+        source: tuple[bytes, str],
+        mask: tuple[bytes, str] | None = None,
+        aspect_ratio: str = "1:1",
+    ) -> List[str]:
+        """按编辑操作组装 Replicate 输入；调用方必须已校验模型配置。"""
+        if not self.api_key:
+            raise ValueError("Replicate API key not configured")
+        if not model:
+            raise ValueError("Replicate 图片编辑模型未配置")
+        source_data, source_mime = source
+        source_uri = (
+            f"data:{source_mime};base64,"
+            f"{base64.b64encode(source_data).decode('ascii')}"
+        )
+        input_data: Dict[str, Any] = {
+            "image": source_uri,
+            "prompt": prompt,
+            "output_format": "webp",
+        }
+        if mode in {"inpaint", "remove_object"}:
+            if mask is None:
+                raise ValueError("局部编辑必须提供蒙版图")
+            mask_data, mask_mime = mask
+            input_data["mask"] = (
+                f"data:{mask_mime};base64,"
+                f"{base64.b64encode(mask_data).decode('ascii')}"
+            )
+        if mode == "outpaint":
+            input_data["aspect_ratio"] = aspect_ratio
+        return await self._run_prediction(model, input_data)
+
     async def generate_product_image(
         self,
         product_title: str,

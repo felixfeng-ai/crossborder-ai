@@ -21,8 +21,11 @@ from app.services.ai.compliance import PLATFORM_EXTREME_WORDS, check_text
 
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config" / "ip"
+# 风险等级只用于排序和发布拦截，不代替法律判断。
 SEVERITY_RANK = {"info": 0, "low": 1, "medium": 2, "high": 3}
+# 只有“已提供”或“人工核验”的声明才能降低规则风险。
 VALID_EVIDENCE_STATUSES = {"provided", "manually_verified"}
+# 固定字段顺序保证同一输入多次检测时证据顺序稳定。
 FIELD_ORDER = {
     "title": 0,
     "description": 1,
@@ -63,6 +66,7 @@ def load_ip_configs() -> tuple[dict, dict, dict, str]:
     certs = _load_config("certification_terms.json")
     categories = _load_config("category_authorization.json")
     rule = _load_config("rule_version.json")
+    # 联合版本号参与报告幂等哈希；任一配置文件变化都会触发重新检测。
     version = "|".join(
         [
             str(rule.get("version") or ""),
@@ -75,6 +79,7 @@ def load_ip_configs() -> tuple[dict, dict, dict, str]:
 
 
 def normalize_category_code(value: str | None) -> str | None:
+    """把卖家常用中文类目归一为规则文件中使用的稳定 key。"""
     normalized = (value or "").strip().lower()
     if not normalized:
         return None
@@ -94,6 +99,7 @@ def _parse_expiry(value: Any) -> datetime | None:
 
 
 def _declaration_is_valid(declaration: dict, claim_type: str, value: str) -> bool:
+    """授权声明必须类型、名称、证据状态和有效期同时有效。"""
     if declaration.get("claim_type") != claim_type:
         return False
     if str(declaration.get("claim_value") or "").strip().lower() != value.lower():
@@ -108,6 +114,7 @@ def _iter_term_matches(
     text: str,
     term: str,
 ) -> list[re.Match]:
+    """英文词加边界避免 brand 命中 branding；中文词保持直接子串匹配。"""
     if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._-]*", term):
         pattern = rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])"
     else:
@@ -116,6 +123,7 @@ def _iter_term_matches(
 
 
 def _authorization_claim_regex(phrase: str) -> re.Pattern:
+    """允许 official partner 中间插入少量限定词，降低机械误判。"""
     if re.search(r"[\u4e00-\u9fff]", phrase):
         return re.compile(re.escape(phrase), re.IGNORECASE)
     words = phrase.split()
@@ -139,6 +147,7 @@ def _risk(
     suggestion: str,
     source: str,
 ) -> dict:
+    """统一风险项结构，文本证据必须能定位回原字段和字符区间。"""
     return {
         "code": code,
         "category": category,
@@ -156,6 +165,7 @@ def _risk(
 
 
 def _dedupe_and_sort(risks: list[dict]) -> list[dict]:
+    """同一规则命中同一文本区间时去重，并按严重度和固定字段顺序排序。"""
     seen = set()
     unique = []
     for item in risks:
@@ -193,6 +203,7 @@ def _finalize_result(
     image_coverage: str,
     image_required: bool = False,
 ) -> dict:
+    """汇总风险等级；图片未检查时用 unknown 表达“结论不完整”。"""
     risks = _dedupe_and_sort(risks)
     if any(item["severity"] == "high" for item in risks):
         overall_risk = "high"
@@ -246,6 +257,7 @@ def screen_ip_text(
     authorized_brands: set[str] = set()
     normalized_platform = (platform or "").strip().lower()
 
+    # 第一层：品牌词。平台限定、别名和有效授权都在规则引擎内处理。
     for brand in brand_config.get("brands") or []:
         platforms = {
             str(item).strip().lower()
@@ -301,6 +313,7 @@ def screen_ip_text(
                     )
 
     any_brand_authorized = bool(authorized_brands)
+    # 第二层：授权话术。没有有效品牌依据时，“官方合作”等措辞是高风险。
     for phrase in (
         brand_config.get("authorization_claim_patterns")
         or DEFAULT_AUTHORIZATION_CLAIMS
@@ -326,6 +339,7 @@ def screen_ip_text(
                     )
                 )
 
+    # 第三层：CE/FDA/UL 等认证声称，证据缺失时保留原始命中位置。
     for claim in certification_config.get("claims") or []:
         code = str(claim.get("code") or "")
         has_evidence = any(
@@ -377,6 +391,7 @@ def screen_ip_text(
         if category_code
         else None
     )
+    # 类目授权链是人工复核提示，不根据类目本身直接判定侵权。
     if category_rule:
         risks.append(
             {
@@ -398,6 +413,7 @@ def screen_ip_text(
             }
         )
 
+    # 复用 Listing 合规的绝对化词表，避免两套规则对同一文案给出矛盾结果。
     for field, text in text_fields.items():
         for word in check_text(text or "", PLATFORM_EXTREME_WORDS):
             for match in _iter_term_matches(text or "", word):
@@ -518,12 +534,14 @@ async def persist_ip_report(
     model_provider: str | None = None,
     model_name: str | None = None,
 ) -> dict:
+    """把可复现风险结果落库，并用输入哈希复用同一规则版本的报告。"""
     brands, certs, categories, version = load_ip_configs()
     category_rule = (
         (categories.get("categories") or {}).get(category_code)
         if category_code
         else None
     )
+    # 图片必检由“请求范围”和“类目规则”共同决定，避免类目图片风险被跳过。
     image_required = scope in {"image", "both"} or bool(
         (category_rule or {}).get("image_check_required")
     )
@@ -543,6 +561,7 @@ async def persist_ip_report(
         image_required=image_required,
     )
 
+    # 输入哈希只包含影响检测结论的内容；排序后哈希保证顺序无关。
     input_payload = {
         "text": text_fields,
         "scope": scope,
@@ -573,6 +592,7 @@ async def persist_ip_report(
     input_hash = hashlib.sha256(
         json.dumps(input_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
+    # 相同用户、商品、Listing 版本、范围、输入和规则版本直接复用旧报告。
     existing = (
         await db.execute(
             select(IpRiskReport).where(
@@ -611,6 +631,7 @@ async def persist_ip_report(
     )
     db.add(report)
     await db.flush()
+    # 每条风险独立落库，前端可以逐项展示证据、建议和规则来源。
     items = []
     for risk_value in result["risks"]:
         item = IpRiskItem(
@@ -644,7 +665,9 @@ async def screen_product_text(
     text_fields: dict[str, str] | None = None,
     image_assets: list[ImageAsset] | None = None,
 ) -> dict:
+    """执行商品/Listing 的文本和可选图片初筛，并返回可解释报告。"""
     category_code = await _resolve_category_code(db, user.id, category_code)
+    # 未显式传文案时，优先使用当前 Listing，其次使用商品基础信息。
     if text_fields is None:
         if listing is not None:
             try:
@@ -665,6 +688,7 @@ async def screen_product_text(
             }
     declarations = await _declarations_for_product(db, user.id, product.id)
     if scope == "image":
+        # 纯图片检查不重复跑文本规则，避免报告里出现伪文本证据。
         text_fields = {}
     text_coverage = "not_checked" if scope == "image" else "checked"
     visual_risks: list[dict] = []
@@ -672,6 +696,7 @@ async def screen_product_text(
     model_provider = None
     model_name = None
     selected_assets = list(image_assets or [])[:6]
+    # 图片检查是可选高成本层；未配置或单图失败只降低覆盖率，不让文本链路报错。
     if scope in {"image", "both"} and selected_assets:
         from app.services.ip_vision import (
             analyze_image_asset,
@@ -681,6 +706,7 @@ async def screen_product_text(
 
         config = get_vision_config()
         if config is None:
+            # 视觉模型缺失时显式标注未检查，不能把未知状态伪装成低风险。
             visual_risks.append(
                 {
                     "code": "VISUAL_CHECK_NOT_CONFIGURED",
@@ -705,6 +731,7 @@ async def screen_product_text(
                 )
             }
             failures = 0
+            # 逐图隔离失败：一张坏图不影响其他图片的视觉结果。
             for asset in selected_assets:
                 try:
                     items = await analyze_image_asset(asset)
@@ -834,7 +861,7 @@ async def ensure_ip_report_for_publish(
 
 
 def ip_publish_block_reason(report: dict) -> str | None:
-    """返回发布拦截原因；纯文本报告不会被可选的图片检查误伤。"""
+    """返回发布拦截原因；这是流程门禁，不是侵权或合法性的法律结论。"""
     if report.get("overall_risk") == "high":
         return "high_risk"
 

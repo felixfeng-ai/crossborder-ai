@@ -1,7 +1,10 @@
 """图片生成 Provider 统一协议与能力边界。"""
 
+import io
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+
+from PIL import Image, ImageOps
 
 from app.core.config import settings
 from app.services import provider_config
@@ -25,6 +28,7 @@ class ImageProviderRequest:
     aspect_ratio: str
     num_outputs: int = 1
     negative_prompt: str = ""
+    scale: int = 1
     references: list[ImageReferencePayload] = field(default_factory=list)
 
 
@@ -34,6 +38,7 @@ class ImageProviderResult:
     provider: str
     model: str
     actual_cost_micros: int
+    local_outputs: list[bytes] | None = None
 
 
 class ImageProvider(Protocol):
@@ -158,28 +163,47 @@ class ReplicateImageProvider:
             settings.REPLICATE_IMAGE_REFERENCE_INPUT_FIELD,
         )
 
+    def _edit_model(self, mode: str) -> str:
+        field_name, fallback = {
+            "inpaint": ("inpaint_model", settings.REPLICATE_IMAGE_INPAINT_MODEL),
+            "outpaint": ("outpaint_model", settings.REPLICATE_IMAGE_OUTPAINT_MODEL),
+            "remove_object": ("remove_model", settings.REPLICATE_IMAGE_REMOVE_MODEL),
+        }.get(mode, ("", ""))
+        if not field_name:
+            return ""
+        return provider_config.get("replicate", field_name, fallback or "")
+
     def is_configured(self) -> bool:
         return bool(self._api_key())
 
     def capabilities(self) -> dict[str, Any]:
+        modes = ["free_creation", "legacy"]
+        if self._reference_model():
+            modes.append("product_scene")
+        modes.extend(
+            mode
+            for mode in ("inpaint", "outpaint", "remove_object")
+            if self._edit_model(mode)
+        )
         return {
             "provider": self.name,
             "configured": self.is_configured(),
-            "modes": (
-                ["free_creation", "legacy", "product_scene"]
-                if self._reference_model()
-                else ["free_creation", "legacy"]
-            ),
+            "modes": modes,
             "reference_images": bool(self._reference_model()),
             "model": self._text_model(),
             "reference_model": self._reference_model() or None,
+            "edit_models": {
+                mode: self._edit_model(mode) or None
+                for mode in ("inpaint", "outpaint", "remove_object")
+            },
         }
 
     def supports(self, mode: str, quality_tier: str) -> bool:
-        if (
-            not self.is_configured()
-            or quality_tier not in {"fast", "standard", "hd"}
-        ):
+        if not self.is_configured():
+            return False
+        if mode in {"inpaint", "outpaint", "remove_object"}:
+            return bool(self._edit_model(mode))
+        if quality_tier not in {"fast", "standard", "hd"}:
             return False
         if mode in {"free_creation", "legacy"}:
             return True
@@ -199,7 +223,23 @@ class ReplicateImageProvider:
         from app.services.ai.replicate import ReplicateService
 
         service = ReplicateService()
-        if request.mode == "product_scene":
+        if request.mode in {"inpaint", "outpaint", "remove_object"}:
+            if not request.references:
+                raise ValueError("编辑源图不能为空")
+            model = self._edit_model(request.mode)
+            mask = request.references[1] if len(request.references) > 1 else None
+            urls = await service.generate_edit_image(
+                model=model,
+                mode=request.mode,
+                prompt=request.prompt,
+                source=(
+                    request.references[0].data,
+                    request.references[0].mime,
+                ),
+                mask=(mask.data, mask.mime) if mask is not None else None,
+                aspect_ratio=request.aspect_ratio,
+            )
+        elif request.mode == "product_scene":
             if not request.references:
                 raise ValueError("商品场景参考图不能为空")
             urls = await service.generate_reference_image(
@@ -236,9 +276,66 @@ class ReplicateImageProvider:
         )
 
 
+class LocalImageProvider:
+    """无需外部服务的本地图片处理 Provider。"""
+
+    name = "local"
+
+    def is_configured(self) -> bool:
+        return True
+
+    def capabilities(self) -> dict[str, Any]:
+        return {
+            "provider": self.name,
+            "configured": True,
+            "modes": ["upscale"],
+            "reference_images": True,
+        }
+
+    def supports(self, mode: str, quality_tier: str) -> bool:
+        return mode == "upscale"
+
+    def estimate_cost_micros(
+        self,
+        mode: str,
+        quality_tier: str,
+        num_outputs: int,
+    ) -> int:
+        return 0
+
+    async def generate(self, request: ImageProviderRequest) -> ImageProviderResult:
+        if not self.supports(request.mode, request.quality_tier):
+            raise ValueError("本地图片 Provider 不支持当前编辑方式")
+        if not request.references:
+            raise ValueError("待放大图片不能为空")
+        scale = max(2, min(int(request.scale or 2), 4))
+        with Image.open(io.BytesIO(request.references[0].data)) as source:
+            rgba = ImageOps.exif_transpose(source).convert("RGBA")
+        target_width = rgba.width * scale
+        target_height = rgba.height * scale
+        if target_width > 6000 or target_height > 6000:
+            raise ValueError("放大后尺寸过大，请降低倍率")
+        output = rgba.resize(
+            (target_width, target_height),
+            Image.Resampling.LANCZOS,
+        )
+        buffer = io.BytesIO()
+        # 大图无损 PNG 很容易超过素材入口限制；先编码高质 WebP，
+        # 后续统一素材流程仍会再次规范化为无元数据 WebP。
+        output.save(buffer, format="WEBP", quality=95, method=3)
+        return ImageProviderResult(
+            urls=[],
+            provider=self.name,
+            model="pillow-lanczos",
+            actual_cost_micros=0,
+            local_outputs=[buffer.getvalue()],
+        )
+
+
 _PROVIDERS: dict[str, ImageProvider] = {
     "aliyun": AliyunImageProvider(),
     "replicate": ReplicateImageProvider(),
+    "local": LocalImageProvider(),
 }
 
 

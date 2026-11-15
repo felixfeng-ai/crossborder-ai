@@ -56,6 +56,7 @@ async def screen_ip_risk(
     db: AsyncSession = Depends(get_db),
 ):
     """执行用户拥有的商品/Listing IP 初筛并保存报告。"""
+    # 商品和 Listing 都必须属于当前用户，跨账号统一按不存在处理。
     product = await db.get(Product, payload.product_id)
     if product is None or product.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="商品不存在")
@@ -72,6 +73,7 @@ async def screen_ip_risk(
 
     image_assets = []
     if payload.image_asset_ids:
+        # 用集合比较确认每个请求的素材都真实归属当前用户，避免部分越权。
         image_assets = (
             await db.execute(
                 select(ImageAsset).where(
@@ -151,12 +153,14 @@ async def save_ip_declaration(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """保存品牌授权或认证声明；同一商品同类型同名称只保留一行。"""
     product = await db.get(Product, payload.product_id)
     if product is None or product.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="商品不存在")
     claim_value = payload.claim_value.strip()
     if not claim_value:
         raise HTTPException(status_code=400, detail="授权或认证名称不能为空")
+    # 更新式 upsert 保证重复保存不会制造多条同名声明。
     row = (
         await db.execute(
             select(IpDeclaration).where(

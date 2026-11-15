@@ -78,6 +78,9 @@ const PROVIDER_GROUPS: ProviderGroup[] = [
             label: '参考图输入字段',
             secret: false,
           },
+          { key: 'inpaint_model', label: '局部重绘模型', secret: false },
+          { key: 'outpaint_model', label: '扩图模型', secret: false },
+          { key: 'remove_model', label: '消除模型', secret: false },
         ],
       },
       {

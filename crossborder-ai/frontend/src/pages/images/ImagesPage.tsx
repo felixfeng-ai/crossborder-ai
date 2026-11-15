@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import ConfirmDialog from '@/components/common/ConfirmDialog'
 import { ImageModeTabs } from '@/components/images/ImageModeTabs'
+import { ImageEditingPanel } from '@/components/images/ImageEditingPanel'
 import { ReferenceImagePicker } from '@/components/images/ReferenceImagePicker'
 import apiClient from '@/api/client'
 import { waitForImageTask, type ImageTaskStatus } from '@/lib/images/taskPolling'
@@ -692,6 +693,15 @@ export default function ImagesPage() {
           </div>
         </div>
       )}
+
+      <ImageEditingPanel
+        assets={localAssets}
+        onUpload={() => fileInputRef.current?.click()}
+        onCompleted={() => {
+          queryClient.invalidateQueries({ queryKey: ['image-assets'] })
+          queryClient.invalidateQueries({ queryKey: ['image-generation-history'] })
+        }}
+      />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <Card className="min-w-0 overflow-hidden">

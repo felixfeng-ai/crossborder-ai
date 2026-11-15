@@ -101,16 +101,16 @@ export function ImageEditingPanel({
   })
 
   return (
-    <section className="border-y border-border bg-[var(--factory-panel)] py-5 pb-24 lg:pb-5">
+    <section className="rounded-lg border border-border bg-[var(--factory-panel)] p-5 pb-24 sm:p-6 lg:p-8 lg:pb-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="section-title">图片编辑</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
             局部重绘、扩展画面、消除物体或本地放大，结果自动进入素材库。
           </p>
         </div>
-        <span className="metric-number text-xs text-muted-foreground">
-          预计 {credits} 积分
+        <span className="rounded-[4px] border border-border bg-background px-2.5 py-1.5 text-xs text-muted-foreground">
+          当前：<span className="font-medium text-foreground">{option.label}</span>
         </span>
       </div>
 
@@ -130,17 +130,17 @@ export function ImageEditingPanel({
                 setSuccess('')
               }}
               className={cn(
-                'flex min-h-[68px] items-start gap-2.5 border px-3 py-2.5 text-left transition-colors',
+                'flex min-h-[60px] items-start gap-2.5 rounded-[4px] border px-3 py-2.5 text-left transition-colors',
                 active
-                  ? 'border-[color:var(--factory-accent)] bg-[color:var(--factory-accent)]/8'
-                  : 'border-border bg-background hover:bg-accent/50',
+                  ? 'border-[color:var(--factory-accent)]/55 bg-[color:var(--factory-accent)]/8'
+                  : 'border-border bg-background hover:bg-accent/45',
               )}
             >
               <span className="mt-0.5 text-[var(--factory-accent)]">
                 <Icon className="h-4 w-4" />
               </span>
               <span className="min-w-0">
-                <span className="block text-xs font-medium">{item.label}</span>
+                <span className="block text-[13px] font-medium leading-5">{item.label}</span>
                 <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">
                   {item.description}
                 </span>
@@ -150,8 +150,8 @@ export function ImageEditingPanel({
         })}
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-4">
+      <div className="mt-4 grid overflow-hidden rounded-md border border-border bg-background/35 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-4 p-4 sm:p-5">
           <ReferenceImagePicker
             assets={assets}
             selectedIds={sourceIds}
@@ -176,7 +176,7 @@ export function ImageEditingPanel({
           )}
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 border-t border-border p-4 sm:p-5 xl:border-l xl:border-t-0">
           {option.requiresPrompt && (
             <label className="block space-y-1.5 text-xs">
               <span className="font-medium">编辑要求</span>
@@ -233,24 +233,25 @@ export function ImageEditingPanel({
             </div>
           )}
 
-          <div className="flex items-center justify-between gap-3 border-t border-border pt-3 pr-20 lg:pr-0">
-            <div>
-              <p className="metric-number text-sm font-medium">{credits} 积分</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                {operation === 'upscale' ? '本地处理，成功后扣费' : '成功后扣费'}
-              </p>
-            </div>
+          <div className="border-t border-border pt-3 pr-20 lg:pr-0">
             <Button
+              className="h-10 w-full justify-between px-4"
               disabled={Boolean(validationError) || editMutation.isPending}
               onClick={() => editMutation.mutate()}
             >
-              {editMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="mr-2 h-4 w-4" />
-              )}
-              {editMutation.isPending ? '处理中...' : '开始编辑'}
+              <span className="inline-flex items-center">
+                {editMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                {editMutation.isPending ? '处理中...' : `开始${option.label}`}
+              </span>
+              <span className="metric-number text-xs">{credits} 积分</span>
             </Button>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              {operation === 'upscale' ? '本地处理，成功后扣费' : '成功后扣费'}
+            </p>
           </div>
           {validationError && !editMutation.isPending && (
             <p className="text-[11px] text-muted-foreground">{validationError}</p>

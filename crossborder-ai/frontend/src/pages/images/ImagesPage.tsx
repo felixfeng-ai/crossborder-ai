@@ -369,7 +369,11 @@ export default function ImagesPage() {
   ]
 
   return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mx-auto w-full max-w-[1480px] space-y-7"
+    >
       <input
         ref={fileInputRef}
         type="file"
@@ -381,17 +385,19 @@ export default function ImagesPage() {
         }}
       />
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-5">
         <div>
           <h1 className="page-title flex items-center gap-2">
-            <Images className="h-6 w-6 text-primary" />
+            <Images className="h-5 w-5 text-primary" />
             商品图片工作台
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1.5 max-w-2xl text-[13px] leading-6 text-muted-foreground">
             从商品参考图生成场景图，或创作投放视觉、处理平台白底素材。
           </p>
         </div>
         <Button
+          variant="outline"
+          className="h-9"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploadMutation.isPending}
         >
@@ -408,20 +414,24 @@ export default function ImagesPage() {
         </Button>
       </div>
 
-      <section className="border-y border-border bg-[var(--factory-panel)] py-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+      <section className="rounded-lg border border-border bg-[var(--factory-panel)] p-5 sm:p-6 lg:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="section-title">生成方案</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1.5 max-w-2xl text-xs leading-5 text-muted-foreground">
               {selectedMode?.description}
             </p>
           </div>
-          <span className="metric-number text-xs text-muted-foreground">
-            预计 {estimatedCredits} 积分
+          <span className="rounded-[4px] border border-border bg-background px-2.5 py-1.5 text-xs text-muted-foreground">
+            {selectedMode?.label}
+            <span className="mx-1.5 text-border">/</span>
+            {IMAGE_QUALITY_TIERS[qualityTier].label}
+            <span className="mx-1.5 text-border">/</span>
+            <span className="metric-number">{numOutputs} 张</span>
           </span>
         </div>
 
-        <div className="mt-4">
+        <div className="mt-5">
           <ImageModeTabs
             value={mode}
             onChange={changeMode}
@@ -429,13 +439,18 @@ export default function ImagesPage() {
           />
         </div>
 
-        <div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-4">
+        <div className="mt-5 grid overflow-hidden rounded-md border border-border bg-background/35 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-5 p-4 sm:p-5">
             {mode !== 'platform_white' ? (
               <div className="space-y-2">
-                <label htmlFor="image-prompt" className="text-sm font-medium">
-                  画面描述
-                </label>
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="image-prompt" className="text-[13px] font-medium leading-5">
+                    画面描述
+                  </label>
+                  <span className="metric-number text-xs text-muted-foreground">
+                    {prompt.length}/2000
+                  </span>
+                </div>
                 <textarea
                   id="image-prompt"
                   value={prompt}
@@ -448,21 +463,20 @@ export default function ImagesPage() {
                   rows={5}
                   maxLength={2000}
                   disabled={generationPending}
-                  className="min-h-32 w-full resize-y rounded-md border border-input bg-background px-3 py-2.5 text-sm leading-6 outline-none transition-colors placeholder:text-muted-foreground focus:border-[color:var(--factory-accent)] focus:ring-2 focus:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="min-h-[168px] w-full resize-y rounded-md border border-input bg-background px-3.5 py-3 text-[14px] leading-6 outline-none transition-colors placeholder:text-muted-foreground focus:border-[color:var(--factory-accent)] focus:ring-2 focus:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
-                <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                <div className="text-xs leading-5 text-muted-foreground">
                   <span>
                     {mode === 'product_scene'
                       ? '商品主体、Logo、材质和颜色会以参考图为准'
                       : '自由创作默认不注入品牌人设，需要时可手动开启'}
                   </span>
-                  <span className="metric-number">{prompt.length}/2000</span>
                 </div>
               </div>
             ) : (
-              <div className="border border-border bg-background px-3.5 py-3">
-                <p className="text-sm font-medium">本地白底适配</p>
-                <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+              <div className="rounded-md border border-border bg-background px-3.5 py-3.5">
+                <p className="text-[13px] font-medium leading-5">本地白底适配</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
                   等比缩放并居中，透明区域填充纯白，不裁切或拉伸商品主体。
                   选择右上方平台尺寸后直接生成。
                 </p>
@@ -486,15 +500,15 @@ export default function ImagesPage() {
             )}
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-5 border-t border-border p-4 sm:p-5 xl:border-l xl:border-t-0">
             <div>
-              <p className="text-sm font-medium">输出质量</p>
+              <p className="text-[13px] font-medium leading-5">输出质量</p>
               <div className="mt-2 grid grid-cols-3 border border-border p-0.5">
                 {Object.values(IMAGE_QUALITY_TIERS).map((quality) => (
                   <button
                     key={quality.id}
                     type="button"
-                    className={`h-9 px-2 text-xs transition-colors ${
+                    className={`h-9 px-2 text-[13px] transition-colors ${
                       qualityTier === quality.id
                         ? 'bg-secondary font-medium text-foreground'
                         : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
@@ -507,7 +521,7 @@ export default function ImagesPage() {
                   </button>
                 ))}
               </div>
-              <p className="mt-1.5 text-[11px] text-muted-foreground">
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
                 {IMAGE_QUALITY_TIERS[qualityTier].description}
               </p>
             </div>
@@ -515,26 +529,26 @@ export default function ImagesPage() {
             {mode !== 'platform_white' && (
               <>
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="space-y-1.5 text-xs">
+                  <label className="space-y-1.5 text-[13px] leading-5">
                     <span className="font-medium">画面比例</span>
                     <select
                       value={aspectRatio}
                       onChange={(event) => setAspectRatio(event.target.value)}
                       disabled={generationPending}
-                      className="h-9 w-full border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+                      className="h-10 w-full border border-input bg-background px-2.5 text-[13px] outline-none focus:ring-2 focus:ring-ring"
                     >
                       {IMAGE_ASPECT_RATIOS.map((ratio) => (
                         <option key={ratio} value={ratio}>{ratio}</option>
                       ))}
                     </select>
                   </label>
-                  <label className="space-y-1.5 text-xs">
+                  <label className="space-y-1.5 text-[13px] leading-5">
                     <span className="font-medium">生成数量</span>
                     <select
                       value={numOutputs}
                       onChange={(event) => setNumOutputs(Number(event.target.value))}
                       disabled={generationPending}
-                      className="h-9 w-full border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+                      className="h-10 w-full border border-input bg-background px-2.5 text-[13px] outline-none focus:ring-2 focus:ring-ring"
                     >
                       {[1, 2, 3, 4].map((count) => (
                         <option key={count} value={count}>{count} 张</option>
@@ -543,51 +557,50 @@ export default function ImagesPage() {
                   </label>
                 </div>
 
-                <label className="block space-y-1.5 text-xs">
-                  <span className="font-medium">图片 Provider</span>
-                  <select
-                    value={provider}
-                    onChange={(event) => setProvider(
-                      event.target.value as ImageGenerationProvider,
-                    )}
-                    disabled={generationPending}
-                    className="h-9 w-full border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="auto">自动选择可用服务</option>
-                    <option
-                      value="aliyun"
-                      disabled={
-                        mode === 'product_scene' ||
-                        (providerCapabilities.length > 0 &&
-                          !availableProviderNames.has('aliyun'))
-                      }
-                    >
-                      阿里云通义万相
-                    </option>
-                    <option
-                      value="replicate"
-                      disabled={
-                        providerCapabilities.length > 0 &&
-                        !availableProviderNames.has('replicate')
-                      }
-                    >
-                      Replicate
-                    </option>
-                  </select>
-                </label>
-
-                <details className="border-t border-border pt-3">
-                  <summary className="cursor-pointer text-xs font-medium">
+                <details className="border-t border-border pt-4">
+                  <summary className="cursor-pointer text-[13px] font-medium leading-5">
                     高级设置
                   </summary>
-                  <div className="mt-3 space-y-3">
-                    <label className="block space-y-1.5 text-xs">
+                  <div className="mt-4 space-y-4">
+                    <label className="block space-y-1.5 text-[13px] leading-5">
+                      <span className="text-muted-foreground">图片 Provider</span>
+                      <select
+                        value={provider}
+                        onChange={(event) => setProvider(
+                          event.target.value as ImageGenerationProvider,
+                        )}
+                        disabled={generationPending}
+                        className="h-10 w-full border border-input bg-background px-2.5 text-[13px] outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        <option value="auto">自动选择可用服务</option>
+                        <option
+                          value="aliyun"
+                          disabled={
+                            mode === 'product_scene' ||
+                            (providerCapabilities.length > 0 &&
+                              !availableProviderNames.has('aliyun'))
+                          }
+                        >
+                          阿里云通义万相
+                        </option>
+                        <option
+                          value="replicate"
+                          disabled={
+                            providerCapabilities.length > 0 &&
+                            !availableProviderNames.has('replicate')
+                          }
+                        >
+                          Replicate
+                        </option>
+                      </select>
+                    </label>
+                    <label className="block space-y-1.5 text-[13px] leading-5">
                       <span className="text-muted-foreground">视觉风格</span>
                       <select
                         value={stylePreset}
                         onChange={(event) => setStylePreset(event.target.value)}
                         disabled={generationPending}
-                        className="h-9 w-full border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+                        className="h-10 w-full border border-input bg-background px-2.5 text-[13px] outline-none focus:ring-2 focus:ring-ring"
                       >
                         {IMAGE_STYLE_PRESETS.map((style) => (
                           <option key={style.id || 'none'} value={style.id}>
@@ -596,21 +609,21 @@ export default function ImagesPage() {
                         ))}
                       </select>
                     </label>
-                    <label className="block space-y-1.5 text-xs">
+                    <label className="block space-y-1.5 text-[13px] leading-5">
                       <span className="text-muted-foreground">负面词</span>
                       <Input
                         value={negativePrompt}
                         onChange={(event) => setNegativePrompt(event.target.value)}
                         placeholder="例如：变形、错误 Logo、多余手指"
-                        className="h-9 text-xs"
+                        className="h-10 text-[13px]"
                         maxLength={2000}
                         disabled={generationPending}
                       />
                     </label>
-                    <label className="flex items-start justify-between gap-3 text-xs">
+                    <label className="flex items-start justify-between gap-3 text-[13px] leading-5">
                       <span>
                         <span className="block font-medium">使用品牌调性</span>
-                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
                           注入品牌风格，并自动过滤品牌禁词
                         </span>
                       </span>
@@ -627,33 +640,36 @@ export default function ImagesPage() {
               </>
             )}
 
-            <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
-              <div>
-                <p className="metric-number text-sm font-medium">
-                  {estimatedCredits} 积分
-                </p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  {mode === 'platform_white' ? '本地处理，不扣积分' : '成功后扣费'}
-                </p>
-              </div>
+            <div className="border-t border-border pt-4 pr-20 lg:pr-0">
               <Button
+                className="h-10 w-full justify-between px-4"
                 onClick={() => generateMutation.mutate()}
                 disabled={Boolean(validationError) || generationPending}
                 title={validationError || undefined}
               >
-                {generationPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="mr-2 h-4 w-4" />
-                )}
-                {generationState === 'submitting'
-                  ? '提交中...'
-                  : generationState === 'generating'
-                    ? '生成中...'
-                    : mode === 'platform_white'
-                      ? '生成白底图'
-                      : '开始生成'}
+                <span className="inline-flex items-center">
+                  {generationPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 h-4 w-4" />
+                  )}
+                  {generationState === 'submitting'
+                    ? '提交中...'
+                    : generationState === 'generating'
+                      ? '生成中...'
+                      : mode === 'platform_white'
+                        ? '生成白底图'
+                        : (
+                          <>生成 {numOutputs} 张</>
+                        )}
+                </span>
+                <span className="metric-number text-xs">
+                  {estimatedCredits} 积分
+                </span>
               </Button>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                {mode === 'platform_white' ? '本地处理，不扣积分' : '生成成功后扣费'}
+              </p>
             </div>
             {validationError && (
               <p className="text-[11px] text-muted-foreground">{validationError}</p>

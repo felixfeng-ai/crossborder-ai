@@ -45,4 +45,12 @@ describe('image workbench production layout contract', () => {
     expect(todo).toContain('ComplianceReport')
     expect(todo).toContain('政策 RAG')
   })
+
+  it('shows platform size presets only for white-background processing', () => {
+    const page = read('src/pages/images/ImagesPage.tsx')
+
+    expect(page).toContain("mode === 'platform_white' &&")
+    expect(page).toContain('平台白底尺寸')
+    expect(page).toContain('仅在平台白底模式生效')
+  })
 })

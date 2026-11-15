@@ -719,7 +719,13 @@ export default function ImagesPage() {
         }}
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div
+        className={`grid gap-4 ${
+          mode === 'platform_white'
+            ? 'xl:grid-cols-[minmax(0,1fr)_340px]'
+            : ''
+        }`}
+      >
         <Card className="min-w-0 overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border">
             <div className="min-w-0">
@@ -853,38 +859,42 @@ export default function ImagesPage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">平台尺寸预设</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {(presetsQuery.data || []).map((preset) => {
-                const active = preset.id === presetId
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left transition-colors ${
-                      active ? 'border-primary/60 bg-primary/5' : 'border-border hover:bg-accent'
-                    }`}
-                    aria-pressed={active}
-                    onClick={() => setPresetId(preset.id)}
-                  >
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium">{preset.platform} · {preset.label}</span>
-                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">{preset.note}</span>
-                    </span>
-                    <span className="metric-number shrink-0 text-xs text-muted-foreground">
-                      {preset.width} × {preset.height}
-                    </span>
-                  </button>
-                )
-              })}
-            </CardContent>
-          </Card>
-
-        </div>
+        {mode === 'platform_white' && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">平台白底尺寸</CardTitle>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  仅在平台白底模式生效，用于确定最终输出画布和纯白背景尺寸。
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {(presetsQuery.data || []).map((preset) => {
+                  const active = preset.id === presetId
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left transition-colors ${
+                        active ? 'border-primary/60 bg-primary/5' : 'border-border hover:bg-accent'
+                      }`}
+                      aria-pressed={active}
+                      onClick={() => setPresetId(preset.id)}
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium">{preset.platform} · {preset.label}</span>
+                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">{preset.note}</span>
+                      </span>
+                      <span className="metric-number shrink-0 text-xs text-muted-foreground">
+                        {preset.width} × {preset.height}
+                      </span>
+                    </button>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
 
       <section className="space-y-3">

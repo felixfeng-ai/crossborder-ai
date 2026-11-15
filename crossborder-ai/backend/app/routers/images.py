@@ -893,15 +893,16 @@ async def generate_image(
         raise HTTPException(status_code=400, detail="阿里云图片生成服务暂未配置")
     elif payload.provider == "replicate" and not provider_status["replicate"]:
         raise HTTPException(status_code=400, detail="Replicate 图片生成服务暂未配置")
-    elif payload.provider == "seedream":
+    elif payload.provider == "seedream" and not provider_status["seedream"]:
         raise HTTPException(
             status_code=400,
-            detail="Seedream 当前仅用于商品场景参考图生成",
+            detail="Seedream 图片生成服务暂未配置，请管理员检查方舟 API Key",
         )
     elif (
         mode != "platform_white"
         and not provider_status["aliyun"]
         and not provider_status["replicate"]
+        and not provider_status["seedream"]
     ):
         raise HTTPException(status_code=400, detail="图片生成功能暂未配置")
 

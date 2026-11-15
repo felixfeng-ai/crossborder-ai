@@ -329,7 +329,7 @@ class SeedreamImageProvider:
         return {
             "provider": self.name,
             "configured": self.is_configured(),
-            "modes": ["product_scene"],
+            "modes": ["product_scene", "free_creation"],
             "reference_images": True,
             "max_reference_images": self.max_reference_images,
             "model": self._model(),
@@ -338,7 +338,7 @@ class SeedreamImageProvider:
     def supports(self, mode: str, quality_tier: str) -> bool:
         return (
             self.is_configured()
-            and mode == "product_scene"
+            and mode in {"product_scene", "free_creation"}
             and quality_tier in {"fast", "standard", "hd"}
         )
 
@@ -354,7 +354,7 @@ class SeedreamImageProvider:
     async def generate(self, request: ImageProviderRequest) -> ImageProviderResult:
         if not self.supports(request.mode, request.quality_tier):
             raise ValueError("Seedream 图片 Provider 不支持当前生成模式")
-        if not request.references:
+        if request.mode == "product_scene" and not request.references:
             raise ValueError("Seedream 商品场景参考图不能为空")
         from app.services.ai.seedream_image import generate_seedream_images
 

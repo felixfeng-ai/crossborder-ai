@@ -350,10 +350,7 @@ export default function ImagesPage() {
     } else {
       setUseBrandPersona(true)
     }
-    if (
-      (nextMode === 'product_scene' && provider === 'aliyun') ||
-      (nextMode !== 'product_scene' && provider === 'seedream')
-    ) {
+    if (nextMode === 'product_scene' && provider === 'aliyun') {
       setProvider('auto')
     }
     if (
@@ -585,7 +582,6 @@ export default function ImagesPage() {
                         <option
                           value="seedream"
                           disabled={
-                            mode !== 'product_scene' ||
                             (providerCapabilities.length > 0 &&
                               !availableProviderNames.has('seedream'))
                           }

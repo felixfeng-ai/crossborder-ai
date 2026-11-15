@@ -175,9 +175,9 @@ def _provider_order(task: ImageGenerationTask) -> list[str]:
         return ["local"]
     if task.mode in {"inpaint", "outpaint", "remove_object"}:
         return ["replicate"]
-    if task.provider in {"aliyun", "replicate"}:
+    if task.provider in {"aliyun", "replicate", "seedream"}:
         return [task.provider]
-    return ["aliyun", "replicate"]
+    return ["aliyun", "replicate", "seedream"]
 
 
 def _provider_failure_message(mode: str, errors: list[str]) -> str:

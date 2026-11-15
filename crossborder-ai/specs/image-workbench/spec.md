@@ -112,13 +112,21 @@
 
 商品场景必须按 Provider 能力和配置选择参考图模型，不得写死单一供应商。Seedream
 直连使用火山方舟图片生成 API，Replicate Seedream 作为备用参考图通道；自动模式
-可以在两个参考图 Provider 之间降级，但禁止降级为普通文生图。
+可以在两个参考图 Provider 之间降级，但禁止降级为普通文生图。Seedream 也必须
+支持不带参考图的自由创作文生图。
 
 #### Scenario
 
 - Given 管理员配置了火山方舟 Seedream API Key 和模型
 - When 用户提交商品场景参考图任务且 Provider 选择自动
 - Then 系统优先调用 Seedream 直连
+- And 任务记录保存 Provider 为 `seedream`
+
+#### Scenario
+
+- Given 管理员已配置 Seedream 直连
+- When 用户在自由创作中选择 Seedream
+- Then 系统提交不带参考图字段的方舟文生图请求
 - And 任务记录保存 Provider 为 `seedream`
 
 #### Scenario

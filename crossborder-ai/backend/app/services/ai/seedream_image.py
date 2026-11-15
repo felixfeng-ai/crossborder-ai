@@ -58,27 +58,26 @@ def build_seedream_image_request(
     reference_images: list[tuple[bytes, str]],
     quality_tier: str,
 ) -> SeedreamImageRequest:
-    """构造方舟图片生成请求；商品参考图通过 image 数组提交。"""
+    """构造方舟图片请求；自由创作不传 image，商品场景传参考图数组。"""
     normalized_prompt = str(prompt or "").strip()
     if not normalized_prompt:
         raise ValueError("Seedream 提示词不能为空")
-    if not reference_images:
-        raise ValueError("Seedream 商品场景至少需要 1 张参考图")
     if len(reference_images) > 14:
         raise ValueError("Seedream 最多支持 14 张参考图")
 
     body: dict[str, Any] = {
         "model": model,
         "prompt": normalized_prompt,
-        "image": [
-            _image_data_uri(data, mime)
-            for data, mime in reference_images
-        ],
         "size": _quality_size(quality_tier),
         "sequential_image_generation": "disabled",
         "response_format": "url",
         "watermark": False,
     }
+    if reference_images:
+        body["image"] = [
+            _image_data_uri(data, mime)
+            for data, mime in reference_images
+        ]
     return SeedreamImageRequest(
         url=f"{base_url.rstrip('/')}/images/generations",
         headers={

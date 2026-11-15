@@ -239,6 +239,40 @@ async def test_product_scene_accepts_seedream_without_replicate(
 
 
 @pytest.mark.asyncio
+async def test_free_creation_accepts_seedream_without_replicate(
+    client: AsyncClient,
+    auth_headers: dict,
+    db_session,
+    monkeypatch,
+):
+    await _prepare_user(db_session)
+    monkeypatch.setattr(settings, "SEEDREAM_API_KEY", "ark-test-key")
+    monkeypatch.setattr(settings, "ALIYUN_DASHSCOPE_API_KEY", "")
+    monkeypatch.setattr(settings, "REPLICATE_API_KEY", "")
+    monkeypatch.setattr(images_router, "_execute_image_task", _noop_execute)
+
+    response = await client.post(
+        "/api/v1/images/generate",
+        json={
+            "mode": "free_creation",
+            "prompt": "黑白电影感女团海报，真人摄影",
+            "quality_tier": "standard",
+            "provider": "seedream",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    task = await db_session.get(
+        ImageGenerationTask,
+        uuid.UUID(response.json()["task_id"]),
+    )
+    assert task.provider == "seedream"
+    assert task.mode == "free_creation"
+
+
+@pytest.mark.asyncio
 async def test_product_scene_rejects_other_users_reference(
     client: AsyncClient,
     auth_headers: dict,

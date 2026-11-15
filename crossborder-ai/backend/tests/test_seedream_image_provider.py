@@ -35,6 +35,22 @@ def test_seedream_request_uses_ark_image_api_and_reference_images():
     assert request.body["image"][0].startswith("data:image/png;base64,")
 
 
+def test_seedream_request_supports_free_creation_without_reference_image():
+    from app.services.ai.seedream_image import build_seedream_image_request
+
+    request = build_seedream_image_request(
+        api_key="ark-test-key",
+        base_url="https://ark.cn-beijing.volces.com/api/v3",
+        model="doubao-seedream-4-0-250828",
+        prompt="黑白电影感女团海报，真人摄影",
+        reference_images=[],
+        quality_tier="standard",
+    )
+
+    assert request.body["size"] == "2K"
+    assert "image" not in request.body
+
+
 def test_seedream_provider_is_registered_for_product_scene(monkeypatch):
     from app.services.image_provider import get_image_provider
 
@@ -44,6 +60,7 @@ def test_seedream_provider_is_registered_for_product_scene(monkeypatch):
 
     assert provider.is_configured() is True
     assert provider.supports("product_scene", "standard") is True
+    assert provider.supports("free_creation", "standard") is True
     assert provider.capabilities()["reference_images"] is True
     assert provider.capabilities()["max_reference_images"] == 14
 

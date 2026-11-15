@@ -92,4 +92,18 @@ describe('image generation modes', () => {
     expect(request.provider).toBe('seedream')
     expect(request.reference_asset_ids).toEqual(['asset-1'])
   })
+
+  it('allows direct Seedream for free creation without references', () => {
+    const request = buildImageGenerationRequest({
+      mode: 'free_creation',
+      prompt: '黑白电影感女团海报',
+      referenceAssetIds: ['ignored-asset'],
+      qualityTier: 'standard',
+      provider: 'seedream',
+      idempotencyKey: 'request-seedream-free',
+    })
+
+    expect(request.provider).toBe('seedream')
+    expect(request.reference_asset_ids).toEqual([])
+  })
 })

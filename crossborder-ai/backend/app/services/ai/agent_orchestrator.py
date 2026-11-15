@@ -43,6 +43,10 @@ from app.services.listing_service import (
     update_listing_content,
 )
 from app.services import agent_capability_service, marketing_copy_service, provider_config
+from app.services.agent_context import (
+    build_system_prompt,
+    compact_conversation_history,
+)
 from app.services.scraper import scrape_1688
 from app.services.shopify_publish_service import (
     ShopifyPublishError,
@@ -736,6 +740,7 @@ class AgentOrchestrator:
         db: AsyncSession,
         on_step: Optional[Callable[[list[dict]], Awaitable[None]]] = None,
         campaign_id: str | None = None,
+        workspace: str = "general",
     ):
         self.llm = DeepSeekService()
         self.user = user
@@ -743,6 +748,7 @@ class AgentOrchestrator:
         self.steps: list[dict] = []  # 记录执行步骤
         self.on_step = on_step  # 步骤进度回调（流式输出用），每完成一步触发
         self.campaign_id = campaign_id
+        self.workspace = workspace
 
     def _status_from_steps(self) -> str:
         failed = any(step.get("status") == "failed" for step in self.steps)
@@ -762,30 +768,28 @@ class AgentOrchestrator:
         if self.on_step:
             await self.on_step(self.steps)
 
-    async def run_react(self, instruction: str, max_rounds: int = 8) -> dict:
+    async def run_react(
+        self,
+        instruction: str,
+        max_rounds: int = 8,
+        history: list[dict] | None = None,
+    ) -> dict:
         """ReAct 推理循环：思考 → 调用工具 → 观察 → 再思考
 
         直到模型认为任务完成（不再调用工具），或达到最大轮数。
         """
         self.steps = []
-        system_prompt = (
-            "你是跨境电商 AI 决策助手。你可以调用工具来完成任务。\n"
-            "规则：\n"
-            "1. 如果需要数据分析、选品、抓取、生成等操作，调用相应工具\n"
-            "2. 每次调用工具后，根据结果决定下一步\n"
-            "3. 任务完成后，用自然语言总结结果给用户\n"
-            "4. 不要编造工具没返回的数据\n"
-            "5. 任务完成后，用简短中文总结关键结论，不要重复完整报告内容\n"
-            "6. 生成视频会扣积分；只有用户明确要求并确认后才能把 confirmed 设为 true\n"
-            "7. 生成图片或视频后只报告任务状态，不要声称素材已经生成完成\n"
-            "8. 需要用户继续处理时，保留工具返回的链接，不要自行拼造业务地址"
-        )
+        system_prompt = build_system_prompt(self.workspace)
 
-        # 对话历史
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": instruction},
-        ]
+        # 历史只保留用户/助手文本；当前指令始终作为最后一条用户消息。
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(
+            compact_conversation_history(
+                history or [],
+                current_instruction=instruction,
+            )
+        )
+        messages.append({"role": "user", "content": instruction})
 
         for round_num in range(max_rounds):
             # 让模型思考并决定是否调用工具
@@ -840,7 +844,11 @@ class AgentOrchestrator:
             "steps": self.steps,
         }
 
-    async def run(self, instruction: str) -> dict:
+    async def run(
+        self,
+        instruction: str,
+        history: list[dict] | None = None,
+    ) -> dict:
         """执行用户指令
 
         Args:
@@ -855,7 +863,7 @@ class AgentOrchestrator:
             }
         """
         # ── ReAct 推理循环：模型自己决定调用哪些工具 ────────
-        result = await self.run_react(instruction)
+        result = await self.run_react(instruction, history=history)
         if result["status"] == "success":
             return result
 
@@ -875,6 +883,28 @@ class AgentOrchestrator:
 
         # ── 汇总结果 ──────────────────────────────────────
         return self._build_summary()
+
+    async def run_confirmed_action(
+        self,
+        action: str,
+        params: dict[str, Any],
+    ) -> dict:
+        """恢复结构化待确认动作，不经过模型二次猜测。"""
+        self.steps = []
+        confirmed_params = {**params, "confirmed": True}
+        result = await self._execute_step(action, confirmed_params)
+        self.steps.append(result)
+        await self._emit_step()
+        status = self._status_from_steps()
+        return {
+            "summary": (
+                result.get("summary")
+                or result.get("error")
+                or ("操作已完成" if status == "success" else "操作执行失败")
+            ),
+            "status": status,
+            "steps": self.steps,
+        }
 
     # ════════════════════════════════════════════════════════════
     # 工作流模板
@@ -1410,7 +1440,16 @@ class AgentOrchestrator:
             return {
                 "action": "generate_product_image",
                 "status": "success",
-                "data": {"requires_confirmation": True},
+                "data": {
+                    "requires_confirmation": True,
+                    "pending_action": {
+                        "action": "generate_product_image",
+                        "params": {
+                            "prompt": prompt,
+                            "num_outputs": int(params.get("num_outputs") or 1),
+                        },
+                    },
+                },
                 "summary": "已准备图片生成方案，请确认后开始生成",
             }
         try:
@@ -1473,6 +1512,26 @@ class AgentOrchestrator:
                     "mode": mode,
                     "quality_tier": quality_tier,
                     "estimated_credits": credits,
+                    "pending_action": {
+                        "action": "generate_image_asset",
+                        "params": {
+                            "prompt": prompt,
+                            "mode": mode,
+                            "quality_tier": quality_tier,
+                            "aspect_ratio": str(params.get("aspect_ratio") or "1:1"),
+                            "negative_prompt": str(params.get("negative_prompt") or ""),
+                            "style_preset": params.get("style_preset"),
+                            "use_brand_persona": params.get("use_brand_persona"),
+                            "provider": str(params.get("provider") or "auto"),
+                            "reference_asset_ids": [
+                                str(item)
+                                for item in params.get("reference_asset_ids") or []
+                            ],
+                            "num_outputs": int(params.get("num_outputs") or 1),
+                            "idempotency_key": params.get("idempotency_key"),
+                        },
+                        "estimated_credits": credits,
+                    },
                 },
                 "summary": f"预计消耗 {credits} 积分，确认后开始生成图片",
             }
@@ -1553,6 +1612,19 @@ class AgentOrchestrator:
                     "requires_confirmation": True,
                     "estimated_credits": estimated_credits,
                     "source_asset_id": source_asset_id,
+                    "pending_action": {
+                        "action": "generate_product_video",
+                        "params": {
+                            "source_asset_id": source_asset_id,
+                            "prompt": str(params.get("prompt") or ""),
+                            "template_id": str(params.get("template_id") or "clean_product"),
+                            "quality_tier": quality_tier,
+                            "style_preset": style_preset,
+                            "duration": duration,
+                            "ratio": str(params.get("ratio") or "9:16"),
+                        },
+                        "estimated_credits": estimated_credits,
+                    },
                 },
                 "summary": f"预计消耗 {estimated_credits} 积分，请明确确认后生成视频",
             }

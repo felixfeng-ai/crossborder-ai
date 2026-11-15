@@ -159,7 +159,7 @@ class _FakeOrchestrator:
             {"action": "answer", "status": "success", "title": "给出结论"},
         ]
 
-    async def run(self, instruction):
+    async def run(self, instruction, history=None):
         if self.on_step:
             await self.on_step(self.steps[:1])
             await self.on_step(self.steps)
@@ -170,7 +170,7 @@ class _FakeOrchestrator:
 
 
 class _PartialOrchestrator(_FakeOrchestrator):
-    async def run(self, instruction):
+    async def run(self, instruction, history=None):
         return {
             "summary": "部分完成",
             "status": "partial",
@@ -235,7 +235,7 @@ async def test_execute_agent_task_injects_campaign_context(monkeypatch):
         def __init__(self, user, db, on_step=None, campaign_id=None):
             captured["campaign_id"] = campaign_id or ""
 
-        async def run(self, instruction):
+        async def run(self, instruction, history=None):
             captured["instruction"] = instruction
             return {"summary": "活动任务完成", "status": "success", "steps": []}
 
@@ -311,7 +311,7 @@ async def test_execute_agent_task_injects_page_context(monkeypatch):
         def __init__(self, user, db, on_step=None, campaign_id=None):
             captured["campaign_id"] = campaign_id or ""
 
-        async def run(self, instruction):
+        async def run(self, instruction, history=None):
             captured["instruction"] = instruction
             return {"summary": "完成", "status": "success", "steps": []}
 

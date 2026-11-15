@@ -20,6 +20,11 @@ from app.models.conversation import Conversation, ConversationMessage
 from app.models.marketing_campaign import MarketingCampaign
 from app.models.product import Product
 from app.models.user import InsufficientCreditsError, User
+from app.services.agent_context import (
+    compact_conversation_history,
+    extract_pending_action,
+    is_confirmation,
+)
 from app.services.ai.agent_orchestrator import AgentOrchestrator
 
 logger = logging.getLogger("veyaship")
@@ -152,6 +157,40 @@ async def execute_agent_task(task_id) -> None:
                 conv_id = None
             else:
                 instruction = params["instruction"]
+                conv_id = (
+                    UUID(params["conversation_id"])
+                    if params.get("conversation_id")
+                    else None
+                )
+                workspace = str(params.get("workspace") or "general")
+                history_rows = []
+                if conv_id is not None:
+                    conv = (
+                        await db.execute(
+                            select(Conversation).where(Conversation.id == conv_id)
+                        )
+                    ).scalar_one_or_none()
+                    if conv is not None:
+                        workspace = conv.workspace or workspace
+                    history_rows = (
+                        await db.execute(
+                            select(ConversationMessage)
+                            .where(ConversationMessage.conversation_id == conv_id)
+                            .order_by(ConversationMessage.created_at.desc())
+                            .limit(24)
+                        )
+                    ).scalars().all()
+                    history_rows.reverse()
+                orchestrator.workspace = workspace
+                raw_history = [
+                    {
+                        "role": message.role,
+                        "content": message.content,
+                        "steps": message.steps,
+                    }
+                    for message in history_rows
+                ]
+                pending_action = extract_pending_action(raw_history)
                 if campaign is not None:
                     instruction = (
                         f"{instruction}\n\n[营销活动上下文]\n"
@@ -165,8 +204,21 @@ async def execute_agent_task(task_id) -> None:
                         f"{instruction}\n\n[当前页面上下文]\n"
                         f"{page_context_text}"
                     )
-                result = await orchestrator.run(instruction)
-                conv_id = UUID(params["conversation_id"]) if params.get("conversation_id") else None
+                if pending_action is not None and is_confirmation(
+                    params.get("instruction", "")
+                ):
+                    result = await orchestrator.run_confirmed_action(
+                        pending_action.action,
+                        pending_action.params,
+                    )
+                else:
+                    result = await orchestrator.run(
+                        instruction,
+                        history=compact_conversation_history(
+                            raw_history,
+                            current_instruction=params.get("instruction", ""),
+                        ),
+                    )
 
             # 保存助手消息 + 自动生成对话标题（复用原同步逻辑）
             if conv_id is not None:

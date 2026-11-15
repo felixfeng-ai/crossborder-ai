@@ -1,4 +1,4 @@
-"""商品图片背景移除与纯白画布合成测试。"""
+"""商品图片背景移除、纯白画布合成与抠图降级测试。"""
 
 import io
 
@@ -39,3 +39,42 @@ def test_white_background_uses_removed_subject_on_pure_white_canvas():
     assert image.getpixel((199, 199)) == (255, 255, 255)
     assert image.getpixel((100, 100))[0] > 150
     assert image.getpixel((100, 100))[1] < 100
+
+
+def _plain_product_bytes() -> bytes:
+    image = Image.new("RGB", (240, 180), (245, 242, 236))
+    for x in range(70, 170):
+        for y in range(45, 135):
+            image.putpixel((x, y), (190, 55, 42))
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
+
+
+def test_white_background_uses_local_fallback_when_rembg_is_unavailable(
+    monkeypatch,
+):
+    import app.services.image_processing as image_processing
+
+    def unavailable(_source: bytes) -> bytes:
+        raise ValueError("rembg unavailable")
+
+    monkeypatch.setattr(
+        image_processing,
+        "_remove_background_with_u2net",
+        unavailable,
+    )
+
+    result = create_white_background_image(
+        _plain_product_bytes(),
+        400,
+        400,
+    )
+
+    with Image.open(io.BytesIO(result)) as output:
+        rgba = output.convert("RGBA")
+        assert rgba.getpixel((5, 5))[:3] == (255, 255, 255)
+        # 商品主体仍应保留在画布中心。
+        center = rgba.getpixel((200, 200))
+        assert center[0] > center[1]
+        assert center[0] > center[2]

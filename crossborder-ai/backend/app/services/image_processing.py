@@ -1,13 +1,14 @@
 """商品图片校验、规范化与平台白底适配。"""
 
 import io
+import logging
 import os
 import threading
 from pathlib import Path
 from typing import Any
 from typing import Callable
 
-from PIL import Image, ImageFile, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageDraw, ImageFile, ImageFilter, ImageOps, UnidentifiedImageError
 
 
 # 防止压缩炸弹：商品图限制在 8000 像素边和 3600 万像素以内。
@@ -19,6 +20,7 @@ _REMBG_HOME = Path(__file__).resolve().parents[2] / "storage" / "rembg"
 os.environ.setdefault("U2NET_HOME", str(_REMBG_HOME))
 _REMBG_SESSION = None
 _REMBG_SESSION_LOCK = threading.Lock()
+logger = logging.getLogger("veyaship")
 
 IMAGE_PLATFORM_PRESETS: tuple[dict[str, Any], ...] = (
     {
@@ -112,6 +114,73 @@ def _remove_background_with_u2net(source: bytes) -> bytes:
         raise ValueError("商品主体抠图失败，请稍后重试") from exc
 
 
+def _remove_background_from_edges(source: bytes) -> bytes:
+    """无模型时用四角连通色移除背景，保证白底能力仍可降级使用。"""
+    with Image.open(io.BytesIO(source)) as source_image:
+        original = ImageOps.exif_transpose(source_image).convert("RGBA")
+    # 兜底算法是纯 Python 像素处理，在 700px 工作图上分割后再映射回原图。
+    work = original.copy()
+    work.thumbnail((700, 700), Image.Resampling.LANCZOS)
+    rgb = work.convert("RGB")
+    width, height = rgb.size
+    removed = Image.new("L", (width, height), 0)
+    removed_pixels = removed.load()
+
+    # 复杂商品图的背景常被主体切成多块，只取四角会留下木纹和阴影；
+    # 沿四条边均匀撒入种子，只填充与边缘连通的近似颜色。
+    seeds = []
+    for x in range(0, width, 32):
+        seeds.extend(((x, 0), (x, height - 1)))
+    for y in range(0, height, 32):
+        seeds.extend(((0, y), (width - 1, y)))
+    for seed in seeds:
+        flood = rgb.copy()
+        try:
+            ImageDraw.floodfill(
+                flood,
+                seed,
+                (255, 0, 255),
+                thresh=44,
+            )
+        except ValueError:
+            continue
+        flood_pixels = flood.load()
+        for y in range(height):
+            for x in range(width):
+                if flood_pixels[x, y] == (255, 0, 255):
+                    removed_pixels[x, y] = 255
+
+    removed_count = removed.histogram()[255]
+    if removed_count == 0 or removed_count >= width * height * 0.985:
+        raise ValueError("未识别到可用的背景边界")
+
+    # 中值滤波清掉背景中的小色斑，再把低分辨率 alpha 平滑映射回原图。
+    cleaned = removed.filter(ImageFilter.MedianFilter(7)).point(
+        lambda value: 0 if value < 80 else 255,
+    )
+    alpha_small = ImageOps.invert(
+        cleaned.filter(ImageFilter.GaussianBlur(0.6)),
+    )
+    alpha = alpha_small.resize(original.size, Image.Resampling.BILINEAR)
+    original.putalpha(alpha)
+    output = io.BytesIO()
+    original.save(output, format="PNG")
+    return output.getvalue()
+
+
+def _remove_background_with_fallback(source: bytes) -> bytes:
+    """优先使用 U2NetP；模型或依赖不可用时自动切换边缘兜底。"""
+    try:
+        return _remove_background_with_u2net(source)
+    except Exception as model_error:
+        logger.warning("U2NetP 抠图不可用，启用边缘背景降级: %s", model_error)
+    try:
+        return _remove_background_from_edges(source)
+    except Exception as fallback_error:
+        logger.warning("边缘背景降级失败: %s", fallback_error)
+        raise ValueError("商品主体抠图失败，请更换背景更干净的商品图") from fallback_error
+
+
 def normalize_uploaded_image(data: bytes, max_bytes: int) -> tuple[bytes, int, int]:
     """校验上传图片并转成无元数据的 WebP。"""
     if not data or len(data) > max_bytes:
@@ -169,7 +238,7 @@ def create_white_background_image(
         if background_remover is None and source_alpha.getextrema()[0] < 255:
             image = source_rgba
         else:
-            remover = background_remover or _remove_background_with_u2net
+            remover = background_remover or _remove_background_with_fallback
             cutout = remover(source)
             with Image.open(io.BytesIO(cutout)) as input_image:
                 image = ImageOps.exif_transpose(input_image).convert("RGBA")

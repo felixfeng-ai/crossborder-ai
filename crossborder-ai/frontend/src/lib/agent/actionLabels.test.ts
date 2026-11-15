@@ -4,6 +4,7 @@ import { getActionLabel } from './actionLabels'
 describe('agent action labels', () => {
   it('为新业务工具提供明确的中文名称', () => {
     expect(getActionLabel('list_materials')).toBe('查询素材')
+    expect(getActionLabel('generate_image_asset')).toBe('生成图片资产')
     expect(getActionLabel('generate_product_image')).toBe('生成商品图片')
     expect(getActionLabel('generate_product_video')).toBe('生成商品视频')
     expect(getActionLabel('create_marketing_video_plan')).toBe('生成营销视频方案')

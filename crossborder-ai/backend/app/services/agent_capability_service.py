@@ -27,6 +27,12 @@ from app.services.ai.persona_kit import (
     image_style_phrase,
     strip_banned_words,
 )
+from app.services.image_provider import get_image_provider
+from app.services.image_quality import (
+    IMAGE_QUALITY_TIERS,
+    estimate_image_cost_micros,
+    image_generation_credits,
+)
 from app.services.marketing_video_agent import (
     MARKETING_TEMPLATES,
     PLATFORM_OPTIONS,
@@ -247,43 +253,113 @@ async def schedule_product_image_task(
     prompt: str,
     num_outputs: int = 1,
     campaign_id: str | None = None,
+    mode: str = "legacy",
+    quality_tier: str | None = None,
+    aspect_ratio: str = "1:1",
+    negative_prompt: str = "",
+    style_preset: str | None = None,
+    use_brand_persona: bool | None = None,
+    provider: str = "auto",
+    reference_asset_ids: list[str] | None = None,
+    idempotency_key: str | None = None,
 ) -> ImageGenerationTask:
-    """创建持久商品图片任务，由调度器异步消费。"""
+    """创建持久图片任务，由调度器异步消费。"""
     if not check_feature_access(user, "ai_image"):
         raise PermissionError("图片生成功能仅限专业版套餐使用")
 
-    aliyun_key = provider_config.get(
-        "aliyun",
-        "api_key",
-        settings.ALIYUN_DASHSCOPE_API_KEY or "",
+    if mode == "platform_white":
+        raise ValueError("平台白底请在图片工作台按尺寸预设处理")
+    if mode not in {"legacy", "free_creation", "product_scene"}:
+        raise ValueError("未知的图片生成模式")
+    resolved_quality = quality_tier or ("fast" if mode == "legacy" else "standard")
+    if resolved_quality not in IMAGE_QUALITY_TIERS:
+        raise ValueError("未知的图片质量档位")
+
+    references = await _resolve_agent_image_references(
+        db,
+        user.id,
+        reference_asset_ids or [],
+        required=mode == "product_scene",
     )
-    replicate_key = provider_config.get(
-        "replicate",
-        "api_key",
-        settings.REPLICATE_API_KEY or "",
+    provider_name = _resolve_agent_image_provider(
+        mode,
+        resolved_quality,
+        provider,
     )
-    if not aliyun_key and not replicate_key:
-        raise ValueError("图片生成功能暂未配置")
+    credits_cost = image_generation_credits(
+        mode,
+        resolved_quality,
+        num_outputs,
+    )
+    if user.credits < credits_cost:
+        raise ValueError(f"积分不足，本次图片生成需要 {credits_cost} 积分")
 
     enhanced_prompt = prompt.strip()
-    persona = await fetch_persona(db, user.id)
-    if persona:
-        kit = build_persona_kit(persona)
-        enhanced_prompt = strip_banned_words(
-            enhanced_prompt,
-            kit.get("banned_words") or [],
-        )
-        style_phrase = image_style_phrase(kit)
-        if style_phrase:
-            enhanced_prompt = f"{enhanced_prompt}, {style_phrase}"
-        if kit.get("brand_name"):
-            enhanced_prompt = f"{enhanced_prompt}, {kit['brand_name']} brand identity"
+    should_use_persona = (
+        use_brand_persona
+        if use_brand_persona is not None
+        else mode != "free_creation"
+    )
+    if should_use_persona:
+        persona = await fetch_persona(db, user.id)
+        if persona:
+            kit = build_persona_kit(persona)
+            enhanced_prompt = strip_banned_words(
+                enhanced_prompt,
+                kit.get("banned_words") or [],
+            )
+            style_phrase = image_style_phrase(kit)
+            if style_phrase:
+                enhanced_prompt = f"{enhanced_prompt}, {style_phrase}"
+            if kit.get("brand_name"):
+                enhanced_prompt = f"{enhanced_prompt}, {kit['brand_name']} brand identity"
+
+    if idempotency_key:
+        existing = (
+            await db.execute(
+                select(ImageGenerationTask).where(
+                    ImageGenerationTask.user_id == user.id,
+                    ImageGenerationTask.idempotency_key == idempotency_key,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
 
     task = ImageGenerationTask(
         user_id=user.id,
         campaign_id=UUID(str(campaign_id)) if campaign_id else None,
         prompt=enhanced_prompt,
         num_outputs=max(1, min(int(num_outputs or 1), 4)),
+        mode=mode,
+        quality_tier=resolved_quality if mode != "legacy" else None,
+        provider=provider_name,
+        resolution=IMAGE_QUALITY_TIERS[resolved_quality].resolution,
+        aspect_ratio=aspect_ratio,
+        negative_prompt=negative_prompt,
+        style_preset=style_preset,
+        use_brand_persona=should_use_persona,
+        reference_assets_json=json.dumps(
+            [str(asset.id) for asset in references],
+            ensure_ascii=False,
+        ),
+        reference_coverage="provided" if references else "none",
+        generation_params_json=json.dumps(
+            {
+                "mode": mode,
+                "quality_tier": resolved_quality,
+                "provider": provider_name,
+                "aspect_ratio": aspect_ratio,
+            },
+            ensure_ascii=False,
+        ),
+        estimated_cost_micros=estimate_image_cost_micros(
+            mode,
+            resolved_quality,
+            num_outputs,
+        ),
+        idempotency_key=idempotency_key,
+        credits_cost=credits_cost,
         status="pending",
         attempts=0,
         image_urls="[]",
@@ -293,6 +369,48 @@ async def schedule_product_image_task(
     db.add(task)
     await db.flush()
     return task
+
+
+async def _resolve_agent_image_references(
+    db: AsyncSession,
+    user_id,
+    raw_ids: list[str],
+    *,
+    required: bool,
+) -> list[ImageAsset]:
+    """按顺序校验 Agent 传入的参考图，全部必须属于当前用户。"""
+    ids = list(dict.fromkeys(str(item) for item in raw_ids if str(item).strip()))
+    if required and not ids:
+        raise ValueError("商品场景至少需要 1 张参考图")
+    if len(ids) > 4:
+        raise ValueError("商品场景最多支持 4 张参考图")
+    assets: list[ImageAsset] = []
+    for asset_id in ids:
+        asset = await get_owned_image_asset(db, user_id, asset_id)
+        if asset is None:
+            raise ValueError("参考素材不存在")
+        assets.append(asset)
+    return assets
+
+
+def _resolve_agent_image_provider(
+    mode: str,
+    quality_tier: str,
+    requested: str,
+) -> str:
+    """校验 Provider 能力并返回实际 Provider；商品场景禁止降级。"""
+    names = (
+        ["replicate"]
+        if mode == "product_scene"
+        else [requested] if requested in {"aliyun", "replicate"} else ["aliyun", "replicate"]
+    )
+    for name in names:
+        provider = get_image_provider(name)
+        if provider.supports(mode, quality_tier):
+            return name
+    if mode == "product_scene":
+        raise ValueError("商品场景参考图生成服务暂未配置")
+    raise ValueError("图片生成功能暂未配置")
 
 
 async def create_product_video_task(

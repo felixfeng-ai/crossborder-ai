@@ -68,10 +68,16 @@ const PROVIDER_GROUPS: ProviderGroup[] = [
       {
         id: 'replicate',
         label: 'Replicate',
-        description: '图片生成备用通道。',
+        description: '自由创作与商品参考图生成通道。',
         fields: [
           { key: 'api_key', label: 'API Key', secret: true },
-          { key: 'model', label: '模型名称', secret: false },
+          { key: 'model', label: '文生图模型', secret: false },
+          { key: 'reference_model', label: '商品参考图模型', secret: false },
+          {
+            key: 'reference_input_field',
+            label: '参考图输入字段',
+            secret: false,
+          },
         ],
       },
       {

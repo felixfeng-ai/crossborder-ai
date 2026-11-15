@@ -21,7 +21,12 @@ PROVIDER_FIELDS: dict[str, tuple[str, ...]] = {
     "onebound": ("api_key", "api_secret"),
     "justone": ("token",),
     "aliyun": ("api_key", "model", "vision_model", "embedding_model"),
-    "replicate": ("api_key", "model"),
+    "replicate": (
+        "api_key",
+        "model",
+        "reference_model",
+        "reference_input_field",
+    ),
     "shopify": ("api_key", "api_secret", "redirect_uri"),
     "amazon": ("app_id", "client_id", "client_secret", "redirect_uri"),
     "minimax": (
@@ -51,6 +56,10 @@ def _env_fallback(provider: str, field: str) -> str:
         ("aliyun", "embedding_model"): settings.POLICY_EMBEDDING_MODEL,
         ("replicate", "api_key"): settings.REPLICATE_API_KEY or "",
         ("replicate", "model"): settings.REPLICATE_MODEL,
+        ("replicate", "reference_model"): settings.REPLICATE_IMAGE_REFERENCE_MODEL,
+        ("replicate", "reference_input_field"): (
+            settings.REPLICATE_IMAGE_REFERENCE_INPUT_FIELD
+        ),
         ("shopify", "api_key"): settings.SHOPIFY_API_KEY or "",
         ("shopify", "api_secret"): settings.SHOPIFY_API_SECRET or "",
         ("shopify", "redirect_uri"): settings.SHOPIFY_REDIRECT_URI or "",

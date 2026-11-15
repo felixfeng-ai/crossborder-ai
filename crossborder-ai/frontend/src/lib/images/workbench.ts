@@ -9,6 +9,7 @@ export interface WorkbenchAsset {
   preset_id?: string | null
   platform?: string | null
   background_mode?: string | null
+  source_asset_id?: string | null
   generation_task_id?: string | null
   variant_index?: number | null
   created_at: string
@@ -21,6 +22,9 @@ export interface GeneratedImageHistory {
   model_used: string
   status: string
   created_at: string
+  mode?: string
+  quality_tier?: string | null
+  provider?: string
 }
 
 export interface WorkbenchLibraryItem {

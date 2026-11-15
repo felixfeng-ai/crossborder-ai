@@ -12,13 +12,14 @@ import {
   Sparkles,
   Trash2,
   Upload,
-  WandSparkles,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import ConfirmDialog from '@/components/common/ConfirmDialog'
+import { ImageModeTabs } from '@/components/images/ImageModeTabs'
+import { ReferenceImagePicker } from '@/components/images/ReferenceImagePicker'
 import apiClient from '@/api/client'
 import { waitForImageTask, type ImageTaskStatus } from '@/lib/images/taskPolling'
 import {
@@ -36,6 +37,17 @@ import {
   validateImageUpload,
 } from '@/lib/images/upload'
 import { useAgentPageContext } from '@/lib/agent/useAgentPageContext'
+import {
+  IMAGE_ASPECT_RATIOS,
+  IMAGE_GENERATION_MODES,
+  IMAGE_QUALITY_TIERS,
+  buildImageGenerationRequest,
+  imageGenerationCredits,
+  validateImageGeneration,
+  type ImageGenerationMode,
+  type ImageGenerationProvider,
+  type ImageQualityTier,
+} from '@/lib/images/generation'
 
 interface PlatformPreset {
   id: string
@@ -46,7 +58,30 @@ interface PlatformPreset {
   note: string
 }
 
+interface ImageProviderCapability {
+  provider: ImageGenerationProvider
+  configured: boolean
+  modes: string[]
+  reference_images: boolean
+}
+
+interface ImageCapabilities {
+  providers: ImageProviderCapability[]
+}
+
 type LibraryFilter = 'all' | 'upload' | 'processed' | 'generated'
+type GenerationState = 'idle' | 'submitting' | 'generating' | 'completed' | 'failed'
+type ImageGenerationResult =
+  | { kind: 'processed'; asset: WorkbenchAsset }
+  | { kind: 'generated'; task: ImageTaskStatus }
+
+const IMAGE_STYLE_PRESETS = [
+  { id: '', label: '跟随提示词', prompt: null },
+  { id: 'clean_studio', label: '干净棚拍', prompt: 'clean commercial studio lighting' },
+  { id: 'warm_lifestyle', label: '暖调生活', prompt: 'warm lifestyle photography, natural window light' },
+  { id: 'editorial', label: '编辑大片', prompt: 'editorial campaign photography, refined art direction' },
+  { id: 'festive', label: '节日氛围', prompt: 'subtle festive atmosphere, premium seasonal styling' },
+] as const
 
 export default function ImagesPage() {
   const queryClient = useQueryClient()
@@ -55,7 +90,16 @@ export default function ImagesPage() {
   const [presetId, setPresetId] = useState('amazon-main')
   const [filter, setFilter] = useState<LibraryFilter>('all')
   const [copied, setCopied] = useState(false)
-  const [showGenerate, setShowGenerate] = useState(false)
+  const [mode, setMode] = useState<ImageGenerationMode>('product_scene')
+  const [qualityTier, setQualityTier] = useState<ImageQualityTier>('standard')
+  const [aspectRatio, setAspectRatio] = useState('1:1')
+  const [numOutputs, setNumOutputs] = useState(1)
+  const [referenceAssetIds, setReferenceAssetIds] = useState<string[]>([])
+  const [negativePrompt, setNegativePrompt] = useState('')
+  const [stylePreset, setStylePreset] = useState('')
+  const [provider, setProvider] = useState<ImageGenerationProvider>('auto')
+  const [useBrandPersona, setUseBrandPersona] = useState(true)
+  const [generationState, setGenerationState] = useState<GenerationState>('idle')
   const [prompt, setPrompt] = useState('')
   const [actionError, setActionError] = useState('')
   const [actionSuccess, setActionSuccess] = useState('')
@@ -87,6 +131,14 @@ export default function ImagesPage() {
     },
   })
 
+  const capabilitiesQuery = useQuery<ImageCapabilities>({
+    queryKey: ['image-capabilities'],
+    queryFn: async () => {
+      const response = await apiClient.get('/images/capabilities')
+      return response.data
+    },
+  })
+
   const items = useMemo(
     () => buildLibraryItems(assetsQuery.data || [], historyQuery.data || []),
     [assetsQuery.data, historyQuery.data],
@@ -111,6 +163,19 @@ export default function ImagesPage() {
   const selected = items.find((item) => item.id === selectedId) || null
   const selectedAsset = (assetsQuery.data || []).find((asset) => asset.id === selectedId) || null
   const selectedPreset = (presetsQuery.data || []).find((preset) => preset.id === presetId) || null
+  const localAssets = (assetsQuery.data || []).filter(
+    (asset) => asset.kind !== 'processed' || asset.source_asset_id,
+  )
+  const selectedMode = IMAGE_GENERATION_MODES.find((item) => item.id === mode)
+  const estimatedCredits = imageGenerationCredits(mode, qualityTier, numOutputs)
+  const validationError = validateImageGeneration({
+    mode,
+    prompt,
+    referenceAssetIds,
+    qualityTier,
+  })
+  const generationPending =
+    generationState === 'submitting' || generationState === 'generating'
 
   useAgentPageContext({
     route: '/app/images',
@@ -141,28 +206,16 @@ export default function ImagesPage() {
       )
       queryClient.invalidateQueries({ queryKey: ['image-assets'] })
       setSelectedId(asset.id)
+      if (mode !== 'free_creation' && referenceAssetIds.length < 4) {
+        setReferenceAssetIds((current) => (
+          current.includes(asset.id) ? current : [...current, asset.id]
+        ))
+      }
     },
     onError: (error) => {
       setUploadProgress(0)
       setActionError(imageUploadErrorMessage(error))
     },
-  })
-
-  const processMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedAsset) throw new Error('请先选择一个本地素材')
-      const response = await apiClient.post<WorkbenchAsset>(
-        `/images/assets/${selectedAsset.id}/process`,
-        { preset_id: presetId },
-      )
-      return response.data
-    },
-    onMutate: () => setActionError(''),
-    onSuccess: (asset) => {
-      queryClient.invalidateQueries({ queryKey: ['image-assets'] })
-      setSelectedId(asset.id)
-    },
-    onError: (error) => setActionError(toErrorMessage(error, '白底图生成失败')),
   })
 
   const deleteMutation = useMutation({
@@ -184,23 +237,79 @@ export default function ImagesPage() {
 
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiClient.post('/images/generate', {
+      const error = validateImageGeneration({
+        mode,
         prompt,
-        num_outputs: 1,
+        referenceAssetIds,
+        qualityTier,
       })
-      return waitForImageTask(
+      if (error) throw new Error(error)
+
+      if (mode === 'platform_white') {
+        const sourceAssetId = referenceAssetIds[0]
+        if (!sourceAssetId) throw new Error('请先选择一张商品图')
+        const response = await apiClient.post<WorkbenchAsset>(
+          `/images/assets/${sourceAssetId}/process`,
+          { preset_id: presetId },
+        )
+        return {
+          kind: 'processed',
+          asset: response.data,
+        } satisfies ImageGenerationResult
+      }
+
+      const style = IMAGE_STYLE_PRESETS.find((item) => item.id === stylePreset)
+      const styledPrompt = style?.prompt
+        ? `${prompt.trim()}，${style.prompt}`
+        : prompt
+      const request = buildImageGenerationRequest({
+        mode,
+        prompt: styledPrompt,
+        referenceAssetIds,
+        qualityTier,
+        aspectRatio,
+        platformPresetId: null,
+        negativePrompt,
+        stylePreset: stylePreset || null,
+        useBrandPersona,
+        provider,
+        numOutputs,
+        idempotencyKey: crypto.randomUUID(),
+      })
+      const response = await apiClient.post('/images/generate', request)
+      setGenerationState('generating')
+      const task = await waitForImageTask(
         response.data.task_id,
         async (taskId): Promise<ImageTaskStatus> => {
           const status = await apiClient.get(`/images/status/${taskId}`)
           return status.data
         },
       )
+      return { kind: 'generated', task } satisfies ImageGenerationResult
     },
-    onMutate: () => setActionError(''),
-    onSuccess: () => {
+    onMutate: () => {
+      setActionError('')
+      setActionSuccess('')
+      setGenerationState('submitting')
+    },
+    onSuccess: (result) => {
+      setGenerationState('completed')
       queryClient.invalidateQueries({ queryKey: ['image-generation-history'] })
+      queryClient.invalidateQueries({ queryKey: ['image-assets'] })
+      if (result.kind === 'processed') {
+        setSelectedId(result.asset.id)
+        setFilter('processed')
+        setActionSuccess(`平台白底图已生成：${result.asset.name}`)
+      } else {
+        setActionSuccess(
+          `图片生成完成，共 ${result.task.image_urls.length} 张，已同步到素材库`,
+        )
+      }
     },
-    onError: (error) => setActionError(toErrorMessage(error, 'AI 图片生成失败')),
+    onError: (error) => {
+      setGenerationState('failed')
+      setActionError(toErrorMessage(error, '图片生成失败'))
+    },
   })
 
   const chooseFile = (files?: FileList | null) => {
@@ -225,6 +334,31 @@ export default function ImagesPage() {
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1800)
   }
+
+  const changeMode = (nextMode: ImageGenerationMode) => {
+    setMode(nextMode)
+    setGenerationState('idle')
+    if (nextMode === 'free_creation') {
+      setUseBrandPersona(false)
+    } else {
+      setUseBrandPersona(true)
+    }
+    if (nextMode === 'product_scene' && provider === 'aliyun') {
+      setProvider('auto')
+    }
+    if (
+      nextMode !== 'free_creation' &&
+      referenceAssetIds.length === 0 &&
+      selectedAsset
+    ) {
+      setReferenceAssetIds([selectedAsset.id])
+    }
+  }
+
+  const providerCapabilities = capabilitiesQuery.data?.providers || []
+  const availableProviderNames = new Set(
+    providerCapabilities.filter((item) => item.configured).map((item) => item.provider),
+  )
 
   const filterItems: Array<{ id: LibraryFilter; label: string; count: number }> = [
     { id: 'all', label: '全部', count: items.length },
@@ -253,60 +387,279 @@ export default function ImagesPage() {
             商品图片工作台
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            上传原图、整理素材，并按平台尺寸生成白底适配图。
+            从商品参考图生成场景图，或创作投放视觉、处理平台白底素材。
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={() => setShowGenerate((value) => !value)}>
-            <Sparkles className="mr-2 h-4 w-4" />
-            AI 生成图片
-          </Button>
-          <Button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadMutation.isPending}
-          >
-            {uploadMutation.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="mr-2 h-4 w-4" />
-            )}
-            {uploadMutation.isPending
-              ? uploadProgress >= 100
-                ? '图片优化中...'
-                : `上传中 ${uploadProgress}%`
-              : '上传图片'}
-          </Button>
-        </div>
+        <Button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploadMutation.isPending}
+        >
+          {uploadMutation.isPending ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Upload className="mr-2 h-4 w-4" />
+          )}
+          {uploadMutation.isPending
+            ? uploadProgress >= 100
+              ? '图片优化中...'
+              : `上传中 ${uploadProgress}%`
+            : '上传图片'}
+        </Button>
       </div>
 
-      {showGenerate && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="flex flex-col gap-3 pt-5 md:flex-row md:items-end">
-            <div className="min-w-0 flex-1 space-y-2">
-              <label htmlFor="image-prompt" className="text-sm font-medium">AI 图片描述</label>
-              <Input
-                id="image-prompt"
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                placeholder="例如：白底摄影棚中的银色保温杯，柔和轮廓光"
-                disabled={generateMutation.isPending}
+      <section className="border-y border-border bg-[var(--factory-panel)] py-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="section-title">生成方案</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {selectedMode?.description}
+            </p>
+          </div>
+          <span className="metric-number text-xs text-muted-foreground">
+            预计 {estimatedCredits} 积分
+          </span>
+        </div>
+
+        <div className="mt-4">
+          <ImageModeTabs
+            value={mode}
+            onChange={changeMode}
+            disabled={generationPending}
+          />
+        </div>
+
+        <div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-4">
+            {mode !== 'platform_white' ? (
+              <div className="space-y-2">
+                <label htmlFor="image-prompt" className="text-sm font-medium">
+                  画面描述
+                </label>
+                <textarea
+                  id="image-prompt"
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  placeholder={
+                    mode === 'product_scene'
+                      ? '例如：保持商品完全一致，放在冬季暖光客厅，木质桌面，浅景深，商业摄影'
+                      : '例如：黑白电影感几何海报，只保留商品轮廓和一处暖金色反光'
+                  }
+                  rows={5}
+                  maxLength={2000}
+                  disabled={generationPending}
+                  className="min-h-32 w-full resize-y rounded-md border border-input bg-background px-3 py-2.5 text-sm leading-6 outline-none transition-colors placeholder:text-muted-foreground focus:border-[color:var(--factory-accent)] focus:ring-2 focus:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+                <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                  <span>
+                    {mode === 'product_scene'
+                      ? '商品主体、Logo、材质和颜色会以参考图为准'
+                      : '自由创作默认不注入品牌人设，需要时可手动开启'}
+                  </span>
+                  <span className="metric-number">{prompt.length}/2000</span>
+                </div>
+              </div>
+            ) : (
+              <div className="border border-border bg-background px-3.5 py-3">
+                <p className="text-sm font-medium">本地白底适配</p>
+                <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                  等比缩放并居中，透明区域填充纯白，不裁切或拉伸商品主体。
+                  选择右上方平台尺寸后直接生成。
+                </p>
+                {selectedPreset && (
+                  <p className="metric-number mt-2 text-xs">
+                    {selectedPreset.platform} · {selectedPreset.width} × {selectedPreset.height}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {mode !== 'free_creation' && (
+              <ReferenceImagePicker
+                assets={localAssets}
+                selectedIds={referenceAssetIds}
+                onChange={setReferenceAssetIds}
+                onUpload={() => fileInputRef.current?.click()}
+                max={4}
+                disabled={generationPending}
               />
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm font-medium">输出质量</p>
+              <div className="mt-2 grid grid-cols-3 border border-border p-0.5">
+                {Object.values(IMAGE_QUALITY_TIERS).map((quality) => (
+                  <button
+                    key={quality.id}
+                    type="button"
+                    className={`h-9 px-2 text-xs transition-colors ${
+                      qualityTier === quality.id
+                        ? 'bg-secondary font-medium text-foreground'
+                        : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+                    }`}
+                    aria-pressed={qualityTier === quality.id}
+                    disabled={generationPending || mode === 'platform_white'}
+                    onClick={() => setQualityTier(quality.id)}
+                  >
+                    {quality.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                {IMAGE_QUALITY_TIERS[qualityTier].description}
+              </p>
             </div>
-            <Button
-              className="md:shrink-0"
-              onClick={() => generateMutation.mutate()}
-              disabled={prompt.trim().length < 5 || generateMutation.isPending}
-            >
-              {generateMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="mr-2 h-4 w-4" />
-              )}
-              {generateMutation.isPending ? '生成中...' : '生成并入库'}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+
+            {mode !== 'platform_white' && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="space-y-1.5 text-xs">
+                    <span className="font-medium">画面比例</span>
+                    <select
+                      value={aspectRatio}
+                      onChange={(event) => setAspectRatio(event.target.value)}
+                      disabled={generationPending}
+                      className="h-9 w-full border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      {IMAGE_ASPECT_RATIOS.map((ratio) => (
+                        <option key={ratio} value={ratio}>{ratio}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1.5 text-xs">
+                    <span className="font-medium">生成数量</span>
+                    <select
+                      value={numOutputs}
+                      onChange={(event) => setNumOutputs(Number(event.target.value))}
+                      disabled={generationPending}
+                      className="h-9 w-full border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      {[1, 2, 3, 4].map((count) => (
+                        <option key={count} value={count}>{count} 张</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <label className="block space-y-1.5 text-xs">
+                  <span className="font-medium">图片 Provider</span>
+                  <select
+                    value={provider}
+                    onChange={(event) => setProvider(
+                      event.target.value as ImageGenerationProvider,
+                    )}
+                    disabled={generationPending}
+                    className="h-9 w-full border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="auto">自动选择可用服务</option>
+                    <option
+                      value="aliyun"
+                      disabled={
+                        mode === 'product_scene' ||
+                        (providerCapabilities.length > 0 &&
+                          !availableProviderNames.has('aliyun'))
+                      }
+                    >
+                      阿里云通义万相
+                    </option>
+                    <option
+                      value="replicate"
+                      disabled={
+                        providerCapabilities.length > 0 &&
+                        !availableProviderNames.has('replicate')
+                      }
+                    >
+                      Replicate
+                    </option>
+                  </select>
+                </label>
+
+                <details className="border-t border-border pt-3">
+                  <summary className="cursor-pointer text-xs font-medium">
+                    高级设置
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <label className="block space-y-1.5 text-xs">
+                      <span className="text-muted-foreground">视觉风格</span>
+                      <select
+                        value={stylePreset}
+                        onChange={(event) => setStylePreset(event.target.value)}
+                        disabled={generationPending}
+                        className="h-9 w-full border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        {IMAGE_STYLE_PRESETS.map((style) => (
+                          <option key={style.id || 'none'} value={style.id}>
+                            {style.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block space-y-1.5 text-xs">
+                      <span className="text-muted-foreground">负面词</span>
+                      <Input
+                        value={negativePrompt}
+                        onChange={(event) => setNegativePrompt(event.target.value)}
+                        placeholder="例如：变形、错误 Logo、多余手指"
+                        className="h-9 text-xs"
+                        maxLength={2000}
+                        disabled={generationPending}
+                      />
+                    </label>
+                    <label className="flex items-start justify-between gap-3 text-xs">
+                      <span>
+                        <span className="block font-medium">使用品牌调性</span>
+                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                          注入品牌风格，并自动过滤品牌禁词
+                        </span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={useBrandPersona}
+                        onChange={(event) => setUseBrandPersona(event.target.checked)}
+                        disabled={generationPending}
+                        className="mt-1 h-4 w-4 accent-[var(--factory-accent)]"
+                      />
+                    </label>
+                  </div>
+                </details>
+              </>
+            )}
+
+            <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+              <div>
+                <p className="metric-number text-sm font-medium">
+                  {estimatedCredits} 积分
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  {mode === 'platform_white' ? '本地处理，不扣积分' : '成功后扣费'}
+                </p>
+              </div>
+              <Button
+                onClick={() => generateMutation.mutate()}
+                disabled={Boolean(validationError) || generationPending}
+                title={validationError || undefined}
+              >
+                {generationPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                {generationState === 'submitting'
+                  ? '提交中...'
+                  : generationState === 'generating'
+                    ? '生成中...'
+                    : mode === 'platform_white'
+                      ? '生成白底图'
+                      : '开始生成'}
+              </Button>
+            </div>
+            {validationError && (
+              <p className="text-[11px] text-muted-foreground">{validationError}</p>
+            )}
+          </div>
+        </div>
+      </section>
 
       {actionError && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -317,7 +670,7 @@ export default function ImagesPage() {
         <div
           role="status"
           aria-live="polite"
-          className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/8 px-3 py-2 text-sm text-[var(--factory-success)]"
+          className="flex items-center gap-2 rounded-md border border-[color:var(--factory-success)]/30 bg-[color:var(--factory-success)]/8 px-3 py-2 text-sm text-[var(--factory-success)]"
         >
           <Check className="h-4 w-4 shrink-0" />
           {actionSuccess}
@@ -505,40 +858,6 @@ export default function ImagesPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <WandSparkles className="h-4 w-4 text-primary" />
-                白底适配
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-xs leading-5 text-muted-foreground">
-                等比缩放并居中，透明区域填充纯白；不会裁切或拉伸商品主体。
-              </p>
-              {selectedPreset && (
-                <div className="rounded-md border bg-background px-3 py-2">
-                  <p className="text-xs text-muted-foreground">输出尺寸</p>
-                  <p className="metric-number mt-1 text-sm">{selectedPreset.width} × {selectedPreset.height}</p>
-                </div>
-              )}
-              <Button
-                className="w-full"
-                onClick={() => processMutation.mutate()}
-                disabled={!selectedAsset || processMutation.isPending}
-              >
-                {processMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <WandSparkles className="mr-2 h-4 w-4" />
-                )}
-                {processMutation.isPending ? '处理中...' : '生成白底图'}
-              </Button>
-              {!selectedAsset && selected?.kind === 'generated' && (
-                <p className="text-xs text-muted-foreground">该历史图片尚未入库，请先在素材库中选用已生成的图片素材。</p>
-              )}
-            </CardContent>
-          </Card>
         </div>
       </div>
 

@@ -119,11 +119,18 @@ def test_repair_migration_restores_stamped_schema_drift(
         "batch_jobs",
     )
     assert "uq_products_user_url" in _index_names(engine, "products")
+    assert {
+        "mode",
+        "quality_tier",
+        "provider",
+        "reference_assets_json",
+        "idempotency_key",
+    } <= _column_names(engine, "image_generation_tasks")
 
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "046_admin_operations"
+    assert version == "047_image_generation_modes"
     assert {
         "traffic_events",
         "feedback_tickets",
@@ -236,7 +243,7 @@ def test_full_sqlite_upgrade_from_empty_database(
     } <= _column_names(engine, "products")
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "046_admin_operations"
+    assert version == "047_image_generation_modes"
     assert {
         "traffic_events",
         "feedback_tickets",

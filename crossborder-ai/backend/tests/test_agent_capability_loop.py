@@ -73,6 +73,7 @@ def test_agent_tools_cover_creation_and_material_loop():
 
     assert {
         "list_materials",
+        "generate_image_asset",
         "generate_product_image",
         "generate_product_video",
         "create_marketing_video_plan",
@@ -395,6 +396,42 @@ async def test_agent_can_schedule_product_image_task(
     assert task.campaign_id == campaign_id
     assert task.status == "pending"
     assert created["links"][0]["href"] == "/app/images"
+
+
+@pytest.mark.asyncio
+async def test_agent_can_schedule_free_creation_image_asset(
+    db_session,
+    monkeypatch,
+):
+    user = await _make_user(db_session, email="agent-image-asset@test.com")
+    monkeypatch.setattr(settings, "ALIYUN_DASHSCOPE_API_KEY", "image-key")
+    provider_config.clear_cache()
+    orchestrator = AgentOrchestrator(user=user, db=db_session)
+
+    created = await orchestrator._execute_step(
+        "generate_image_asset",
+        {
+            "prompt": "黑白电影感几何海报，只保留产品轮廓",
+            "mode": "free_creation",
+            "quality_tier": "fast",
+            "aspect_ratio": "4:5",
+            "confirmed": True,
+        },
+    )
+
+    assert created["status"] == "success"
+    task = (
+        await db_session.execute(
+            select(ImageGenerationTask).where(
+                ImageGenerationTask.id == uuid.UUID(created["data"]["task_id"])
+            )
+        )
+    ).scalar_one()
+    assert task.mode == "free_creation"
+    assert task.quality_tier == "fast"
+    assert task.credits_cost == 3
+    assert task.use_brand_persona is False
+    assert task.aspect_ratio == "4:5"
 
 
 @pytest.mark.asyncio

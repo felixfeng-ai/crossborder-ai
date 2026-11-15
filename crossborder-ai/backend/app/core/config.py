@@ -154,6 +154,9 @@ class Settings(BaseSettings):
     # --- Replicate ---
     REPLICATE_API_KEY: Optional[str] = None
     REPLICATE_MODEL: str = "black-forest-labs/flux-schnell"
+    # 参考图商品场景必须显式配置支持图像输入的模型；缺失时明确报错而非降级。
+    REPLICATE_IMAGE_REFERENCE_MODEL: str = "bytedance/seedream-4"
+    REPLICATE_IMAGE_REFERENCE_INPUT_FIELD: str = "image_input"
 
     # --- Aliyun DashScope (通义万相) ---
     ALIYUN_DASHSCOPE_API_KEY: Optional[str] = None

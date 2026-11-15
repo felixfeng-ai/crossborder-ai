@@ -37,10 +37,11 @@ export function MarketingImageBatchPanel({
         {
           campaign_id: campaignId,
           prompt: buildMarketingImagePrompt(direction, note),
+          mode: 'free_creation',
+          quality_tier: 'fast',
+          use_brand_persona: true,
           num_outputs: count,
-        },
-        {
-          headers: { 'Idempotency-Key': crypto.randomUUID() },
+          idempotency_key: crypto.randomUUID(),
         },
       )
       return response.data

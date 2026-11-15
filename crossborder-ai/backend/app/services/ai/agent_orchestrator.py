@@ -15,7 +15,8 @@
 - create_product(data) → 创建商品
 - generate_listing(product_id, platform) → AI 生成 Listing
 - get_listing / edit_listing(listing_id) → 回查与编辑 Listing
-- generate_product_image / generate_product_video → 提交异步素材任务
+- generate_image_asset / generate_product_video → 提交异步素材任务
+- generate_product_image → 兼容旧客户端的商品图片生成工具
 - create_marketing_video_plan → 生成营销方案与分镜
 - generate_marketing_copy → 生成多平台 A/B 文案资产
 - list_materials → 查询用户素材
@@ -368,6 +369,60 @@ class AgentOrchestrator:
                         },
                     },
                     "required": ["prompt"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_image_asset",
+                "description": (
+                    "创建商品场景或自由创作图片任务。商品场景必须提供 1-4 张"
+                    "当前用户素材 ID；自由创作默认不注入品牌人设。"
+                    "只有用户明确要求生成或确认后 confirmed=true 才使用。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": {
+                            "type": "string",
+                            "description": "完整画面描述，包括商品、场景、构图和光线",
+                        },
+                        "mode": {
+                            "type": "string",
+                            "enum": ["free_creation", "product_scene"],
+                        },
+                        "reference_asset_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "商品场景参考图素材 ID，1-4 张",
+                        },
+                        "quality_tier": {
+                            "type": "string",
+                            "enum": ["fast", "standard", "hd"],
+                        },
+                        "aspect_ratio": {
+                            "type": "string",
+                            "enum": ["1:1", "4:5", "3:4", "16:9", "9:16"],
+                        },
+                        "negative_prompt": {"type": "string"},
+                        "style_preset": {"type": "string"},
+                        "use_brand_persona": {"type": "boolean"},
+                        "provider": {
+                            "type": "string",
+                            "enum": ["auto", "aliyun", "replicate"],
+                        },
+                        "num_outputs": {
+                            "type": "integer",
+                            "description": "生成数量，1-4",
+                        },
+                        "idempotency_key": {"type": "string"},
+                        "confirmed": {
+                            "type": "boolean",
+                            "description": "用户是否已明确要求生成图片",
+                        },
+                    },
+                    "required": ["prompt", "mode"],
                 },
             },
         },
@@ -953,7 +1008,8 @@ class AgentOrchestrator:
 - 用户提到商品链接 → 用 scrape_1688
 - 用户提到生成/发布/上架 → 用 generate_listing
 - 用户提到查看或修改已有 Listing → 用 get_listing / edit_listing
-- 用户提到图片、主图、场景图 → 用 generate_product_image
+- 用户提到商品场景图、参考图或自由创作图片 → 优先用 generate_image_asset
+- 旧客户端要求生成商品主图 → 用 generate_product_image 保持兼容
 - 用户明确要求生成商品视频并接受积分 → 用 generate_product_video
 - 用户提到营销视频想法、分镜或方案 → 用 create_marketing_video_plan
 - 用户提到广告文案、TikTok/Amazon/Shopify 文案或 A/B 测试 → 用 generate_marketing_copy
@@ -1021,14 +1077,18 @@ class AgentOrchestrator:
 14. list_materials — 查询素材
    参数: {"limit": 20}
 
-15. generate_product_image — 创建异步商品图片任务
+15. generate_image_asset — 创建商品场景/自由创作图片任务
+   参数: {"prompt": "...", "mode": "free_creation", "quality_tier": "standard", "confirmed": true}
+   商品场景必须提供 reference_asset_ids（1-4 张）并选择 product_scene
+
+16. generate_product_image — 兼容旧的商品图片任务
    参数: {"prompt": "...", "num_outputs": 1, "confirmed": true}
 
-16. generate_product_video — 提交商品图生视频，会扣积分
+17. generate_product_video — 提交商品图生视频，会扣积分
    参数: {"source_asset_id": "...", "prompt": "...", "confirmed": true}
    注意: 用户未明确确认时 confirmed 必须为 false
 
-17. create_marketing_video_plan — 创建营销视频 Brief 和分镜
+18. create_marketing_video_plan — 创建营销视频 Brief 和分镜
    参数: {"source_asset_id": "...", "product_name": "...", "idea": "...", "duration": 15}
    注意: 只生成方案，不自动渲染
 
@@ -1095,6 +1155,8 @@ class AgentOrchestrator:
                 return await self._do_list_materials(params)
             elif action == "generate_product_image":
                 return await self._do_generate_product_image(params)
+            elif action == "generate_image_asset":
+                return await self._do_generate_image_asset(params)
             elif action == "generate_product_video":
                 return await self._do_generate_product_video(params)
             elif action == "create_marketing_video_plan":
@@ -1375,6 +1437,87 @@ class AgentOrchestrator:
             },
             "links": [{"label": "查看图片任务", "href": "/app/images"}],
             "summary": "图片生成任务已进入队列，完成后可在图片工作台查看",
+        }
+
+    async def _do_generate_image_asset(self, params: dict) -> dict:
+        """创建三模式图片任务，并把参数真实落库供调度器执行。"""
+        prompt = str(params.get("prompt") or "").strip()
+        mode = str(params.get("mode") or "free_creation")
+        quality_tier = str(params.get("quality_tier") or "standard")
+        if len(prompt) < 5:
+            return {
+                "action": "generate_image_asset",
+                "status": "failed",
+                "error": "图片描述至少需要 5 个字符",
+            }
+        from app.services.image_quality import image_generation_credits
+
+        try:
+            credits = image_generation_credits(
+                mode,
+                quality_tier,
+                int(params.get("num_outputs") or 1),
+            )
+        except ValueError as exc:
+            return {
+                "action": "generate_image_asset",
+                "status": "failed",
+                "error": str(exc),
+            }
+        if not params.get("confirmed", False):
+            return {
+                "action": "generate_image_asset",
+                "status": "success",
+                "data": {
+                    "requires_confirmation": True,
+                    "mode": mode,
+                    "quality_tier": quality_tier,
+                    "estimated_credits": credits,
+                },
+                "summary": f"预计消耗 {credits} 积分，确认后开始生成图片",
+            }
+
+        try:
+            task = await agent_capability_service.schedule_product_image_task(
+                self.db,
+                self.user,
+                prompt=prompt,
+                num_outputs=int(params.get("num_outputs") or 1),
+                campaign_id=self.campaign_id,
+                mode=mode,
+                quality_tier=quality_tier,
+                aspect_ratio=str(params.get("aspect_ratio") or "1:1"),
+                negative_prompt=str(params.get("negative_prompt") or ""),
+                style_preset=params.get("style_preset"),
+                use_brand_persona=params.get("use_brand_persona"),
+                provider=str(params.get("provider") or "auto"),
+                reference_asset_ids=[
+                    str(item)
+                    for item in params.get("reference_asset_ids") or []
+                ],
+                idempotency_key=params.get("idempotency_key"),
+            )
+        except (PermissionError, ValueError) as exc:
+            return {
+                "action": "generate_image_asset",
+                "status": "failed",
+                "error": str(exc),
+            }
+        return {
+            "action": "generate_image_asset",
+            "status": "success",
+            "data": {
+                "task_id": str(task.id),
+                "status": task.status,
+                "mode": task.mode,
+                "quality_tier": task.quality_tier,
+                "credits_cost": task.credits_cost,
+                "num_outputs": task.num_outputs,
+            },
+            "links": [{"label": "打开图片工作台", "href": "/app/images"}],
+            "summary": (
+                f"{mode} 图片任务已进入队列，预计消耗 {task.credits_cost} 积分"
+            ),
         }
 
     async def _do_generate_product_video(self, params: dict) -> dict:

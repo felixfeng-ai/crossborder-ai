@@ -14,11 +14,12 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import desc, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -48,22 +49,43 @@ from app.services.image_processing import (
     list_platform_presets,
     normalize_uploaded_image,
 )
+from app.services.image_quality import (
+    IMAGE_QUALITY_TIERS,
+    estimate_image_cost_micros,
+    image_generation_credits as calculate_image_credits,
+    public_image_capabilities,
+)
+from app.services.image_provider import list_image_provider_capabilities
 from app.core.access_control import check_feature_access
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/images", tags=["AI 图片生成"])
-AI_IMAGE_CREDITS_PER_IMAGE = 3
-
-
-def image_generation_credits(num_outputs: int) -> int:
-    """按图片张数计算积分，避免高成本图片生成被单积分低估。"""
-    return max(1, int(num_outputs)) * AI_IMAGE_CREDITS_PER_IMAGE
 
 
 class GenerateImageRequest(BaseModel):
-    prompt: str = Field(..., min_length=5, description="图片描述词")
+    """兼容旧接口的图片生成请求；未传 mode 时按 legacy 处理。"""
+
+    prompt: str = Field(..., min_length=1, description="图片描述词")
+    mode: Optional[
+        Literal["product_scene", "free_creation", "platform_white"]
+    ] = None
+    reference_asset_ids: list[str] = Field(default_factory=list)
+    platform_preset_id: Optional[str] = None
+    quality_tier: Optional[Literal["fast", "standard", "hd"]] = None
+    aspect_ratio: str = Field(default="1:1", max_length=12)
+    resolution: Optional[str] = Field(default=None, max_length=24)
+    negative_prompt: str = Field(default="", max_length=2000)
+    style_preset: Optional[str] = Field(default=None, max_length=80)
+    use_brand_persona: Optional[bool] = None
+    provider: Literal["auto", "aliyun", "replicate"] = "auto"
     num_outputs: int = Field(default=1, ge=1, le=4)
     campaign_id: Optional[str] = Field(None, description="营销活动 ID")
+    idempotency_key: Optional[str] = Field(
+        default=None,
+        min_length=8,
+        max_length=128,
+        description="客户端请求幂等键",
+    )
 
 
 class TaskResponse(BaseModel):
@@ -82,6 +104,9 @@ class ImageHistoryItem(BaseModel):
     model_used: str
     status: str
     created_at: str
+    mode: str = "legacy"
+    quality_tier: Optional[str] = None
+    provider: str = "auto"
 
 
 class ImageAssetItem(BaseModel):
@@ -191,6 +216,16 @@ async def get_platform_presets(
 ):
     """返回跨境电商常用图片尺寸。"""
     return {"items": list_platform_presets()}
+
+
+@router.get("/capabilities")
+async def get_image_capabilities(
+    current_user: User = Depends(get_current_user),
+):
+    """返回图片工作台支持的模式、质量档和积分矩阵。"""
+    payload = public_image_capabilities()
+    payload["providers"] = list_image_provider_capabilities()
+    return payload
 
 
 @router.post("/assets/upload", response_model=ImageAssetItem, status_code=201)
@@ -413,14 +448,53 @@ async def schedule_image_task(
     prompt: str,
     num_outputs: int = 1,
     campaign_id: Optional[uuid.UUID] = None,
+    *,
+    mode: str = "legacy",
+    quality_tier: Optional[str] = None,
+    provider: str = "auto",
+    resolution: Optional[str] = None,
+    aspect_ratio: Optional[str] = None,
+    negative_prompt: Optional[str] = None,
+    style_preset: Optional[str] = None,
+    use_brand_persona: bool = False,
+    reference_asset_ids: Optional[list[str]] = None,
+    idempotency_key: Optional[str] = None,
 ) -> str:
     """建 pending 记录并后台调度生成；返回 task_id（供 POST /generate 与 content 主图复用）。"""
-    credits_cost = image_generation_credits(num_outputs)
+    credits_cost = calculate_image_credits(mode, quality_tier or "fast", num_outputs)
+    reference_ids = reference_asset_ids or []
     task = ImageGenerationTask(
         user_id=user_id,
         campaign_id=campaign_id,
         prompt=prompt,
         num_outputs=num_outputs,
+        mode=mode,
+        quality_tier=quality_tier,
+        provider=provider,
+        resolution=resolution,
+        aspect_ratio=aspect_ratio,
+        negative_prompt=negative_prompt,
+        style_preset=style_preset,
+        use_brand_persona=use_brand_persona,
+        reference_assets_json=json.dumps(reference_ids),
+        reference_coverage="provided" if reference_ids else "none",
+        generation_params_json=json.dumps(
+            {
+                "mode": mode,
+                "quality_tier": quality_tier,
+                "provider": provider,
+                "resolution": resolution,
+                "aspect_ratio": aspect_ratio,
+                "style_preset": style_preset,
+            },
+            ensure_ascii=False,
+        ),
+        estimated_cost_micros=estimate_image_cost_micros(
+            mode,
+            quality_tier or "fast",
+            num_outputs,
+        ),
+        idempotency_key=idempotency_key,
         status="pending",
         attempts=0,
         credits_cost=credits_cost,
@@ -430,8 +504,84 @@ async def schedule_image_task(
         error=None,
     )
     db.add(task)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # 并发重试同一幂等键时，回滚当前插入并返回已存在任务。
+        await db.rollback()
+        existing = (
+            await db.execute(
+                select(ImageGenerationTask).where(
+                    ImageGenerationTask.user_id == user_id,
+                    ImageGenerationTask.idempotency_key == idempotency_key,
+                )
+            )
+        ).scalar_one()
+        return str(existing.id)
     return str(task.id)
+
+
+def _image_mode(payload: GenerateImageRequest) -> str:
+    """兼容历史客户端：未声明模式时进入 legacy 计费和品牌链路。"""
+    return payload.mode or "legacy"
+
+
+def _image_quality_tier(payload: GenerateImageRequest, mode: str) -> Optional[str]:
+    if mode == "legacy":
+        return None
+    return payload.quality_tier or "standard"
+
+
+async def _resolve_reference_assets(
+    db: AsyncSession,
+    payload: GenerateImageRequest,
+    user_id,
+) -> list[ImageAsset]:
+    """逐张校验参考图归属；跨用户素材统一返回 404，避免泄露存在性。"""
+    if not payload.reference_asset_ids:
+        if _image_mode(payload) == "product_scene":
+            raise HTTPException(status_code=400, detail="商品场景至少需要 1 张参考图")
+        return []
+    ids = list(dict.fromkeys(payload.reference_asset_ids))
+    if len(ids) > 4:
+        raise HTTPException(status_code=400, detail="商品场景最多支持 4 张参考图")
+
+    parsed_ids = []
+    for raw_id in ids:
+        try:
+            parsed_ids.append(uuid.UUID(raw_id))
+        except ValueError:
+            raise HTTPException(status_code=404, detail="参考素材不存在")
+    assets = (
+        await db.execute(
+            select(ImageAsset).where(
+                ImageAsset.id.in_(parsed_ids),
+                ImageAsset.user_id == user_id,
+            )
+        )
+    ).scalars().all()
+    if len(assets) != len(parsed_ids):
+        raise HTTPException(status_code=404, detail="参考素材不存在")
+    return assets
+
+
+def _configured_image_providers() -> tuple[bool, bool, str]:
+    aliyun_key = provider_config.get(
+        "aliyun",
+        "api_key",
+        settings.ALIYUN_DASHSCOPE_API_KEY or "",
+    )
+    replicate_key = provider_config.get(
+        "replicate",
+        "api_key",
+        settings.REPLICATE_API_KEY or "",
+    )
+    reference_model = provider_config.get(
+        "replicate",
+        "reference_model",
+        settings.REPLICATE_IMAGE_REFERENCE_MODEL or "",
+    )
+    return bool(aliyun_key), bool(replicate_key), reference_model
 
 
 @router.post("/generate", response_model=TaskResponse)
@@ -450,6 +600,28 @@ async def generate_image(
     if not check_feature_access(current_user, "ai_image"):
         raise HTTPException(status_code=403, detail="图片生成功能仅限专业版套餐使用，请升级套餐")
 
+    mode = _image_mode(payload)
+    quality_tier = _image_quality_tier(payload, mode)
+
+    # 同一用户重复提交相同幂等键时直接复用任务，不重复建任务或扣积分。
+    if payload.idempotency_key:
+        existing = (
+            await db.execute(
+                select(ImageGenerationTask).where(
+                    ImageGenerationTask.user_id == current_user.id,
+                    ImageGenerationTask.idempotency_key == payload.idempotency_key,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return TaskResponse(
+                task_id=str(existing.id),
+                status=existing.status,
+                image_urls=_parse_urls(existing.image_urls),
+                model_used=existing.model_used or "",
+                error=existing.error,
+            )
+
     campaign_uuid = None
     if payload.campaign_id:
         try:
@@ -467,29 +639,71 @@ async def generate_image(
         if campaign is None:
             raise HTTPException(status_code=404, detail="营销活动不存在")
 
-    credits_cost = image_generation_credits(payload.num_outputs)
+    reference_assets = await _resolve_reference_assets(
+        db,
+        payload,
+        current_user.id,
+    )
+    aliyun_configured, replicate_configured, reference_model = (
+        _configured_image_providers()
+    )
+    if mode == "product_scene":
+        if payload.provider == "aliyun":
+            raise HTTPException(
+                status_code=400,
+                detail="商品场景参考图暂不支持阿里云 Provider，请切换 Replicate",
+            )
+        if not replicate_configured or not reference_model:
+            raise HTTPException(
+                status_code=400,
+                detail="商品场景参考图生成服务暂未配置，请管理员配置 Replicate 参考图模型",
+            )
+    elif payload.provider == "aliyun" and not aliyun_configured:
+        raise HTTPException(status_code=400, detail="阿里云图片生成服务暂未配置")
+    elif payload.provider == "replicate" and not replicate_configured:
+        raise HTTPException(status_code=400, detail="Replicate 图片生成服务暂未配置")
+    elif mode != "platform_white" and not aliyun_configured and not replicate_configured:
+        raise HTTPException(status_code=400, detail="图片生成功能暂未配置")
+
+    try:
+        credits_cost = calculate_image_credits(
+            mode,
+            quality_tier or "fast",
+            payload.num_outputs,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     if current_user.credits < credits_cost:
         raise HTTPException(
             status_code=402,
             detail=f"积分不足，本次图片生成需要 {credits_cost} 积分",
         )
 
-    aliyun_key = provider_config.get("aliyun", "api_key", settings.ALIYUN_DASHSCOPE_API_KEY or "")
-    replicate_key = provider_config.get("replicate", "api_key", settings.REPLICATE_API_KEY or "")
-    if not aliyun_key and not replicate_key:
-        raise HTTPException(status_code=400, detail="图片生成功能暂未配置")
-
     # 拼接品牌调性：image_style 优先，否则 tone + style；补 brand identity；去品牌禁词
-    persona = await fetch_persona(db, current_user.id)
     enhanced_prompt = payload.prompt
-    if persona:
-        kit = build_persona_kit(persona)
-        enhanced_prompt = strip_banned_words(enhanced_prompt, kit.get("banned_words") or [])
-        style_phrase = image_style_phrase(kit)
-        if style_phrase:
-            enhanced_prompt = f"{enhanced_prompt}, {style_phrase}"
-        if kit.get("brand_name"):
-            enhanced_prompt = f"{enhanced_prompt}, {kit['brand_name']} brand identity"
+    use_brand_persona = (
+        payload.use_brand_persona
+        if payload.use_brand_persona is not None
+        else mode != "free_creation"
+    )
+    if use_brand_persona:
+        persona = await fetch_persona(db, current_user.id)
+        if persona:
+            kit = build_persona_kit(persona)
+            enhanced_prompt = strip_banned_words(
+                enhanced_prompt,
+                kit.get("banned_words") or [],
+            )
+            style_phrase = image_style_phrase(kit)
+            if style_phrase:
+                enhanced_prompt = f"{enhanced_prompt}, {style_phrase}"
+            if kit.get("brand_name"):
+                enhanced_prompt = f"{enhanced_prompt}, {kit['brand_name']} brand identity"
+
+    quality_spec = IMAGE_QUALITY_TIERS.get(quality_tier or "fast")
+    resolution = payload.resolution or (
+        quality_spec.resolution if quality_spec is not None else "1024x1024"
+    )
 
     task_id = await schedule_image_task(
         db,
@@ -497,6 +711,19 @@ async def generate_image(
         enhanced_prompt,
         payload.num_outputs,
         campaign_uuid,
+        mode=mode,
+        quality_tier=quality_tier,
+        provider=payload.provider,
+        resolution=resolution,
+        aspect_ratio=payload.aspect_ratio,
+        negative_prompt=payload.negative_prompt,
+        style_preset=payload.style_preset,
+        use_brand_persona=use_brand_persona,
+        reference_asset_ids=[
+            str(asset.id)
+            for asset in reference_assets
+        ],
+        idempotency_key=payload.idempotency_key,
     )
     return TaskResponse(task_id=task_id, status="pending")
 
@@ -556,6 +783,9 @@ async def list_history(
             model_used=t.model_used or "",
             status=t.status,
             created_at=str(t.created_at),
+            mode=t.mode,
+            quality_tier=t.quality_tier,
+            provider=t.provider,
         )
         for t in tasks
     ]

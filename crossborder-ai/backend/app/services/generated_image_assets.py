@@ -44,6 +44,8 @@ def _write_generated_asset(
     normalized, width, height = normalize_uploaded_image(
         data,
         settings.MAX_IMAGE_UPLOAD_BYTES,
+        # 图片编辑的 4x 结果允许保留到 6000 边长；普通上传仍限制为 4096。
+        max_edge=6000,
     )
     storage_key = f"{user_id}/generated-{task_id}-{variant_index}.webp"
     base = Path(settings.IMAGE_STORAGE_DIR).resolve()

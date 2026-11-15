@@ -181,7 +181,12 @@ def _remove_background_with_fallback(source: bytes) -> bytes:
         raise ValueError("商品主体抠图失败，请更换背景更干净的商品图") from fallback_error
 
 
-def normalize_uploaded_image(data: bytes, max_bytes: int) -> tuple[bytes, int, int]:
+def normalize_uploaded_image(
+    data: bytes,
+    max_bytes: int,
+    *,
+    max_edge: int = 4096,
+) -> tuple[bytes, int, int]:
     """校验上传图片并转成无元数据的 WebP。"""
     if not data or len(data) > max_bytes:
         raise ValueError("图片不能为空且不能超过上传大小限制")
@@ -204,8 +209,8 @@ def normalize_uploaded_image(data: bytes, max_bytes: int) -> tuple[bytes, int, i
 
             # 商品素材超过 4096 边后继续保留原尺寸对页面使用没有收益，
             # 还会明显增加编码耗时和存储体积。
-            if max(source_width, source_height) > 4096:
-                image.thumbnail((4096, 4096), Image.Resampling.LANCZOS)
+            if max(source_width, source_height) > max_edge:
+                image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
             width, height = image.size
             has_alpha = image.mode in {"RGBA", "LA"} or (
                 image.mode == "P" and "transparency" in image.info

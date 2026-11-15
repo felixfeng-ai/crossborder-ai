@@ -263,3 +263,67 @@ async def test_local_upscale_executor_materializes_larger_asset(
     assert generated.width == 240
     assert generated.height == 180
     assert (tmp_path / generated.storage_key).is_file()
+
+
+@pytest.mark.asyncio
+async def test_local_upscale_keeps_4x_above_upload_edge_limit(
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    user = User(
+        email=f"upscale-4x-{uuid.uuid4().hex[:8]}@example.com",
+        username="upscale-4x",
+        password_hash="x",
+        plan="professional",
+        credits=20,
+    )
+    db_session.add(user)
+    await db_session.flush()
+    storage_key = f"{user.id}/upscale-4x-source.png"
+    source_path = tmp_path / storage_key
+    source_path.parent.mkdir(parents=True)
+    source_path.write_bytes(_png_bytes((1200, 800)))
+    source = ImageAsset(
+        user_id=user.id,
+        name="四倍放大源图",
+        kind="upload",
+        storage_key=storage_key,
+        content_type="image/png",
+        width=1200,
+        height=800,
+        file_size=source_path.stat().st_size,
+    )
+    db_session.add(source)
+    await db_session.flush()
+    task = ImageGenerationTask(
+        user_id=user.id,
+        prompt="图片四倍放大",
+        mode="upscale",
+        provider="local",
+        quality_tier=None,
+        resolution="4800x3200",
+        aspect_ratio="3:2",
+        reference_assets_json=json.dumps([str(source.id)]),
+        reference_coverage="provided",
+        generation_params_json=json.dumps({"scale": 4}),
+        num_outputs=1,
+        credits_cost=2,
+        status="processing",
+        image_urls="[]",
+    )
+    db_session.add(task)
+    await db_session.flush()
+    monkeypatch.setattr(settings, "IMAGE_STORAGE_DIR", str(tmp_path))
+
+    await run_image_generation(db_session, task.id, task.prompt, 1)
+
+    generated = (
+        await db_session.execute(
+            select(ImageAsset).where(
+                ImageAsset.generation_task_id == task.id
+            )
+        )
+    ).scalar_one()
+    assert generated.width == 4800
+    assert generated.height == 3200

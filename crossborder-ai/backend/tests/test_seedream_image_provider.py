@@ -30,7 +30,7 @@ def test_seedream_request_uses_ark_image_api_and_reference_images():
     assert request.headers["Authorization"] == "Bearer ark-test-key"
     assert request.body["model"] == "doubao-seedream-4-0-250828"
     assert request.body["size"] == "4K"
-    assert request.body["sequential_image_generation"] == "disabled"
+    assert "sequential_image_generation" not in request.body
     assert request.body["watermark"] is False
     assert request.body["image"][0].startswith("data:image/png;base64,")
 
@@ -63,6 +63,12 @@ def test_seedream_provider_is_registered_for_product_scene(monkeypatch):
     assert provider.supports("free_creation", "standard") is True
     assert provider.capabilities()["reference_images"] is True
     assert provider.capabilities()["max_reference_images"] == 14
+
+
+def test_seedream_default_model_uses_current_accessible_model():
+    from app.services.ai.seedream_image import get_seedream_image_config
+
+    assert get_seedream_image_config()["model"] == "doubao-seedream-5-5-261028"
 
 
 @pytest.mark.asyncio

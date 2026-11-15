@@ -201,7 +201,7 @@ class Settings(BaseSettings):
     # 独立 Key 可选；未配置时复用同一个 Ark 账号下的 JIMENG_API_KEY。
     SEEDREAM_API_KEY: Optional[str] = None
     SEEDREAM_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
-    SEEDREAM_IMAGE_MODEL: str = "doubao-seedream-4-0-250828"
+    SEEDREAM_IMAGE_MODEL: str = "doubao-seedream-5-5-261028"
     VIDEO_STORAGE_DIR: str = "./storage/videos"
 
     # --- Shopify ---

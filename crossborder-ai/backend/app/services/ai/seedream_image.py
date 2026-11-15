@@ -69,7 +69,6 @@ def build_seedream_image_request(
         "model": model,
         "prompt": normalized_prompt,
         "size": _quality_size(quality_tier),
-        "sequential_image_generation": "disabled",
         "response_format": "url",
         "watermark": False,
     }
@@ -103,6 +102,9 @@ def parse_seedream_image_response(payload: dict[str, Any]) -> list[str]:
 
 
 def _seedream_error(status_code: int, message: str = "") -> ValueError:
+    normalized = str(message or "").lower()
+    if "does not exist or you do not have access" in normalized:
+        return ValueError("Seedream 模型未开通或模型 ID 无效，请联系管理员")
     if status_code in {401, 403}:
         return ValueError("Seedream 服务密钥无效或没有模型权限，请联系管理员")
     if status_code == 402:

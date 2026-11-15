@@ -182,7 +182,7 @@ export function MarketingCampaignBar({
       </div>
 
       {selected && (
-        <p className="mt-1.5 text-[10px] text-muted-foreground">
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
           {OBJECTIVES.find((item) => item.id === selected.objective)?.label || selected.objective}
           {' · '}
           {PLATFORMS.find((item) => item.id === selected.platform)?.label || selected.platform}
@@ -370,7 +370,7 @@ export function MarketingCampaignBar({
             >
               {createMutation.isPending ? '创建中...' : '创建并绑定'}
             </Button>
-            <p className="text-[10px] text-destructive">{error}</p>
+            <p className="text-[11px] text-destructive">{error}</p>
           </div>
         </div>
       )}

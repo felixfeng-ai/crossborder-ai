@@ -49,6 +49,9 @@ const AdminPerformancePage = lazy(() => import('@/pages/admin/AdminPerformancePa
 const AdminPlansPage = lazy(() => import('@/pages/admin/AdminPlansPage'))
 const AdminFeedbackPage = lazy(() => import('@/pages/admin/AdminFeedbackPage'))
 const AdminAuditPage = lazy(() => import('@/pages/admin/AdminAuditPage'))
+const AdminProvidersPage = lazy(() => import('@/pages/admin/AdminProvidersPage'))
+const AdminPoliciesPage = lazy(() => import('@/pages/admin/AdminPoliciesPage'))
+const AdminAccessPage = lazy(() => import('@/pages/admin/AdminAccessPage'))
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore()
@@ -89,6 +92,9 @@ export default function App() {
         <Route path="orders" element={<AdminUpgradesPage />} />
         <Route path="feedback" element={<AdminFeedbackPage />} />
         <Route path="audit" element={<AdminAuditPage />} />
+        <Route path="providers" element={<AdminProvidersPage />} />
+        <Route path="policies" element={<AdminPoliciesPage />} />
+        <Route path="access" element={<AdminAccessPage />} />
       </Route>
 
       {/* 应用页面（需登录） */}

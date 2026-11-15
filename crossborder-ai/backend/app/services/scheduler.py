@@ -412,11 +412,13 @@ class SchedulerService:
                 print(f"[Scheduler] 营销视频项目对账完成：{count} 条")
 
     async def _refresh_provider_cache(self):
-        """周期刷新服务商配置缓存，保证多 worker 在 10 秒内最终一致。"""
+        """周期刷新服务商与访问控制缓存，保证多 worker 在 10 秒内最终一致。"""
+        from app.core import access_control
         from app.services import provider_config
 
         async with async_session_factory() as db:
             await provider_config.refresh(db)
+            await access_control.refresh(db)
 
     async def _refresh_monthly_credit_allowances_locked(self):
         """每日检查自然月额度，跨进程只允许一个 worker 发放。"""

@@ -183,7 +183,7 @@ export function MarketingCopyBoard({
               <Languages className="h-3.5 w-3.5 text-[var(--factory-accent)]" />
               多平台 A/B 文案
             </p>
-            <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
               {market} · {language.toUpperCase()} · 每个平台两个独立购买动机
             </p>
           </div>
@@ -229,7 +229,7 @@ export function MarketingCopyBoard({
             onClick={() => setPlatform(item)}
           >
             {copyPlatformLabel(item)}
-            <span className="ml-1.5 text-[9px] text-muted-foreground">
+            <span className="ml-1.5 text-[11px] text-muted-foreground">
               {latest[item].length}
             </span>
           </button>
@@ -272,7 +272,7 @@ export function MarketingCopyBoard({
             <p className="mt-2 text-xs font-medium">
               还没有 {copyPlatformLabel(platform)} 文案
             </p>
-            <p className="mt-1 text-[10px] text-muted-foreground">
+            <p className="mt-1 text-[11px] text-muted-foreground">
               生成后会同时创建 A/B 两个版本
             </p>
           </div>
@@ -339,7 +339,7 @@ function CopyCard({
           >
             {performanceStatusLabel(asset.performance_status)}
           </Badge>
-          {angle && <span className="text-[10px] text-muted-foreground">{angle}</span>}
+          {angle && <span className="text-[11px] text-muted-foreground">{angle}</span>}
         </div>
         <Badge variant={asset.compliance_status === 'pass' ? 'secondary' : 'destructive'}>
           {asset.compliance_status === 'pass' ? '合规通过' : '需要修改'}
@@ -416,19 +416,19 @@ function CopyCard({
           </p>
           <p className="mt-2 text-xs font-medium">{asset.cta}</p>
           {asset.last_evaluated_at && (
-            <div className="mt-2 grid grid-cols-3 gap-1.5 border border-border px-2 py-1.5 text-[9px] text-muted-foreground">
+            <div className="mt-2 grid grid-cols-3 gap-1.5 border border-border px-2 py-1.5 text-[11px] text-muted-foreground">
               <span>CTR {asset.performance_metrics.ctr || 0}%</span>
               <span>CVR {asset.performance_metrics.cvr || 0}%</span>
               <span>ROAS {asset.performance_metrics.roas || 0}</span>
             </div>
           )}
           {asset.hashtags.length > 0 && (
-            <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
+            <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
               {asset.hashtags.join(' ')}
             </p>
           )}
           <div className="mt-3 flex items-center justify-between border-t border-border pt-2">
-            <span className="text-[9px] text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground">
               v{asset.version} · {asset.model_used || 'AI'}
             </span>
             <div className="flex items-center gap-1">
@@ -441,7 +441,7 @@ function CopyCard({
                 onClick={onCopy}
               >
                 {copied ? (
-                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  <Check className="h-3.5 w-3.5 text-[var(--factory-success)]" />
                 ) : (
                   <Copy className="h-3.5 w-3.5" />
                 )}

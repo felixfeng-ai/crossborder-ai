@@ -30,17 +30,17 @@ import { toErrorMessage } from '@/utils/errorMessage'
 import { variantSaveErrorMessage } from '@/lib/productVariantError'
 
 const PLATFORMS = [
-  { id: 'amazon', label: 'Amazon', color: 'bg-amber-500/10 text-amber-600' },
-  { id: 'ebay', label: 'eBay', color: 'bg-amber-500/10 text-amber-500' },
-  { id: 'shopify', label: 'Shopify', color: 'bg-emerald-500/10 text-emerald-600' },
-  { id: 'etsy', label: 'Etsy', color: 'bg-orange-500/10 text-orange-600' },
-  { id: 'shein', label: 'SHEIN', color: 'bg-green-600/10 text-green-600' },
-  { id: 'temu', label: 'Temu', color: 'bg-red-500/10 text-red-600' },
+  { id: 'amazon', label: 'Amazon', color: 'bg-amber-500/10 text-[var(--factory-warning)]' },
+  { id: 'ebay', label: 'eBay', color: 'bg-amber-500/10 text-[var(--factory-warning)]' },
+  { id: 'shopify', label: 'Shopify', color: 'bg-emerald-500/10 text-[var(--factory-success)]' },
+  { id: 'etsy', label: 'Etsy', color: 'bg-orange-500/10 text-[var(--factory-warning)]' },
+  { id: 'shein', label: 'SHEIN', color: 'bg-green-600/10 text-[var(--factory-success)]' },
+  { id: 'temu', label: 'Temu', color: 'bg-red-500/10 text-[var(--factory-coral)]' },
   { id: 'tiktok', label: 'TikTok Shop', color: 'bg-purple-500/10 text-purple-600' },
-  { id: 'aliexpress', label: 'AliExpress', color: 'bg-rose-500/10 text-rose-600' },
+  { id: 'aliexpress', label: 'AliExpress', color: 'bg-rose-500/10 text-[var(--factory-coral)]' },
   { id: 'walmart', label: 'Walmart', color: 'bg-sky-500/10 text-sky-600' },
-  { id: 'shopee', label: 'Shopee', color: 'bg-orange-600/10 text-orange-600' },
-  { id: 'lazada', label: 'Lazada', color: 'bg-amber-500/10 text-amber-500' },
+  { id: 'shopee', label: 'Shopee', color: 'bg-orange-600/10 text-[var(--factory-warning)]' },
+  { id: 'lazada', label: 'Lazada', color: 'bg-amber-500/10 text-[var(--factory-warning)]' },
 ]
 
 interface ProductVariant {
@@ -296,7 +296,7 @@ export default function ProductDetailPage() {
               <div className="flex items-center justify-between">
                 {product.price != null && (
                   <div>
-                    <p className="text-[10px] text-muted-foreground">采购/供货参考价</p>
+                    <p className="text-[11px] text-muted-foreground">采购/供货参考价</p>
                     <span className="text-2xl font-bold text-primary">¥{product.price.toFixed(2)}</span>
                   </div>
                 )}

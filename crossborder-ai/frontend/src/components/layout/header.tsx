@@ -109,7 +109,7 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
           <Menu className="h-4 w-4" />
         </Button>
         <div className="min-w-0">
-          <p className="truncate text-[10px] leading-4 text-muted-foreground">
+          <p className="truncate text-[11px] leading-4 text-muted-foreground">
             {headerContext.group}
           </p>
           <p className="truncate text-[13px] font-medium leading-5">

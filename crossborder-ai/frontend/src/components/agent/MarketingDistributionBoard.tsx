@@ -355,7 +355,7 @@ export function MarketingDistributionBoard({
                 <Store className="h-3.5 w-3.5 text-[var(--factory-accent)]" />
                 Shopify 发布
               </p>
-              <p className="mt-1 text-[10px] text-muted-foreground">
+              <p className="mt-1 text-[11px] text-muted-foreground">
                 发布为 Shopify 草稿商品
               </p>
             </div>
@@ -427,7 +427,7 @@ export function MarketingDistributionBoard({
                 <TriangleAlert className="h-3.5 w-3.5 text-[color:var(--factory-coral)]" />
                 Amazon 发布
               </p>
-              <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
                 先预览 Amazon 校验问题，再提交 Listings Items。
               </p>
             </div>
@@ -505,7 +505,7 @@ export function MarketingDistributionBoard({
               </Button>
             </div>
             {amazonPreview && (
-              <div className="border border-border px-2 py-1.5 text-[9px] leading-4 text-muted-foreground">
+              <div className="border border-border px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
                 <p className="font-medium text-foreground">
                   {amazonPreview.status} · {amazonPreview.sku}
                 </p>
@@ -542,7 +542,7 @@ export function MarketingDistributionBoard({
               ['花费', totals?.spend || 0],
             ].map(([label, value]) => (
               <div key={String(label)} className="border border-border bg-[var(--factory-panel)] p-2">
-                <p className="text-[9px] text-muted-foreground">{label}</p>
+                <p className="text-[11px] text-muted-foreground">{label}</p>
                 <p className="metric-number mt-1 text-sm font-medium">{value}</p>
               </div>
             ))}
@@ -552,7 +552,7 @@ export function MarketingDistributionBoard({
             <div className="mt-3 border border-border">
               <div className="border-b border-border px-2.5 py-2">
                 <p className="text-[11px] font-medium">A/B 版本表现</p>
-                <p className="mt-0.5 text-[9px] text-muted-foreground">
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
                   仅样本充足且差距明确时自动暂停
                 </p>
               </div>
@@ -563,10 +563,10 @@ export function MarketingDistributionBoard({
                     className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 py-2"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-[10px] font-medium">
+                      <p className="truncate text-[11px] font-medium">
                         {item.platform.toUpperCase()} · {item.variant_key}
                       </p>
-                      <p className="mt-0.5 truncate text-[9px] text-muted-foreground">
+                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                         CTR {item.metrics.ctr}% · CVR {item.metrics.cvr}% · ROAS{' '}
                         {item.metrics.roas}
                       </p>
@@ -597,7 +597,7 @@ export function MarketingDistributionBoard({
               <div key={item.id} className="flex items-center justify-between gap-3 border border-border px-2.5 py-2">
                 <div className="min-w-0">
                   <p className="text-[11px] font-medium">{item.platform} 发布</p>
-                  <p className="truncate text-[9px] text-muted-foreground">
+                  <p className="truncate text-[11px] text-muted-foreground">
                     {item.error || item.external_url || item.status}
                   </p>
                 </div>
@@ -635,7 +635,7 @@ export function MarketingDistributionBoard({
                           : '文案'}
                     </Badge>
                   </div>
-                  <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                  <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
                     {item.detail}
                   </p>
                 </div>
@@ -656,10 +656,10 @@ export function MarketingDistributionBoard({
                       {item.severity}
                     </Badge>
                   </div>
-                  <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                  <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
                     {item.detail}
                   </p>
-                  <p className="mt-1 text-[10px] leading-4 text-foreground">
+                  <p className="mt-1 text-[11px] leading-4 text-foreground">
                     {item.action}
                   </p>
                 </div>
@@ -733,7 +733,7 @@ export function MarketingDistributionBoard({
               </div>
             ))}
           </div>
-          {error && <p className="mt-2 text-[10px] text-destructive">{error}</p>}
+          {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
           <Button
             size="sm"
             className="mt-3 h-8 w-full"
@@ -751,7 +751,7 @@ export function MarketingDistributionBoard({
               <FileUp className="h-3.5 w-3.5" />
               导入广告报表
             </p>
-            <p className="mt-1 text-[9px] leading-4 text-muted-foreground">
+            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
               支持 Amazon Ads、TikTok Ads、Meta Ads 官方 CSV
             </p>
             <div className="mt-2 grid gap-2">
@@ -785,10 +785,10 @@ export function MarketingDistributionBoard({
                 ))}
               </select>
               <label className="flex h-16 cursor-pointer flex-col items-center justify-center border border-dashed border-border px-2 text-center">
-                <span className="text-[10px] font-medium">
+                <span className="text-[11px] font-medium">
                   {importFileName || '选择 CSV 文件'}
                 </span>
-                <span className="mt-1 text-[9px] text-muted-foreground">
+                <span className="mt-1 text-[11px] text-muted-foreground">
                   最大 2 MB
                 </span>
                 <input

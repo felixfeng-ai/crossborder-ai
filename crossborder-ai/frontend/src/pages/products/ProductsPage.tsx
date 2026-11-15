@@ -382,12 +382,12 @@ export default function ProductsPage() {
               {scrapeMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />抓取中</> : <><ExternalLink className="mr-2 h-4 w-4" />自动抓取</>}
             </Button>
           </div>
-          {scrapeMutation.data && <p className="mt-2 text-sm text-emerald-600 flex items-center gap-1"><CheckCircle2 className="h-4 w-4" />{scrapeMutation.data.message}</p>}
+          {scrapeMutation.data && <p className="mt-2 text-sm text-[var(--factory-success)] flex items-center gap-1"><CheckCircle2 className="h-4 w-4" />{scrapeMutation.data.message}</p>}
           {scrapeMutation.error && (
             <div className="mt-2 flex items-start gap-2 text-sm bg-amber-500/10 p-3 rounded-md">
-              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" />
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-[var(--factory-warning)]" />
               <div>
-                <p className="text-amber-600 font-medium">抓取失败</p>
+                <p className="text-[var(--factory-warning)] font-medium">抓取失败</p>
                 <p className="text-muted-foreground">{toErrorMessage(scrapeMutation.error)}</p>
               </div>
             </div>
@@ -630,11 +630,11 @@ export default function ProductsPage() {
                       {product.title || '无标题商品'}
                     </button>
                     <div className="mt-1 flex items-center gap-2">
-                      <Badge variant="outline" className="text-[9px]">
+                      <Badge variant="outline" className="text-[11px]">
                         {productOriginLabel(product.origin_type)}
                       </Badge>
                       {product.brand_name && (
-                        <span className="truncate text-[10px] text-muted-foreground">
+                        <span className="truncate text-[11px] text-muted-foreground">
                           {product.brand_name}
                         </span>
                       )}
@@ -652,7 +652,7 @@ export default function ProductsPage() {
                         </span>
                       )}
                       {product.moq != null && (
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-[11px] text-muted-foreground">
                           MOQ {product.moq}
                         </span>
                       )}

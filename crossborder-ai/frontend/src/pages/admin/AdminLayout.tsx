@@ -4,12 +4,15 @@ import {
   Activity,
   ArrowLeft,
   BarChart3,
+  BookOpenCheck,
   ClipboardList,
   Gauge,
   Inbox,
   Menu,
   Package,
   ScrollText,
+  Server,
+  ShieldCheck,
   X,
 } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
@@ -27,40 +30,60 @@ const adminQueryClient = new QueryClient({
   },
 })
 
-const NAV_ITEMS = [
-  { to: '/admin/overview', label: '运营总览', icon: Gauge },
-  { to: '/admin/analytics', label: '访问分析', icon: BarChart3 },
-  { to: '/admin/performance', label: '页面性能', icon: Activity },
-  { to: '/admin/plans', label: '套餐管理', icon: Package },
-  { to: '/admin/orders', label: '订单审核', icon: ClipboardList },
-  { to: '/admin/feedback', label: '反馈收件箱', icon: Inbox },
-  { to: '/admin/audit', label: '操作审计', icon: ScrollText },
+const NAV_GROUPS = [
+  {
+    label: '平台治理',
+    items: [
+      { to: '/admin/providers', label: '服务商配置', icon: Server },
+      { to: '/admin/policies', label: '政策知识库', icon: BookOpenCheck },
+      { to: '/admin/access', label: '访问控制', icon: ShieldCheck },
+    ],
+  },
+  {
+    label: '业务运营',
+    items: [
+      { to: '/admin/overview', label: '运营总览', icon: Gauge },
+      { to: '/admin/analytics', label: '访问分析', icon: BarChart3 },
+      { to: '/admin/performance', label: '页面性能', icon: Activity },
+      { to: '/admin/plans', label: '套餐管理', icon: Package },
+      { to: '/admin/orders', label: '订单审核', icon: ClipboardList },
+      { to: '/admin/feedback', label: '反馈收件箱', icon: Inbox },
+      { to: '/admin/audit', label: '操作审计', icon: ScrollText },
+    ],
+  },
 ]
 
 function AdminNavigation({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <nav className="space-y-1" aria-label="管理员导航">
-      {NAV_ITEMS.map((item) => {
-        const Icon = item.icon
-        return (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              cn(
-                'flex min-h-9 items-center gap-2.5 rounded-md px-3 text-sm transition-colors',
-                isActive
-                  ? 'bg-secondary font-medium text-foreground'
-                  : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground',
+    <nav className="space-y-5" aria-label="管理员导航">
+      {NAV_GROUPS.map((group) => (
+        <div key={group.label}>
+          <p className="mb-2 px-3 text-xs text-[var(--factory-faint)]">{group.label}</p>
+          <div className="space-y-1">
+            {group.items.map((item) => {
+              const Icon = item.icon
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex min-h-9 items-center gap-2.5 rounded-md px-3 text-sm transition-colors',
+                      isActive
+                        ? 'bg-secondary font-medium text-foreground'
+                        : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground',
+                    )
+                  }
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span>{item.label}</span>
+                </NavLink>
               )
-            }
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            <span>{item.label}</span>
-          </NavLink>
-        )
-      })}
+            })}
+          </div>
+        </div>
+      ))}
     </nav>
   )
 }
@@ -80,7 +103,6 @@ export default function AdminLayout() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-4">
-          <p className="mb-2 px-3 text-xs text-[var(--factory-faint)]">平台运营</p>
           <AdminNavigation />
         </div>
         <div className="border-t border-border p-3">

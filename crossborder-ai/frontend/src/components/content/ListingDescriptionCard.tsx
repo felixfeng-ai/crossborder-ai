@@ -52,7 +52,7 @@ export default function ListingDescriptionCard({
             onClick={() => onCopy(copyValue, 'desc')}
           >
             {copied === 'desc' ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              <CheckCircle2 className="h-4 w-4 text-[var(--factory-success)]" />
             ) : (
               <Copy className="h-4 w-4" />
             )}

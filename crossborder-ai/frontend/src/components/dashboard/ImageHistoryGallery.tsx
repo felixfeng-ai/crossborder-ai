@@ -118,7 +118,7 @@ export default function ImageHistoryGallery() {
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 pb-1 pt-4">
                     <p className="truncate text-[11px] text-white">{truncatePrompt(item.prompt)}</p>
                     {item.created_at && (
-                      <p className="text-[10px] text-white/70">{formatRelativeTime(item.created_at)}</p>
+                      <p className="text-[11px] text-white/70">{formatRelativeTime(item.created_at)}</p>
                     )}
                   </div>
                 </button>

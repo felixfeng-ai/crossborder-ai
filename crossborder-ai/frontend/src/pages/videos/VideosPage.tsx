@@ -367,7 +367,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
                       aria-label={`选择首帧 ${asset.name}`}
                       aria-pressed={sourceAssetId === asset.id}
                       className={cn(
-                        'aspect-square overflow-hidden border bg-[#d9dad5] transition-colors',
+                        'aspect-square overflow-hidden border bg-[var(--factory-raised)] transition-colors',
                         sourceAssetId === asset.id
                           ? 'border-[color:var(--factory-accent)] ring-1 ring-[color:var(--factory-accent)]'
                           : 'border-border hover:border-[color:var(--factory-line-strong)]',
@@ -392,7 +392,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
                 </a>
               )}
               {assets.length > 0 && (
-                <p className="text-[10px] leading-4 text-muted-foreground">
+                <p className="text-[11px] leading-4 text-muted-foreground">
                   首帧来自图片工作台的上传图、白底图和 AI 生成图。点击缩略图即可更换。
                 </p>
               )}
@@ -529,7 +529,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
                     </div>
                     <Badge
                       variant="secondary"
-                      className="absolute left-2 top-2 border border-border bg-background/90 text-[10px]"
+                      className="absolute left-2 top-2 border border-border bg-background/90 text-[11px]"
                     >
                       {videoStatusLabel(task.status)}
                     </Badge>

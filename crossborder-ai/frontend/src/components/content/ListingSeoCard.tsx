@@ -43,7 +43,7 @@ export default function ListingSeoCard({
                 onClick={() => onCopy(seoTitle, 'seo_title')}
               >
                 {copied === 'seo_title' ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-[var(--factory-success)]" />
                 ) : (
                   <Copy className="h-3.5 w-3.5" />
                 )}
@@ -75,7 +75,7 @@ export default function ListingSeoCard({
                 onClick={() => onCopy(seoDescription, 'seo_desc')}
               >
                 {copied === 'seo_desc' ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-[var(--factory-success)]" />
                 ) : (
                   <Copy className="h-3.5 w-3.5" />
                 )}

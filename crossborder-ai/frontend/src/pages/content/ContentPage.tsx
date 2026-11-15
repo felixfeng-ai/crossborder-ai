@@ -237,7 +237,7 @@ export default function ContentPage() {
       </div>
 
       <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-sm">
-        <span className="font-medium text-amber-700 dark:text-amber-300">发布能力：</span>
+        <span className="font-medium text-[var(--factory-warning)]">发布能力：</span>
         <span className="text-muted-foreground">
           当前仅 Shopify 支持真实发布；Amazon、Temu、SHEIN 支持生成文案，发布接口仍在接入中。
         </span>
@@ -269,7 +269,7 @@ export default function ContentPage() {
               {selected && (
                 <div className="space-y-3 border-t border-border pt-3">
                   <div className="flex items-start gap-3">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden border border-border bg-[#d9dad5]">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden border border-border bg-[var(--factory-raised)]">
                       {selected.main_image_url ? (
                         <img
                           src={resolveMediaUrl(selected.main_image_url)}
@@ -421,7 +421,7 @@ export default function ContentPage() {
                 <CardHeader className="flex flex-row items-start justify-between">
                   <CardTitle className="text-sm">商品标题</CardTitle>
                   <Button variant="ghost" size="icon" onClick={() => copyText(generateMutation.data.title, 'title')}>
-                    {copied === 'title' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                    {copied === 'title' ? <CheckCircle2 className="h-4 w-4 text-[var(--factory-success)]" /> : <Copy className="h-4 w-4" />}
                   </Button>
                 </CardHeader>
                 <CardContent>
@@ -434,7 +434,7 @@ export default function ContentPage() {
                 <CardHeader className="flex flex-row items-start justify-between">
                   <CardTitle className="text-sm">卖点（Bullet Points）</CardTitle>
                   <Button variant="ghost" size="icon" onClick={() => copyText(generateMutation.data.bullet_points.join('\n'), 'bullets')}>
-                    {copied === 'bullets' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                    {copied === 'bullets' ? <CheckCircle2 className="h-4 w-4 text-[var(--factory-success)]" /> : <Copy className="h-4 w-4" />}
                   </Button>
                 </CardHeader>
                 <CardContent>
@@ -470,7 +470,7 @@ export default function ContentPage() {
               {selected && language !== 'zh' && (
                 <Card className="border-amber-500/20 bg-amber-500/5">
                   <CardHeader>
-                    <CardTitle className="text-sm flex items-center gap-2 text-amber-500">
+                    <CardTitle className="text-sm flex items-center gap-2 text-[var(--factory-warning)]">
                       <Globe className="h-4 w-4" />
                       原文 vs 译文对照
                     </CardTitle>
@@ -513,7 +513,7 @@ export default function ContentPage() {
             <Card className="border-emerald-500/20 bg-emerald-500/5">
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-emerald-500" />
+                  <Globe className="h-4 w-4 text-[var(--factory-success)]" />
                   发布 Shopify 草稿
                 </CardTitle>
               </CardHeader>
@@ -564,7 +564,7 @@ export default function ContentPage() {
                   </div>
                 )}
                 {!publishVariantsLoading && !hasPublishableVariant && (
-                  <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+                  <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-[var(--factory-warning)]">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     <span>
                       发布前需要至少一个启用且填写了售价的 SKU。
@@ -602,7 +602,7 @@ export default function ContentPage() {
                   )}
                 </Button>
                 {publishMutation.data && (
-                  <p className="text-sm text-emerald-600 flex items-center gap-1">
+                  <p className="text-sm text-[var(--factory-success)] flex items-center gap-1">
                     <CheckCircle2 className="h-4 w-4" />{publishMutation.data.message}
                   </p>
                 )}

@@ -6,15 +6,11 @@ import {
   CheckCircle2,
   Palette,
   X,
-  KeyRound,
-  Server,
   Link2,
   RefreshCw,
   Clock3,
   ShieldCheck,
   CircleAlert,
-  BookOpenCheck,
-  Upload,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,13 +43,6 @@ export default function SettingsPage() {
       ? 'connections'
       : 'persona'
   })
-  const { data: me } = useQuery({
-    queryKey: ['current-user'],
-    queryFn: async () => {
-      const response = await apiClient.get('/auth/me')
-      return response.data
-    },
-  })
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl space-y-6">
@@ -69,10 +58,6 @@ export default function SettingsPage() {
           <TabsTrigger value="persona">品牌调性</TabsTrigger>
           <TabsTrigger value="automation">自动化</TabsTrigger>
           <TabsTrigger value="connections">平台连接</TabsTrigger>
-          {me?.is_admin && <TabsTrigger value="providers">服务商配置</TabsTrigger>}
-          {me?.is_admin && (
-            <TabsTrigger value="policies">政策知识库</TabsTrigger>
-          )}
         </TabsList>
 
         <TabsContent value="persona" className="space-y-4">
@@ -84,16 +69,6 @@ export default function SettingsPage() {
         <TabsContent value="connections" className="space-y-4">
           <PlatformConnections />
         </TabsContent>
-        {me?.is_admin && (
-          <TabsContent value="providers" className="space-y-4">
-            <ProviderSettings />
-          </TabsContent>
-        )}
-        {me?.is_admin && (
-          <TabsContent value="policies" className="space-y-4">
-            <PolicyKnowledgeSettings />
-          </TabsContent>
-        )}
       </Tabs>
     </motion.div>
   )
@@ -199,7 +174,7 @@ function AutomationSettings() {
             </Button>
           </div>
           {saveMutation.isSuccess && (
-            <p className="flex items-center gap-1 text-xs text-emerald-600">
+            <p className="flex items-center gap-1 text-xs text-[var(--factory-success)]">
               <CheckCircle2 className="h-3.5 w-3.5" />
               自动化设置已保存，下一次调度立即生效
             </p>
@@ -248,7 +223,7 @@ function AutomationTaskRow({
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           {task.description}
         </p>
-        <p className="mt-1 text-[10px] text-muted-foreground">
+        <p className="mt-1 text-[11px] text-muted-foreground">
           {task.last_run_at
             ? `最近执行：${formatAutomationTime(task.last_run_at)}`
             : '最近执行：暂无记录'}
@@ -288,457 +263,6 @@ function formatAutomationTime(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
-}
-
-const PROVIDERS = [
-  {
-    id: 'deepseek',
-    label: 'DeepSeek',
-    fields: [
-      { key: 'api_key', label: 'API Key', secret: true },
-      { key: 'model', label: '模型名称', secret: false },
-    ],
-  },
-  {
-    id: 'onebound',
-    label: 'Onebound',
-    fields: [
-      { key: 'api_key', label: 'API Key', secret: true },
-      { key: 'api_secret', label: 'API Secret', secret: true },
-    ],
-  },
-  {
-    id: 'justone',
-    label: 'Just One API',
-    fields: [
-      { key: 'token', label: '访问 Token', secret: true },
-    ],
-  },
-  {
-    id: 'aliyun',
-    label: '通义万相',
-    fields: [
-      { key: 'api_key', label: 'DashScope API Key', secret: true },
-      { key: 'model', label: '模型名称', secret: false },
-      { key: 'vision_model', label: 'IP 图片检查模型', secret: false },
-      { key: 'embedding_model', label: '政策 RAG Embedding 模型', secret: false },
-    ],
-  },
-  {
-    id: 'replicate',
-    label: 'Replicate',
-    fields: [
-      { key: 'api_key', label: 'API Key', secret: true },
-      { key: 'model', label: '模型名称', secret: false },
-    ],
-  },
-  {
-    id: 'minimax',
-    label: 'MiniMax 视频与配音',
-    fields: [
-      { key: 'api_key', label: 'API Key', secret: true },
-      { key: 'group_id', label: 'GroupId（配音必填）', secret: true },
-      { key: 'base_url', label: 'Base URL', secret: false },
-      { key: 'tts_base_url', label: 'TTS Base URL', secret: false },
-      { key: 'model', label: '默认模型', secret: false },
-      { key: 'tts_model', label: '配音模型', secret: false },
-      { key: 'voice_id', label: '默认音色 ID', secret: false },
-      { key: 'resolution', label: '默认清晰度', secret: false },
-    ],
-  },
-  {
-    id: 'jimeng',
-    label: '即梦 / Seedance（火山方舟）',
-    fields: [
-      { key: 'api_key', label: '方舟 API Key', secret: true },
-      {
-        key: 'base_url',
-        label: 'Base URL（通常无需修改）',
-        secret: false,
-      },
-    ],
-  },
-  {
-    id: 'shopify',
-    label: 'Shopify 应用',
-    fields: [
-      { key: 'api_key', label: 'API Key', secret: true },
-      { key: 'api_secret', label: 'API Secret', secret: true },
-      { key: 'redirect_uri', label: 'OAuth 回调地址', secret: false },
-    ],
-  },
-  {
-    id: 'amazon',
-    label: 'Amazon SP-API 应用',
-    fields: [
-      { key: 'app_id', label: 'Application ID', secret: false },
-      { key: 'client_id', label: 'LWA Client ID', secret: false },
-      { key: 'client_secret', label: 'LWA Client Secret', secret: true },
-      { key: 'redirect_uri', label: 'OAuth 回调地址', secret: false },
-    ],
-  },
-] as const
-
-function ProviderSettings() {
-  const queryClient = useQueryClient()
-  const [values, setValues] = useState<Record<string, string>>({})
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['provider-settings'],
-    queryFn: async () => {
-      const response = await apiClient.get('/settings/providers')
-      return response.data.providers
-    },
-  })
-
-  useEffect(() => {
-    if (!data) return
-    const next: Record<string, string> = {}
-    for (const provider of PROVIDERS) {
-      for (const field of provider.fields) {
-        if (!field.secret) {
-          next[`${provider.id}:${field.key}`] = data[provider.id]?.fields?.[field.key] || ''
-        }
-      }
-    }
-    setValues(next)
-  }, [data])
-
-  const saveMutation = useMutation({
-    mutationFn: async ({ provider, payload }: { provider: string; payload: Record<string, string> }) => {
-      const response = await apiClient.put(`/settings/providers/${provider}`, payload)
-      return response.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['provider-settings'] })
-    },
-  })
-
-  const updateValue = (key: string, value: string) => {
-    setValues((current) => ({ ...current, [key]: value }))
-  }
-
-  const saveProvider = (providerId: string) => {
-    const provider = PROVIDERS.find((item) => item.id === providerId)
-    if (!provider) return
-    const payload: Record<string, string> = {}
-    for (const field of provider.fields) {
-      const value = values[`${provider.id}:${field.key}`]?.trim() || ''
-      if (field.secret && !value) continue
-      payload[field.key] = value
-    }
-    saveMutation.mutate({ provider: providerId, payload })
-  }
-
-  if (isLoading) {
-    return <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">加载配置中...</CardContent></Card>
-  }
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Server className="h-4 w-4" />服务商运行时配置
-          </CardTitle>
-          <CardDescription>
-            配置加密保存，保存后当前进程立即生效，其他 Worker 周期性同步。
-          </CardDescription>
-        </CardHeader>
-      </Card>
-
-      {PROVIDERS.map((provider) => {
-        const status = data?.[provider.id]
-        return (
-          <Card key={provider.id}>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <KeyRound className="h-4 w-4" />{provider.label}
-              </CardTitle>
-              <Badge variant={status?.configured ? 'secondary' : 'outline'}>
-                {status?.configured ? '已配置' : '未配置'}
-              </Badge>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {provider.fields.map((field) => {
-                const fieldKey = `${provider.id}:${field.key}`
-                const masked = status?.fields?.[field.key] || ''
-                return (
-                  <div key={field.key} className="space-y-1.5">
-                    <Label>{field.label}</Label>
-                    <Input
-                      type={field.secret ? 'password' : 'text'}
-                      value={values[fieldKey] || ''}
-                      onChange={(event) => updateValue(fieldKey, event.target.value)}
-                      placeholder={field.secret && masked ? `已配置 ${masked}，留空不修改` : ''}
-                    />
-                  </div>
-                )
-              })}
-              <Button
-                size="sm"
-                onClick={() => saveProvider(provider.id)}
-                disabled={saveMutation.isPending}
-              >
-                {saveMutation.isPending ? '保存中...' : '保存配置'}
-              </Button>
-            </CardContent>
-          </Card>
-        )
-      })}
-      {saveMutation.isSuccess && (
-        <p className="text-sm text-emerald-600 flex items-center gap-1">
-          <CheckCircle2 className="h-4 w-4" />配置已保存并刷新运行时缓存
-        </p>
-      )}
-      {saveMutation.isError && (
-        <p className="text-sm text-destructive">保存失败，请检查配置项后重试</p>
-      )}
-    </div>
-  )
-}
-
-interface PolicySourceItem {
-  id: string
-  title: string
-  platform: string
-  market: string
-  category: string | null
-  version: string
-  source_url: string
-  status: string
-  updated_at: string
-}
-
-function PolicyKnowledgeSettings() {
-  const queryClient = useQueryClient()
-  const [message, setMessage] = useState('')
-  const [form, setForm] = useState({
-    title: '',
-    platform: 'amazon',
-    market: 'US',
-    category: '',
-    document_type: 'listing_policy',
-    source_url: '',
-    version: '',
-    effective_at: '',
-    content_text: '',
-  })
-
-  const sourcesQuery = useQuery<{ items: PolicySourceItem[]; total: number }>({
-    queryKey: ['policy-sources'],
-    queryFn: async () => {
-      const response = await apiClient.get('/platform-policies/sources')
-      return response.data
-    },
-  })
-
-  const ingestMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiClient.post('/platform-policies/ingest', {
-        ...form,
-        category: form.category || null,
-        effective_at: form.effective_at
-          ? new Date(`${form.effective_at}T00:00:00`).toISOString()
-          : null,
-      })
-      return response.data as {
-        chunk_count: number
-        vector_status: string
-        changed: boolean
-      }
-    },
-    onSuccess: (data) => {
-      setMessage(
-        data.changed
-          ? `政策已入库：${data.chunk_count} 个切分，向量状态 ${data.vector_status}`
-          : '政策版本内容未变化，已跳过重复入库',
-      )
-      setForm((current) => ({
-        ...current,
-        title: '',
-        source_url: '',
-        version: '',
-        content_text: '',
-      }))
-      queryClient.invalidateQueries({ queryKey: ['policy-sources'] })
-    },
-    onError: () => setMessage('政策导入失败，请检查内容、版本和来源链接。'),
-  })
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <BookOpenCheck className="h-4 w-4" />
-            平台政策知识库
-          </CardTitle>
-          <CardDescription>
-            导入经过审核的 Amazon、TikTok Shop、Shopify 政策文本。
-            RAG 只提供引用依据，不替代确定性合规规则。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>政策标题</Label>
-              <Input
-                value={form.title}
-                onChange={(event) =>
-                  setForm({ ...form, title: event.target.value })
-                }
-                placeholder="例如 Amazon Children's Product Policy"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>平台</Label>
-              <select
-                value={form.platform}
-                onChange={(event) =>
-                  setForm({ ...form, platform: event.target.value })
-                }
-                className="h-10 w-full border border-input bg-background px-3 text-sm"
-              >
-                <option value="amazon">Amazon</option>
-                <option value="tiktok">TikTok Shop</option>
-                <option value="shopify">Shopify</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>市场</Label>
-              <Input
-                value={form.market}
-                onChange={(event) =>
-                  setForm({ ...form, market: event.target.value })
-                }
-                placeholder="US"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>类目（可选）</Label>
-              <Input
-                value={form.category}
-                onChange={(event) =>
-                  setForm({ ...form, category: event.target.value })
-                }
-                placeholder="toys"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>版本</Label>
-              <Input
-                value={form.version}
-                onChange={(event) =>
-                  setForm({ ...form, version: event.target.value })
-                }
-                placeholder="2026.11"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>生效日期</Label>
-              <Input
-                type="date"
-                value={form.effective_at}
-                onChange={(event) =>
-                  setForm({ ...form, effective_at: event.target.value })
-                }
-              />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>原始来源链接</Label>
-              <Input
-                value={form.source_url}
-                onChange={(event) =>
-                  setForm({ ...form, source_url: event.target.value })
-                }
-                placeholder="https://sellercentral.amazon.com/..."
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>政策原文（Markdown）</Label>
-            <textarea
-              value={form.content_text}
-              onChange={(event) =>
-                setForm({ ...form, content_text: event.target.value })
-              }
-              className="min-h-52 w-full border border-input bg-background px-3 py-2 text-sm"
-              placeholder="# 政策标题&#10;&#10;## 具体要求&#10;&#10;粘贴经过审核的官方政策原文..."
-            />
-          </div>
-          <Button
-            size="sm"
-            disabled={
-              ingestMutation.isPending ||
-              !form.title.trim() ||
-              !form.source_url.trim() ||
-              !form.version.trim() ||
-              form.content_text.trim().length < 20
-            }
-            onClick={() => ingestMutation.mutate()}
-          >
-            {ingestMutation.isPending ? (
-              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="mr-2 h-4 w-4" />
-            )}
-            导入政策
-          </Button>
-          {message && (
-            <p className="text-xs text-muted-foreground">{message}</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            已导入政策 {sourcesQuery.data?.total || 0}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {sourcesQuery.isLoading ? (
-            <p className="text-xs text-muted-foreground">加载中...</p>
-          ) : sourcesQuery.data?.items?.length ? (
-            sourcesQuery.data.items.map((item) => (
-              <div
-                key={item.id}
-                className="flex flex-wrap items-start justify-between gap-2 border border-border p-3"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">{item.title}</p>
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    {item.platform.toUpperCase()} · {item.market}
-                    {item.category ? ` · ${item.category}` : ''}
-                    {' · '}
-                    {item.version}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={item.status === 'active' ? 'secondary' : 'outline'}>
-                    {item.status}
-                  </Badge>
-                  <a
-                    href={item.source_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs underline underline-offset-4"
-                  >
-                    来源
-                  </a>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              尚未导入平台政策。
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  )
 }
 
 function PlatformConnections() {
@@ -795,7 +319,7 @@ function PlatformConnections() {
       </CardHeader>
       <CardContent className="space-y-4">
         {amazonConnected && (
-          <p className="text-sm text-emerald-600 flex items-center gap-1">
+          <p className="text-sm text-[var(--factory-success)] flex items-center gap-1">
             <CheckCircle2 className="h-4 w-4" />Amazon 店铺授权成功
           </p>
         )}
@@ -844,7 +368,7 @@ function PlatformConnections() {
           <p className="text-sm text-destructive">发起 Amazon 授权失败，请检查应用配置。</p>
         )}
         {testMutation.isSuccess && (
-          <p className="text-sm text-emerald-600">Amazon 授权验证成功</p>
+          <p className="text-sm text-[var(--factory-success)]">Amazon 授权验证成功</p>
         )}
         {testMutation.isError && (
           <p className="text-sm text-destructive">Amazon 授权验证失败，请重新授权。</p>
@@ -940,7 +464,7 @@ function PersonaForm() {
         <Button onClick={handleSave} disabled={saveMutation.isPending}>
           {saveMutation.isPending ? '保存中...' : '保存品牌配置'}
         </Button>
-        {saveMutation.isSuccess && <p className="text-sm text-emerald-600 flex items-center gap-1"><CheckCircle2 className="h-4 w-4" />已保存</p>}
+        {saveMutation.isSuccess && <p className="text-sm text-[var(--factory-success)] flex items-center gap-1"><CheckCircle2 className="h-4 w-4" />已保存</p>}
       </CardContent>
     </Card>
   )

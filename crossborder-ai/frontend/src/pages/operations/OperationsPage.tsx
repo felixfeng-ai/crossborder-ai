@@ -353,7 +353,7 @@ export default function OperationsPage() {
       )}
 
       {syncMessage && (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-500">
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-[var(--factory-success)]">
           {syncMessage}
         </div>
       )}
@@ -386,14 +386,14 @@ export default function OperationsPage() {
                   className="border border-border bg-background p-3"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <span className="metric-number text-[10px] text-muted-foreground">
+                    <span className="metric-number text-[11px] text-muted-foreground">
                       {String(index + 1).padStart(2, '0')}
                     </span>
                     <DigestSeverityBadge severity={item.severity} />
                   </div>
                   <p className="mt-2 text-sm font-medium">{item.title}</p>
                   {item.sku && (
-                    <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+                    <p className="mt-1 font-mono text-[11px] text-muted-foreground">
                       {item.sku}
                     </p>
                   )}
@@ -526,7 +526,7 @@ export default function OperationsPage() {
                                 <p>{item.selling_price == null ? '-' : `¥${item.selling_price}`}</p>
                                 <p className="text-muted-foreground">{item.cost_price == null ? '-' : `成本 ¥${item.cost_price}`}</p>
                               </td>
-                              <td className={`metric-number py-3 pr-3 text-xs ${item.margin_rate != null && item.margin_rate < 25 ? 'text-[var(--factory-coral)]' : 'text-emerald-500'}`}>
+                              <td className={`metric-number py-3 pr-3 text-xs ${item.margin_rate != null && item.margin_rate < 25 ? 'text-[var(--factory-coral)]' : 'text-[var(--factory-success)]'}`}>
                                 {item.margin_rate == null ? '-' : `${item.margin_rate.toFixed(1)}%`}
                               </td>
                               <td className={`metric-number py-3 pr-3 text-xs ${item.stock_quantity < 10 ? 'text-[var(--factory-coral)]' : ''}`}>
@@ -602,7 +602,7 @@ export default function OperationsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-medium">{alert.title}</p>
-                        {alert.sku && <Badge variant="outline" className="font-mono text-[10px]">{alert.sku}</Badge>}
+                        {alert.sku && <Badge variant="outline" className="font-mono text-[11px]">{alert.sku}</Badge>}
                       </div>
                       <p className="mt-1 text-xs leading-5 text-muted-foreground">{alert.message}</p>
                     </div>
@@ -708,7 +708,7 @@ function SalesRateEditor({
         aria-label="保存日均销量"
         onClick={() => onSave(rate)}
       >
-        {saved ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <Save className="h-3.5 w-3.5" />}
+        {saved ? <CheckCircle2 className="h-3.5 w-3.5 text-[var(--factory-success)]" /> : <Save className="h-3.5 w-3.5" />}
       </Button>
     </div>
   )
@@ -729,7 +729,7 @@ function StatusBadge({ status }: { status: string }) {
 function SeverityIcon({ severity }: { severity: string }) {
   if (severity === 'critical') return <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
   if (severity === 'error') return <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-  if (severity === 'warning') return <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+  if (severity === 'warning') return <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[var(--factory-warning)]" />
   return <Bell className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
 }
 

@@ -16,10 +16,10 @@ export default function AnalyticsPage() {
   if (isLoading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
 
   const items = [
-    { label: '商品总数', value: data?.products?.total ?? 0, icon: Package, color: 'text-amber-500' },
-    { label: 'Listing 总数', value: data?.listings?.total ?? 0, icon: FileText, color: 'text-amber-500' },
-    { label: 'AI 生成次数', value: data?.content?.total_generations ?? 0, icon: Sparkles, color: 'text-amber-500' },
-    { label: '已发布', value: data?.listings?.published ?? 0, icon: TrendingUp, color: 'text-emerald-500' },
+    { label: '商品总数', value: data?.products?.total ?? 0, icon: Package, color: 'text-[var(--factory-warning)]' },
+    { label: 'Listing 总数', value: data?.listings?.total ?? 0, icon: FileText, color: 'text-[var(--factory-warning)]' },
+    { label: 'AI 生成次数', value: data?.content?.total_generations ?? 0, icon: Sparkles, color: 'text-[var(--factory-warning)]' },
+    { label: '已发布', value: data?.listings?.published ?? 0, icon: TrendingUp, color: 'text-[var(--factory-success)]' },
   ]
 
   return (

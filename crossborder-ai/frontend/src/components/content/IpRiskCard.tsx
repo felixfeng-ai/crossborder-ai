@@ -64,7 +64,7 @@ function EvidenceExpiryLabel({ value }: { value: string | null }) {
     expiry.status === 'expired'
       ? 'text-destructive'
       : expiry.status === 'expiring'
-        ? 'text-amber-500'
+        ? 'text-[var(--factory-warning)]'
         : 'text-muted-foreground'
   return (
     <span className={`flex items-center gap-1 ${tone}`}>
@@ -205,14 +205,14 @@ export function IpRiskCard({
             <ShieldAlert className="h-4 w-4 text-[var(--factory-coral)]" />
             IP 风险初筛
           </p>
-          <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+          <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
             这是风险初筛，不构成侵权判断或法律意见。
           </p>
         </div>
         <Badge variant={badgeVariant}>{ipRiskLabel(report.overall_risk)}</Badge>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2 text-[10px]">
+      <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
         <Badge variant="outline" className="gap-1">
           <FileSearch className="h-3 w-3" />
           文本：{coverageLabel(report.coverage.text)}
@@ -264,16 +264,16 @@ export function IpRiskCard({
             <ImageIcon className="h-3.5 w-3.5" />
             从素材库选择本次检查的商品图
           </p>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-[11px] text-muted-foreground">
             已选 {selectedImageIds.length}/6
           </span>
         </div>
         {imagesQuery.isLoading ? (
-          <p className="mt-2 text-[10px] text-muted-foreground">
+          <p className="mt-2 text-[11px] text-muted-foreground">
             正在加载最近图片...
           </p>
         ) : (imagesQuery.data?.items || []).length === 0 ? (
-          <p className="mt-2 text-[10px] text-muted-foreground">
+          <p className="mt-2 text-[11px] text-muted-foreground">
             素材库暂无图片，请先在图片工作台上传商品图。
           </p>
         ) : (
@@ -291,7 +291,7 @@ export function IpRiskCard({
                   type="button"
                   aria-pressed={selected}
                   aria-label={`${selected ? '取消检查' : '选择检查'} ${asset.name}`}
-                  className={`relative aspect-square overflow-hidden border bg-[#d9dad5] transition-colors ${
+                  className={`relative aspect-square overflow-hidden border bg-[var(--factory-raised)] transition-colors ${
                     selected
                       ? 'border-[var(--factory-coral)] ring-1 ring-[var(--factory-coral)]'
                       : 'border-border hover:border-foreground/40'
@@ -320,7 +320,7 @@ export function IpRiskCard({
                       style={riskBboxStyle(risk.evidence.bbox)}
                     />
                   ))}
-                  <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-1 py-0.5 text-left text-[9px] text-white">
+                  <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-1 py-0.5 text-left text-[11px] text-white">
                     {asset.name}
                   </span>
                 </button>
@@ -331,13 +331,13 @@ export function IpRiskCard({
       </div>
 
       {report.status === 'partial' && (
-        <p className="mt-3 border-l-2 border-amber-500 pl-2 text-[10px] leading-4 text-muted-foreground">
+        <p className="mt-3 border-l-2 border-amber-500 pl-2 text-[11px] leading-4 text-muted-foreground">
           报告为部分完成。未检查的项目不能视为已经通过。
         </p>
       )}
       {report.coverage.image_required &&
         report.coverage.image !== 'checked' && (
-          <p className="mt-3 flex items-start gap-2 border-l-2 border-amber-500 pl-2 text-[10px] leading-4 text-muted-foreground">
+          <p className="mt-3 flex items-start gap-2 border-l-2 border-amber-500 pl-2 text-[11px] leading-4 text-muted-foreground">
             <CalendarClock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             当前商品类目要求图片检查，选择商品图完成检查后才能发布。
           </p>
@@ -365,18 +365,18 @@ export function IpRiskCard({
                 </Badge>
               </div>
               {risk.evidence.field && (
-                <p className="mt-1 text-[9px] text-muted-foreground">
+                <p className="mt-1 text-[11px] text-muted-foreground">
                   {risk.evidence.field}
                   {risk.evidence.text ? `：${risk.evidence.text}` : ''}
                 </p>
               )}
-              <p className="mt-1 text-[10px] leading-4 text-foreground">
+              <p className="mt-1 text-[11px] leading-4 text-foreground">
                 {risk.suggestion}
               </p>
             </div>
           ))
         ) : (
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground">
             本次文本检查未发现需要展示的 IP 风险。
           </p>
         )}
@@ -392,7 +392,7 @@ export function IpRiskCard({
               {(declarationsQuery.data?.items || []).map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between gap-2 border border-border px-2 py-2 text-[10px]"
+                  className="flex items-center justify-between gap-2 border border-border px-2 py-2 text-[11px]"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate">
@@ -450,7 +450,7 @@ export function IpRiskCard({
             <div className="space-y-1 sm:col-span-2">
               <label
                 htmlFor="ip-evidence-expiry"
-                className="text-[10px] text-muted-foreground"
+                className="text-[11px] text-muted-foreground"
               >
                 证据有效期（可选，留空表示长期有效）
               </label>
@@ -481,7 +481,7 @@ export function IpRiskCard({
             )}
             保存证据并重新检查
           </Button>
-          {error && <p className="text-[10px] text-destructive">{error}</p>}
+          {error && <p className="text-[11px] text-destructive">{error}</p>}
         </div>
       </details>
     </div>

@@ -116,7 +116,7 @@ export function VideoQualityControls({
                 title={disabled ? '管理员尚未配置该视频引擎' : undefined}
                 onClick={() => selectProvider(option.id)}
                 className={[
-                  'flex h-9 items-center justify-center gap-1.5 border-r border-input px-2 text-[10px] font-medium transition-colors last:border-r-0 sm:text-[11px]',
+                  'flex h-9 items-center justify-center gap-1.5 border-r border-input px-2 text-[11px] font-medium transition-colors last:border-r-0 sm:text-[11px]',
                   selected
                     ? 'bg-[color:var(--factory-accent)] text-[color:var(--factory-accent-foreground)]'
                     : 'bg-background text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -129,7 +129,7 @@ export function VideoQualityControls({
             )
           })}
         </div>
-        <p className="text-[10px] leading-4 text-muted-foreground">
+        <p className="text-[11px] leading-4 text-muted-foreground">
           {providerMode === 'auto'
             ? `按当前创作模式自动匹配。${videoProviderHint(tier?.provider || '')}`
             : videoProviderHint(providerMode)}
@@ -178,7 +178,7 @@ export function VideoQualityControls({
                 ? `${videoProviderLabel(tier.provider)} · ${tier.name} · ${tier.resolution} · ${tier.credits_per_second} 积分/秒`
                 : '请选择质量档位'}
             </p>
-            <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
               {providerMode === 'auto'
                 ? `已为你匹配 ${videoProviderLabel(activeProvider || '')}。`
                 : style?.description || '使用平台默认视觉方向'}

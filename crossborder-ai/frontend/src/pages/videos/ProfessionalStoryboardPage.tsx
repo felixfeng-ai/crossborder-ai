@@ -364,7 +364,7 @@ export default function ProfessionalStoryboardPage() {
                   setReferenceRoles((current) => ({ ...current, [assetId]: role }))
                 }}
               />
-              <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
+              <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
                 主图控制首帧；额外参考图用于多角度商品一致性，合计最多 9 张。
               </p>
             </div>
@@ -477,14 +477,14 @@ export default function ProfessionalStoryboardPage() {
                       <p className="metric-number text-sm font-semibold">
                         {String(shot.position).padStart(2, '0')}
                       </p>
-                      <p className="metric-number mt-1 text-[10px] text-muted-foreground">
+                      <p className="metric-number mt-1 text-[11px] text-muted-foreground">
                         {formatStoryboardTime(shot.start_seconds)}–{formatStoryboardTime(shot.end_seconds)}
                       </p>
                     </div>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-sm font-medium">{shot.title}</h3>
-                        <span className="text-[10px] text-muted-foreground">用户原始描述</span>
+                        <span className="text-[11px] text-muted-foreground">用户原始描述</span>
                       </div>
                       <p className="mt-1 whitespace-pre-wrap text-xs leading-6 text-muted-foreground">
                         {shot.source_text}
@@ -492,7 +492,7 @@ export default function ProfessionalStoryboardPage() {
                     </div>
                     <div className="sm:text-right">
                       <p className="metric-number text-xs">{shot.duration}s</p>
-                      <p className="mt-1 text-[10px] text-muted-foreground">目标时长</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">目标时长</p>
                     </div>
                   </article>
                 ))}
@@ -613,7 +613,7 @@ export default function ProfessionalStoryboardPage() {
                         {item.shots.length} 镜头 · {item.duration}s
                       </span>
                     </span>
-                    <span className="shrink-0 text-[10px]">{projectStatusLabel(item.status)}</span>
+                    <span className="shrink-0 text-[11px]">{projectStatusLabel(item.status)}</span>
                   </button>
                 ))
               ) : (

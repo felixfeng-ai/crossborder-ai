@@ -329,7 +329,7 @@ export default function BillingPage() {
               index === 0 && 'xl:border-l-0',
             )}
           >
-            <p className="text-[10px] text-muted-foreground">{label}</p>
+            <p className="text-[11px] text-muted-foreground">{label}</p>
             <p className="metric-number mt-1 text-sm font-medium">{value}</p>
           </div>
         ))}
@@ -405,7 +405,7 @@ export default function BillingPage() {
               比较全部套餐
             </Button>
           </div>
-          <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
+          <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
             首月优惠每账号限一次，年付与首月优惠不可叠加；正式开通前由人工确认付款。
           </p>
         </div>
@@ -436,7 +436,7 @@ export default function BillingPage() {
                 )
               })}
             </div>
-            <span className="shrink-0 text-[10px] text-muted-foreground">示例素材</span>
+            <span className="shrink-0 text-[11px] text-muted-foreground">示例素材</span>
           </div>
 
           <div
@@ -452,9 +452,12 @@ export default function BillingPage() {
                     alt="示例商品 Terra Daily Body Oil"
                     className="h-full w-full object-cover"
                   />
-                  <div className="absolute inset-0 bg-black/20" />
+                  <div
+                    data-billing-media-overlay
+                    className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,9,9,0.04)_0%,rgba(8,9,9,0.18)_42%,rgba(8,9,9,0.76)_72%,rgba(8,9,9,0.94)_100%)]"
+                  />
                   <div className="absolute inset-x-3 bottom-3 text-white">
-                    <p className="text-[10px] opacity-80">Terra Daily Body Oil</p>
+                    <p className="text-[11px] opacity-80">Terra Daily Body Oil</p>
                     <p className="mt-0.5 text-xs font-medium">冬日礼盒 · 30 秒</p>
                   </div>
                   <span className="absolute left-1/2 top-1/2 grid h-10 w-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/40 bg-black/35">
@@ -463,7 +466,7 @@ export default function BillingPage() {
                 </div>
                 <div className="flex min-w-0 flex-col justify-between p-4">
                   <div>
-                    <p className="text-[10px] text-muted-foreground">分镜时间轴</p>
+                    <p className="text-[11px] text-muted-foreground">分镜时间轴</p>
                     <div className="mt-3 space-y-2">
                       {[
                         ['01', '门口的快递', '4s'],
@@ -472,14 +475,14 @@ export default function BillingPage() {
                         ['04', '检查与轻嗅', '4s'],
                       ].map(([index, label, duration]) => (
                         <div key={index} className="flex items-center gap-2 text-[11px]">
-                          <span className="metric-number text-[9px] text-[color:var(--factory-accent)]">{index}</span>
+                          <span className="metric-number text-[11px] text-[color:var(--factory-accent)]">{index}</span>
                           <span className="min-w-0 flex-1 truncate text-muted-foreground">{label}</span>
-                          <span className="metric-number text-[9px] text-muted-foreground">{duration}</span>
+                          <span className="metric-number text-[11px] text-muted-foreground">{duration}</span>
                         </div>
                       ))}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 border-t border-border pt-3 text-[10px] text-muted-foreground">
+                  <div className="flex items-center gap-2 border-t border-border pt-3 text-[11px] text-muted-foreground">
                     <Mic2 className="h-3 w-3" />
                     字幕、配音与成片素材统一沉淀
                   </div>
@@ -498,7 +501,7 @@ export default function BillingPage() {
                       alt={`示例商品图 ${index + 1}`}
                       className={cn('h-full w-full object-cover', position)}
                     />
-                    <span className="absolute left-2 top-2 bg-black/55 px-1.5 py-0.5 text-[9px] text-white">
+                    <span className="absolute left-2 top-2 bg-black/55 px-1.5 py-0.5 text-[11px] text-white">
                       {index === 0 ? 'Amazon' : index === 1 ? 'Shopify' : 'TikTok'}
                     </span>
                   </div>
@@ -508,7 +511,7 @@ export default function BillingPage() {
               <div className="flex h-[238px] flex-col p-4">
                 <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
                   <div>
-                    <p className="text-[10px] text-muted-foreground">Amazon Listing · 示例输出</p>
+                    <p className="text-[11px] text-muted-foreground">Amazon Listing · 示例输出</p>
                     <p className="mt-1 text-sm font-medium">Terra Daily Body Oil for Winter Gifting</p>
                   </div>
                   <FileText className="h-4 w-4 shrink-0 text-[color:var(--factory-accent)]" />
@@ -518,7 +521,7 @@ export default function BillingPage() {
                   <li>Product facts, target market and VOC insights stay aligned.</li>
                   <li>Compliance status is attached to the current listing version.</li>
                 </ul>
-                <div className="flex flex-wrap gap-1.5 border-t border-border pt-3 text-[9px] text-muted-foreground">
+                <div className="flex flex-wrap gap-1.5 border-t border-border pt-3 text-[11px] text-muted-foreground">
                   <span className="border border-border px-1.5 py-0.5">标题</span>
                   <span className="border border-border px-1.5 py-0.5">五点描述</span>
                   <span className="border border-border px-1.5 py-0.5">SEO</span>
@@ -531,12 +534,12 @@ export default function BillingPage() {
           {OUTPUT_OPTIONS.map((option) => option.id === outputMode && (
             <div key={option.id} className="mt-3 flex items-end justify-between gap-3">
               <div>
-                <p className="text-[10px] text-muted-foreground">Professional 月额度单用于{option.label}</p>
+                <p className="text-[11px] text-muted-foreground">Professional 月额度单用于{option.label}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{option.detail}</p>
               </div>
               <p className="metric-number shrink-0 text-lg font-semibold">
                 {option.count}
-                <span className="ml-1 text-[10px] font-normal text-muted-foreground">{option.unit}</span>
+                <span className="ml-1 text-[11px] font-normal text-muted-foreground">{option.unit}</span>
               </p>
             </div>
           ))}
@@ -568,7 +571,7 @@ export default function BillingPage() {
               )}
             >
               {label}
-              {hint && <span className="ml-1.5 text-[10px] opacity-70">{hint}</span>}
+              {hint && <span className="ml-1.5 text-[11px] opacity-70">{hint}</span>}
             </button>
           ))}
         </div>
@@ -608,12 +611,12 @@ export default function BillingPage() {
                 )}
               >
                 {plan.recommended && (
-                  <span className="absolute right-4 top-4 rounded border border-[color:var(--factory-accent)]/35 bg-[color:var(--factory-accent)]/10 px-2 py-0.5 text-[10px] text-[color:var(--factory-accent)]">
+                  <span className="absolute right-4 top-4 rounded border border-[color:var(--factory-accent)]/35 bg-[color:var(--factory-accent)]/10 px-2 py-0.5 text-[11px] text-[color:var(--factory-accent)]">
                     推荐
                   </span>
                 )}
                 <h3 className="text-[15px] font-semibold">{plan.name}</h3>
-                <p className="mt-1 text-[10px] text-[color:var(--factory-accent)]">
+                <p className="mt-1 text-[11px] text-[color:var(--factory-accent)]">
                   {PLAN_ROLES[plan.id] || '按需选择'}
                 </p>
                 <p className="mt-2 min-h-10 text-xs leading-5 text-muted-foreground">
@@ -776,9 +779,9 @@ export default function BillingPage() {
                   <span className="min-w-0">
                     <span className="block text-xs font-medium">
                       {pack.name}
-                      {pack.trial_once && <span className="ml-2 text-[10px] text-[color:var(--factory-accent)]">首购一次</span>}
+                      {pack.trial_once && <span className="ml-2 text-[11px] text-[color:var(--factory-accent)]">首购一次</span>}
                     </span>
-                    <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
                       {trialUnavailable ? '当前账号已使用首购资格' : `${pack.credits.toLocaleString('zh-CN')} 积分`}
                     </span>
                   </span>
@@ -841,7 +844,7 @@ export default function BillingPage() {
                   index < 4 && 'border-b border-border',
                 )}
               >
-                <p className="text-[10px] text-muted-foreground">{label}</p>
+                <p className="text-[11px] text-muted-foreground">{label}</p>
                 <p className="metric-number mt-1 text-xs font-medium">{value}</p>
               </div>
             ))}
@@ -886,7 +889,7 @@ export default function BillingPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-medium">{planDisplayName(item.plan)} 套餐</p>
                       <Badge variant={meta.variant}>{meta.label}</Badge>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-[11px] text-muted-foreground">
                         {item.billing_cycle === 'annual' ? '年付' : '月付'}
                       </span>
                     </div>

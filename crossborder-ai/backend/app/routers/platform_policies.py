@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.dependencies import get_current_user, require_admin
 from app.models.policy_knowledge import PolicySource
 from app.models.user import User
+from app.services.admin_audit import record_admin_action
 from app.services.policy_knowledge import (
     ingest_policy_text,
     search_policy_knowledge,
@@ -35,11 +36,11 @@ class PolicyIngestRequest(BaseModel):
 @router.post("/ingest", status_code=201)
 async def ingest_platform_policy(
     payload: PolicyIngestRequest,
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """管理员导入或更新一份全局平台政策。"""
-    return await ingest_policy_text(
+    result = await ingest_policy_text(
         db,
         title=payload.title,
         platform=payload.platform,
@@ -51,6 +52,23 @@ async def ingest_platform_policy(
         effective_at=payload.effective_at,
         content_text=payload.content_text,
     )
+    await record_admin_action(
+        db,
+        admin,
+        action="policy.ingest",
+        target_type="policy_source",
+        target_id=payload.source_url[:80],
+        changes={
+            "title": payload.title,
+            "platform": payload.platform,
+            "market": payload.market,
+            "version": payload.version,
+            "chunk_count": result.get("chunk_count"),
+            "vector_status": result.get("vector_status"),
+            "changed": result.get("changed"),
+        },
+    )
+    return result
 
 
 @router.get("/search")

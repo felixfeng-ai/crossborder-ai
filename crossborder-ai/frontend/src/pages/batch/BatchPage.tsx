@@ -151,7 +151,7 @@ export default function BatchPage() {
       case 'pending':
         return <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" />等待处理</Badge>
       case 'processed':
-        return <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1">
+        return <Badge className="bg-emerald-500/10 text-[var(--factory-success)] border-emerald-500/20 gap-1">
           <CheckCircle2 className="h-3 w-3" />已处理
         </Badge>
       case 'failed':
@@ -189,7 +189,7 @@ export default function BatchPage() {
       </div>
 
       {processAiMutation.isSuccess && (
-        <p className="text-sm text-emerald-600 flex items-center gap-1">
+        <p className="text-sm text-[var(--factory-success)] flex items-center gap-1">
           <CheckCircle2 className="h-4 w-4" />
           {processAiMutation.data?.message || '批量生成完成'}
         </p>
@@ -246,7 +246,7 @@ export default function BatchPage() {
 
           {/* 上传成功提示 */}
           {uploadMutation.isSuccess && (
-            <div className="flex items-center gap-2 text-sm text-emerald-600">
+            <div className="flex items-center gap-2 text-sm text-[var(--factory-success)]">
               <CheckCircle2 className="h-4 w-4" />
               {uploadMutation.data?.message || '上传成功'}
             </div>

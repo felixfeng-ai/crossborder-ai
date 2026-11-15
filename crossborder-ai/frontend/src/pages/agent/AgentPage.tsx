@@ -396,7 +396,7 @@ export default function AgentPage({
               {plainSteps.map((step, j) => (
                 <div key={j} className="flex items-start gap-2">
                   {step.status === 'success' ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
+                    <CheckCircle2 className="h-4 w-4 text-[var(--factory-success)] mt-0.5 shrink-0" />
                   ) : step.status === 'failed' ? (
                     <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
                   ) : (
@@ -468,7 +468,7 @@ export default function AgentPage({
                   {liveSteps.map((step, j) => (
                     <div key={j} className="flex items-start gap-2">
                       {step.status === 'success' ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
+                        <CheckCircle2 className="h-4 w-4 text-[var(--factory-success)] mt-0.5 shrink-0" />
                       ) : step.status === 'failed' ? (
                         <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
                       ) : (
@@ -577,14 +577,14 @@ function PolicyEvidenceCard({ step }: { step: AgentStep }) {
             </Badge>
             <Badge variant="outline">{item.version}</Badge>
           </div>
-          <p className="mt-1 text-[10px] text-muted-foreground">
+          <p className="mt-1 text-[11px] text-muted-foreground">
             {item.title_path}
           </p>
           <p className="mt-2 line-clamp-4 text-xs leading-5">
             {item.content}
           </p>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground">
               相似度 {Math.round(item.score * 100)}%
               {item.effective_at
                 ? ` · 生效 ${item.effective_at.slice(0, 10)}`
@@ -594,7 +594,7 @@ function PolicyEvidenceCard({ step }: { step: AgentStep }) {
               href={item.source_url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-[10px] font-medium text-primary underline underline-offset-4"
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-primary underline underline-offset-4"
             >
               查看原文
               <ExternalLink className="h-3 w-3" />

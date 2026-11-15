@@ -75,7 +75,7 @@ export default function TutorialPage() {
               不确定从哪里开始时，直接进入最常用的工作台。
             </p>
           </div>
-          <span className="hidden text-[10px] text-[var(--factory-faint)] sm:block">
+          <span className="hidden text-[11px] text-[var(--factory-faint)] sm:block">
             QUICK START / 04
           </span>
         </div>
@@ -88,7 +88,7 @@ export default function TutorialPage() {
               className="group flex min-h-28 flex-col justify-between border-b border-border p-4 text-left transition-colors hover:bg-accent/60 sm:odd:border-r lg:border-b-0 lg:border-r lg:last:border-r-0"
             >
               <div className="flex items-center justify-between gap-3">
-                <span className="font-mono text-[10px] text-[var(--factory-faint)]">
+                <span className="font-mono text-[11px] text-[var(--factory-faint)]">
                   {String(index + 1).padStart(2, '0')}
                 </span>
                 <ArrowRight className="h-4 w-4 text-[var(--factory-faint)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--factory-accent)]" />
@@ -115,7 +115,7 @@ export default function TutorialPage() {
                   href={`#tutorial-${step.id}`}
                   className="flex min-h-9 items-center gap-2 border-l border-border px-3 text-xs text-muted-foreground transition-colors hover:border-[var(--factory-accent)] hover:bg-accent/60 hover:text-foreground"
                 >
-                  <span className="font-mono text-[9px] text-[var(--factory-faint)]">
+                  <span className="font-mono text-[11px] text-[var(--factory-faint)]">
                     {step.step}
                   </span>
                   {step.title}
@@ -129,7 +129,7 @@ export default function TutorialPage() {
             <div className="mt-3 space-y-3">
               {TUTORIAL_SHORTCUTS.map((shortcut) => (
                 <div key={shortcut.keys}>
-                  <kbd className="inline-flex min-h-7 items-center border border-[var(--factory-line-strong)] bg-[var(--factory-ground)] px-2 font-mono text-[10px] text-foreground">
+                  <kbd className="inline-flex min-h-7 items-center border border-[var(--factory-line-strong)] bg-[var(--factory-ground)] px-2 font-mono text-[11px] text-foreground">
                     {shortcut.keys}
                   </kbd>
                   <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
@@ -163,7 +163,7 @@ export default function TutorialPage() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-3">
                       <h2 className="text-xl font-semibold leading-8">{step.title}</h2>
-                      <span className="font-mono text-[10px] text-[var(--factory-faint)]">
+                      <span className="font-mono text-[11px] text-[var(--factory-faint)]">
                         STEP {index + 1} / {TUTORIAL_STEPS.length}
                       </span>
                     </div>

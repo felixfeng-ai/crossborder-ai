@@ -93,8 +93,8 @@ export default function LedgerPage() {
 
   // ── 利润率颜色 ────────────────────────────────────────────
   const marginColor = (margin: number) => {
-    if (margin >= 30) return 'text-emerald-500'
-    if (margin >= 15) return 'text-amber-500'
+    if (margin >= 30) return 'text-[var(--factory-success)]'
+    if (margin >= 15) return 'text-[var(--factory-warning)]'
     return 'text-destructive'
   }
 
@@ -249,7 +249,7 @@ export default function LedgerPage() {
                 <CardContent className="pt-6 text-center">
                   <p className="text-sm text-muted-foreground mb-2">每件商品净利润</p>
                   <p className={`text-4xl font-bold ${
-                    result.net_profit >= 0 ? 'text-emerald-500' : 'text-destructive'
+                    result.net_profit >= 0 ? 'text-[var(--factory-success)]' : 'text-destructive'
                   }`}>
                     {result.net_profit >= 0 ? '+' : ''}¥{result.net_profit.toFixed(2)}
                   </p>
@@ -276,7 +276,7 @@ export default function LedgerPage() {
                   {/* 收入 */}
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="text-sm text-muted-foreground">折合人民币售价</span>
-                    <span className="font-semibold text-emerald-600">
+                    <span className="font-semibold text-[var(--factory-success)]">
                       ¥{result.selling_price_cny.toFixed(2)}
                     </span>
                   </div>

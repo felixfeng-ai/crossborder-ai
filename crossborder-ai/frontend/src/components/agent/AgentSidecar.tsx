@@ -151,7 +151,7 @@ export function AgentSidecar() {
         aria-label="AI 决策助手"
         aria-hidden={!isOpen}
         className={[
-          'fixed z-50 flex flex-col overflow-hidden border-border bg-[#111411]',
+          'fixed z-50 flex flex-col overflow-hidden border-border bg-[var(--factory-panel)] text-[var(--factory-ink)]',
           'border-t shadow-[0_-24px_70px_rgba(0,0,0,0.48)] transition-transform duration-300 [transition-timing-function:var(--ease-drawer)]',
           'inset-x-0 bottom-0 h-[min(90dvh,860px)] rounded-t-2xl',
           'lg:inset-x-auto lg:right-0 lg:top-[58px] lg:bottom-0 lg:h-auto lg:w-[420px]',
@@ -164,7 +164,7 @@ export function AgentSidecar() {
       >
         <header className="flex min-h-[72px] shrink-0 items-center justify-between gap-3 border-b border-border px-4">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-[rgba(216,181,109,0.46)] bg-[var(--factory-panel)]">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-[color:color-mix(in_srgb,var(--factory-accent)_46%,transparent)] bg-[var(--factory-side)]">
               <AssistantMark className="h-8 w-8" />
             </div>
             <div className="min-w-0">
@@ -218,7 +218,7 @@ export function AgentSidecar() {
               return (
                 <span
                   key={label}
-                  className="inline-flex min-h-7 items-center gap-1.5 border border-[rgba(216,181,109,0.26)] bg-[rgba(216,181,109,0.1)] px-2.5 text-[11px] font-medium leading-4 text-[#d8cfba]"
+                  className="inline-flex min-h-7 items-center gap-1.5 border border-[color:color-mix(in_srgb,var(--factory-accent)_30%,var(--factory-line))] bg-[color:color-mix(in_srgb,var(--factory-accent)_10%,var(--factory-panel))] px-2.5 text-[11px] font-medium leading-4 text-[var(--factory-ink)]"
                 >
                   <span className="h-1 w-1 rounded-full bg-[var(--factory-accent)]" />
                   <span className="max-w-[220px] truncate">{label}</span>
@@ -226,7 +226,7 @@ export function AgentSidecar() {
                     <button
                       type="button"
                       onClick={() => removeContextDetail(label)}
-                      className="relative z-10 -mr-1 ml-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[var(--factory-faint)] hover:bg-white/5 hover:text-foreground"
+                      className="relative z-10 -mr-1 ml-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[var(--factory-muted)] hover:bg-[var(--factory-raised)] hover:text-[var(--factory-ink)]"
                       aria-label={`移除上下文：${label}`}
                     >
                       <X className="h-3 w-3" />

@@ -248,7 +248,7 @@ export default function DashboardPage() {
                           {stage.detail}
                         </span>
                       </span>
-                      <span className={`shrink-0 text-[10px] font-medium ${stageTextClass(stage.status)}`}>
+                      <span className={`shrink-0 text-[11px] font-medium ${stageTextClass(stage.status)}`}>
                         {stageStatusLabel(stage.status)}
                       </span>
                       <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
@@ -262,7 +262,7 @@ export default function DashboardPage() {
                       <>
                         <div className="flex items-center justify-between gap-2">
                           <span className={`h-2 w-2 rounded-full ${stageDotClass(stage.status)}`} />
-                          <span className={`text-[10px] font-medium ${stageTextClass(stage.status)}`}>
+                          <span className={`text-[11px] font-medium ${stageTextClass(stage.status)}`}>
                             {stageStatusLabel(stage.status)}
                           </span>
                         </div>
@@ -889,7 +889,7 @@ function StoreCheckDetail({ log }: { log: StoreCheckLogItem }) {
     <div className="space-y-3 border-t border-border bg-background p-3">
       <div className="flex flex-wrap gap-1.5">
         {(log.checked_scopes || []).map((scope) => (
-          <Badge key={scope} variant="outline" className="text-[10px] font-normal">
+          <Badge key={scope} variant="outline" className="text-[11px] font-normal">
             {scopeLabels[scope] || scope}
           </Badge>
         ))}
@@ -912,7 +912,7 @@ function StoreCheckDetail({ log }: { log: StoreCheckLogItem }) {
                 </Link>
                 <Badge
                   variant={issue.severity === 'critical' || issue.severity === 'error' ? 'destructive' : 'warning'}
-                  className="text-[10px]"
+                  className="text-[11px]"
                 >
                   {severityLabel(issue.severity)}
                 </Badge>

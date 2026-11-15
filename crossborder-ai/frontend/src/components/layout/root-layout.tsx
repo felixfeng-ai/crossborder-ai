@@ -77,7 +77,7 @@ export function RootLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header onOpenMenu={() => setMobileSidebar(true)} />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+        <main className="flex-1 overflow-y-auto p-4 pb-28 md:p-6 md:pb-28 lg:p-8 lg:pb-28">
           <Suspense fallback={<RouteFallback />}>
             <Outlet />
           </Suspense>

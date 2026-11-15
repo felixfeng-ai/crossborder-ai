@@ -7,6 +7,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.models.admin_audit_log import AdminAuditLog
 from app.models.system_config import SystemConfig
 from app.services import provider_config
 from app.services.ai.deepseek import DeepSeekService
@@ -62,6 +63,14 @@ async def test_admin_updates_encrypted_provider_and_service_uses_it(
     await provider_config.refresh(db_session)
     assert provider_config.get("deepseek", "api_key") == "sk-db-secret-123456"
     assert provider_config.get("deepseek", "model") == "deepseek-flash"
+    audit = (
+        await db_session.execute(
+            select(AdminAuditLog).where(AdminAuditLog.action == "provider.update")
+        )
+    ).scalar_one()
+    assert audit.target_id == "deepseek"
+    assert "api_key" in audit.changes_json
+    assert "sk-db-secret-123456" not in audit.changes_json
 
     captured: dict = {}
 

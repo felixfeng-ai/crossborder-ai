@@ -13,6 +13,7 @@ from app.dependencies import get_current_user, require_admin
 from app.models.persona import Persona
 from app.models.system_config import SystemConfig
 from app.models.user import User
+from app.services.admin_audit import record_admin_action
 from app.services import provider_config
 from app.services.automation_settings import (
     load_automation_settings,
@@ -79,6 +80,14 @@ async def update_provider_config(
         raise HTTPException(status_code=404, detail="未知的服务商")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    await record_admin_action(
+        db,
+        admin,
+        action="provider.update",
+        target_type="provider",
+        target_id=provider,
+        changes={"fields": sorted(payload.keys())},
+    )
     return {
         "provider": provider,
         **provider_config.provider_status(provider),
@@ -95,10 +104,20 @@ class WhitelistRequest(BaseModel):
 async def add_whitelist(
     payload: WhitelistRequest,
     admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     """添加白名单账号（仅管理员；白名单可绕过套餐限制，绝不能开放给普通用户）"""
-    from app.core.access_control import add_whitelist as _add
-    _add(payload.email)
+    from app.core import access_control
+    email = payload.email.strip().lower()
+    await access_control.add_whitelist(db, email)
+    await record_admin_action(
+        db,
+        admin,
+        action="access.whitelist.add",
+        target_type="access_whitelist",
+        target_id=email,
+        changes={"email": email, "operation": "add"},
+    )
     return {"message": f"已添加白名单: {payload.email}"}
 
 
@@ -106,20 +125,32 @@ async def add_whitelist(
 async def remove_whitelist(
     payload: WhitelistRequest,
     admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     """移除白名单账号（仅管理员）"""
-    from app.core.access_control import remove_whitelist as _remove
-    _remove(payload.email)
+    from app.core import access_control
+    email = payload.email.strip().lower()
+    await access_control.remove_whitelist(db, email)
+    await record_admin_action(
+        db,
+        admin,
+        action="access.whitelist.remove",
+        target_type="access_whitelist",
+        target_id=email,
+        changes={"email": email, "operation": "remove"},
+    )
     return {"message": f"已移除白名单: {payload.email}"}
 
 
 @router.get("/whitelist")
 async def list_whitelist(
     admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     """查看所有白名单账号（仅管理员）"""
-    from app.core.access_control import WHITELIST_EMAILS
-    return {"emails": list(WHITELIST_EMAILS)}
+    from app.core import access_control
+    emails = await access_control.refresh(db)
+    return {"emails": sorted(emails)}
 
 # ════════════════════════════════════════════════════════════════
 # 爬虫配置

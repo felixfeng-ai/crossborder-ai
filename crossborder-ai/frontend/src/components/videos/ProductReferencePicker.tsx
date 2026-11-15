@@ -79,7 +79,7 @@ export function ProductReferencePicker({
                 aria-pressed={selected}
                 onClick={() => toggleAsset(asset.id)}
                 className={cn(
-                  'relative aspect-square overflow-hidden border bg-[#d9dad5] transition-colors',
+                  'relative aspect-square overflow-hidden border bg-[var(--factory-raised)] transition-colors',
                   selected
                     ? 'border-[color:var(--factory-accent)] ring-1 ring-[color:var(--factory-accent)]'
                     : 'border-border hover:border-[color:var(--factory-ink)]/30',
@@ -108,7 +108,7 @@ export function ProductReferencePicker({
 
       <div className="flex items-center justify-between gap-2">
         <Label className="text-xs">已选 {selectedAssets.length}/9</Label>
-        <span className="text-[10px] text-muted-foreground">首张选中的图片默认为主图</span>
+        <span className="text-[11px] text-muted-foreground">首张选中的图片默认为主图</span>
       </div>
 
       {selectedAssets.length > 0 && (
@@ -127,7 +127,7 @@ export function ProductReferencePicker({
                 />
                 <span className="min-w-0 flex-1 truncate text-[11px]">{asset.name}</span>
                 {primary ? (
-                  <span className="shrink-0 text-[10px] text-[color:var(--factory-accent)]">
+                  <span className="shrink-0 text-[11px] text-[color:var(--factory-accent)]">
                     主图 · 正面
                   </span>
                 ) : (
@@ -138,7 +138,7 @@ export function ProductReferencePicker({
                       onChange={(event) => {
                         onRoleChange(asset.id, event.target.value as ProductReferenceRole)
                       }}
-                      className="h-7 w-[76px] shrink-0 border border-input bg-background px-1 text-[10px] outline-none focus:ring-1 focus:ring-ring"
+                      className="h-7 w-[76px] shrink-0 border border-input bg-background px-1 text-[11px] outline-none focus:ring-1 focus:ring-ring"
                     >
                       {REFERENCE_ROLE_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -150,7 +150,7 @@ export function ProductReferencePicker({
                       type="button"
                       size="sm"
                       variant="ghost"
-                      className="h-7 shrink-0 px-1.5 text-[10px]"
+                      className="h-7 shrink-0 px-1.5 text-[11px]"
                       onClick={() => onPrimaryIdChange(asset.id)}
                       title="设为主图"
                     >

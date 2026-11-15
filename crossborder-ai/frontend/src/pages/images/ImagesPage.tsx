@@ -317,7 +317,7 @@ export default function ImagesPage() {
         <div
           role="status"
           aria-live="polite"
-          className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/8 px-3 py-2 text-sm text-emerald-600"
+          className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/8 px-3 py-2 text-sm text-[var(--factory-success)]"
         >
           <Check className="h-4 w-4 shrink-0" />
           {actionSuccess}
@@ -360,7 +360,7 @@ export default function ImagesPage() {
                   aria-label="复制图片链接"
                   onClick={copySelectedUrl}
                 >
-                  {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                  {copied ? <Check className="h-4 w-4 text-[var(--factory-success)]" /> : <Copy className="h-4 w-4" />}
                 </Button>
                 <a
                   href={selected.image_url}
@@ -387,7 +387,7 @@ export default function ImagesPage() {
           <CardContent className="p-3 sm:p-5">
             {selected ? (
               <div className="space-y-3">
-                <div className="flex min-h-[360px] items-center justify-center rounded-md border border-border bg-[#d9dad5] p-4 sm:min-h-[520px]">
+                <div className="flex min-h-[360px] items-center justify-center rounded-md border border-border bg-[var(--factory-raised)] p-4 sm:min-h-[520px]">
                   <img
                     src={resolveMediaUrl(selected.image_url)}
                     alt={selected.name}
@@ -562,7 +562,7 @@ export default function ImagesPage() {
                 onClick={() => setFilter(item.id)}
               >
                 {item.label}
-                <span className="metric-number text-[10px] text-muted-foreground">{item.count}</span>
+                <span className="metric-number text-[11px] text-muted-foreground">{item.count}</span>
               </Button>
             ))}
           </div>
@@ -632,14 +632,14 @@ function AssetCard({
       }`}
     >
       <button type="button" className="block w-full text-left" onClick={onSelect}>
-        <div className="relative aspect-square bg-[#d9dad5]">
+        <div className="relative aspect-square bg-[var(--factory-raised)]">
           <img
             src={resolveMediaUrl(item.image_url)}
             alt={item.name}
             loading="lazy"
             className="h-full w-full object-contain p-2 transition-transform duration-200 group-hover:scale-[1.02]"
           />
-          <Badge variant="secondary" className="absolute left-2 top-2 border border-black/10 bg-white/90 text-[10px] text-black">
+          <Badge variant="secondary" className="absolute left-2 top-2 border border-black/10 bg-white/90 text-[11px] text-black">
             {kindLabel}
           </Badge>
         </div>

@@ -82,7 +82,7 @@ export function MarketingAssetBoard({
   return (
     <div className="mt-2">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <Images className="h-3 w-3" />
           活动素材板
           <span>
@@ -91,7 +91,7 @@ export function MarketingAssetBoard({
             视频 {(assets?.counts.videos || 0) + (assets?.counts.marketing_videos || 0)}
           </span>
         </div>
-        {error && <p className="text-[10px] text-destructive">{error}</p>}
+        {error && <p className="text-[11px] text-destructive">{error}</p>}
       </div>
 
       {variants.length || imageTasksWithoutVariants.length || otherAssets.length ? (
@@ -128,14 +128,14 @@ export function MarketingAssetBoard({
                     maxLength={255}
                     autoFocus
                     aria-label="素材名称"
-                    className="h-7 px-1.5 text-[10px]"
+                    className="h-7 px-1.5 text-[11px]"
                     onChange={(event) => setEditingName(event.target.value)}
                   />
                   <div className="grid grid-cols-2 gap-1">
                     <Button
                       size="sm"
                       type="submit"
-                      className="h-7 px-1 text-[10px]"
+                      className="h-7 px-1 text-[11px]"
                       aria-label="保存素材名称"
                       disabled={!editingName.trim() || renameMutation.isPending}
                     >
@@ -159,7 +159,7 @@ export function MarketingAssetBoard({
                 </form>
               ) : (
                 <>
-                  <p className="truncate px-1.5 pt-1.5 text-[10px] font-medium" title={variant.name}>
+                  <p className="truncate px-1.5 pt-1.5 text-[11px] font-medium" title={variant.name}>
                     {variant.name}
                   </p>
                   <div className="grid grid-cols-4 p-1">
@@ -256,8 +256,8 @@ function TaskPlaceholder({ asset }: { asset: CampaignAsset }) {
         </div>
       )}
       <div className="p-2">
-        <p className="text-[10px] font-medium">{campaignAssetStatusLabel(asset)}</p>
-        <p className="mt-1 line-clamp-2 text-[9px] leading-3 text-muted-foreground" title={asset.prompt}>
+        <p className="text-[11px] font-medium">{campaignAssetStatusLabel(asset)}</p>
+        <p className="mt-1 line-clamp-2 text-[11px] leading-3 text-muted-foreground" title={asset.prompt}>
           {asset.prompt}
         </p>
       </div>
@@ -283,7 +283,7 @@ function VideoAssetCard({ asset }: { asset: CampaignAsset }) {
           <Film className="h-3 w-3" />
         </span>
       </div>
-      <p className="truncate px-1.5 py-1 text-[10px] font-medium" title={asset.prompt}>
+      <p className="truncate px-1.5 py-1 text-[11px] font-medium" title={asset.prompt}>
         {asset.prompt}
       </p>
     </div>

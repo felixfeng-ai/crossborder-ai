@@ -388,7 +388,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
                 setReferenceRoles((current) => ({ ...current, [assetId]: role }))
               }}
             />
-            <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
+            <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
               主图控制首帧；额外参考图用于多角度商品一致性，合计最多 9 张。
             </p>
             <div className="mt-3 space-y-1.5">
@@ -573,7 +573,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
                         {marketingTemplateName(item.template_id)} · {item.duration}s
                       </span>
                     </span>
-                    <span className="shrink-0 text-[10px]">{projectStatusLabel(item.status)}</span>
+                    <span className="shrink-0 text-[11px]">{projectStatusLabel(item.status)}</span>
                   </button>
                 ))
               ) : (
@@ -642,7 +642,7 @@ function ProjectWorkspace({
             <div key={step.id} className="flex items-center gap-2">
               <span
                 className={cn(
-                  'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px]',
+                  'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px]',
                   step.state === 'complete' && 'border-[color:var(--factory-mint)]/50 text-[color:var(--factory-mint)]',
                   step.state === 'current' && 'border-[color:var(--factory-accent)]/60 text-[color:var(--factory-accent)]',
                   step.state === 'failed' && 'border-[color:var(--factory-coral)]/50 text-[color:var(--factory-coral)]',
@@ -703,7 +703,7 @@ function ProjectWorkspace({
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-medium">{shot.title}</p>
-                      <span className="text-[10px] text-muted-foreground">{shot.purpose}</span>
+                      <span className="text-[11px] text-muted-foreground">{shot.purpose}</span>
                     </div>
                     <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
                       {shot.prompt}
@@ -712,7 +712,7 @@ function ProjectWorkspace({
                   <div className="text-right">
                     <p className="metric-number text-xs">{shot.duration}s</p>
                     <p className={cn(
-                      'mt-1 text-[10px]',
+                      'mt-1 text-[11px]',
                       shot.status === 'succeeded'
                         ? 'text-[color:var(--factory-mint)]'
                         : shot.status === 'failed'
@@ -735,11 +735,11 @@ function ProjectWorkspace({
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <div className="border border-border p-2.5">
-              <p className="text-[10px] text-muted-foreground">镜头数</p>
+              <p className="text-[11px] text-muted-foreground">镜头数</p>
               <p className="metric-number mt-1 text-lg">{project.shots.length}</p>
             </div>
             <div className="border border-border p-2.5">
-              <p className="text-[10px] text-muted-foreground">预计耗时</p>
+              <p className="text-[11px] text-muted-foreground">预计耗时</p>
               <p className="metric-number mt-1 text-lg">{Math.max(2, project.shots.length * 2)}-{project.shots.length * 4} 分</p>
             </div>
           </div>
@@ -946,7 +946,7 @@ export function MarketingVideoPreview({
               style={{ width: `${progress.percent}%` }}
             />
           </div>
-          <div className="mt-2 flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
+          <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
             <span>{progress.detail}</span>
             <span className="metric-number shrink-0">
               {progress.completed}/{progress.total}
@@ -988,7 +988,7 @@ export function MarketingVideoPreview({
               {voicePending ? '配音生成中' : `生成 AI 配音 ${voiceCredits} 积分`}
             </Button>
           )}
-          <p className="text-[10px] leading-4 text-muted-foreground">
+          <p className="text-[11px] leading-4 text-muted-foreground">
             {project.subtitles_burned_in
               ? '字幕已烧录进成片，也可单独下载 SRT'
               : project.subtitle_url
@@ -998,12 +998,12 @@ export function MarketingVideoPreview({
                   : '成片保持无字幕输出'}
           </p>
           {project.mode !== 'script' && !project.continuity?.no_dialogue && voice && !voice.enabled && (
-            <p className="text-[10px] leading-4 text-[color:var(--factory-coral)]">
+            <p className="text-[11px] leading-4 text-[color:var(--factory-coral)]">
               {voice.reason}
             </p>
           )}
           {voiceError && (
-            <p className="text-[10px] leading-4 text-destructive">{voiceError}</p>
+            <p className="text-[11px] leading-4 text-destructive">{voiceError}</p>
           )}
         </div>
       )}

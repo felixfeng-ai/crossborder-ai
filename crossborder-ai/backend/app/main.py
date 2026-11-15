@@ -98,9 +98,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     await init_db()
     from app.services import provider_config
+    from app.core import access_control
     from app.core.database import async_session_factory
     async with async_session_factory() as db:
         await provider_config.refresh(db)
+        await access_control.refresh(db)
     print(f"[VeyaShip] Database ready ({'SQLite' if settings.USE_SQLITE else 'PostgreSQL'})")
 
     # 启动定时任务

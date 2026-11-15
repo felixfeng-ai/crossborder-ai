@@ -127,7 +127,7 @@ export default function VocInsightsCard({
             评论洞察 VOC
           </CardTitle>
           {current && (
-            <Badge variant="outline" className="metric-number text-[10px]">
+            <Badge variant="outline" className="metric-number text-[11px]">
               {current.review_count} 条
             </Badge>
           )}
@@ -170,7 +170,7 @@ export default function VocInsightsCard({
               {(['positive', 'neutral', 'negative'] as const).map((key) => (
                 <span
                   key={key}
-                  className="border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                  className="border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground"
                 >
                   {sentimentLabel(key)} {sentimentPercent(sentiment, key)}%
                 </span>
@@ -274,7 +274,7 @@ function InsightList({ title, items }: { title: string; items: string[] }) {
   if (!items.length) return null
   return (
     <div>
-      <p className="text-[10px] font-medium text-muted-foreground">{title}</p>
+      <p className="text-[11px] font-medium text-muted-foreground">{title}</p>
       <ul className="mt-1 space-y-1">
         {items.slice(0, 3).map((item) => (
           <li key={item} className="flex gap-1.5 text-[11px] leading-5">

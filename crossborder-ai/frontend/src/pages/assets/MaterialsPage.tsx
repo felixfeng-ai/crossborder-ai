@@ -331,7 +331,7 @@ function ImageGrid({
             className="group block w-full text-left"
             onClick={() => onSelect(item.id)}
           >
-            <span className="group block aspect-square overflow-hidden bg-[#d9dad5]">
+            <span className="group block aspect-square overflow-hidden bg-[var(--factory-raised)]">
               <img
                 src={resolveMediaUrl(item.url)}
                 alt={item.name}
@@ -342,11 +342,11 @@ function ImageGrid({
             <div className="space-y-1.5 p-2.5">
               <div className="flex items-center justify-between gap-2">
                 <p className="truncate text-xs font-medium">{item.name}</p>
-                <Badge variant="outline" className="shrink-0 text-[10px]">
+                <Badge variant="outline" className="shrink-0 text-[11px]">
                   {imageSourceLabel(item.source)}
                 </Badge>
               </div>
-              <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+              <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
                 <span className="metric-number truncate">
                   {item.width && item.height
                     ? `${item.width} × ${item.height}`
@@ -408,7 +408,7 @@ function ImageDetail({
           </div>
         )}
       </div>
-      <div className="mt-3 flex min-h-[360px] items-center justify-center border border-border bg-[#d9dad5]">
+      <div className="mt-3 flex min-h-[360px] items-center justify-center border border-border bg-[var(--factory-raised)]">
         {material ? (
           <img
             src={resolveMediaUrl(material.url)}
@@ -456,7 +456,7 @@ function ImageDetail({
           </dl>
           {material.prompt && (
             <div className="border border-border bg-background p-2.5">
-              <p className="text-[10px] text-muted-foreground">生成提示词</p>
+              <p className="text-[11px] text-muted-foreground">生成提示词</p>
               <p className="mt-1 whitespace-pre-wrap text-xs leading-5">{material.prompt}</p>
             </div>
           )}
@@ -521,7 +521,7 @@ function VideoRow({
             <span>·</span>
             <span className="metric-number">{item.resolution}</span>
           </span>
-          <span className="mt-1 block text-[10px] text-muted-foreground">
+          <span className="mt-1 block text-[11px] text-muted-foreground">
             生成于 {formatMaterialDateTime(item.createdAt)}
           </span>
         </span>

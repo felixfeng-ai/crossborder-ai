@@ -160,7 +160,7 @@ export default function ProductReportCard({ report }: { report: SelectionReport 
               <ul className="space-y-1">
                 {reasons.map((r, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                    <CheckCircle2 className="h-3.5 w-3.5 text-[var(--factory-success)] mt-0.5 shrink-0" />
                     {r}
                   </li>
                 ))}
@@ -220,7 +220,7 @@ function Stars({ level }: { level: number }) {
       {[1, 2, 3, 4, 5].map((n) => (
         <Star
           key={n}
-          className={`h-3 w-3 ${n <= level ? 'text-amber-500 fill-amber-500' : 'text-muted-foreground/30'}`}
+          className={`h-3 w-3 ${n <= level ? 'text-[var(--factory-warning)] fill-amber-500' : 'text-muted-foreground/30'}`}
         />
       ))}
     </span>

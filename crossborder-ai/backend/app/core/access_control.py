@@ -4,6 +4,12 @@
 白名单用户（测试账号）不受套餐限制。
 """
 
+import json
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.system_config import SystemConfig
 from app.models.user import User
 
 # ── 功能权限配置 ──────────────────────────────────────────────
@@ -19,20 +25,83 @@ FEATURE_ACCESS: dict[str, list[str]] = {
 }
 
 # ── 白名单（测试账号邮箱，不受限制） ──────────────────────────
-WHITELIST_EMAILS: set[str] = {
+WHITELIST_CONFIG_KEY = "access_whitelist_emails"
+DEFAULT_WHITELIST_EMAILS: frozenset[str] = frozenset({
     "admin@veyaship.com",  # 平台管理员
     "test@veyaship.com",   # 测试账号
-}
+})
+WHITELIST_EMAILS: set[str] = set(DEFAULT_WHITELIST_EMAILS)
 
 
-def add_whitelist(email: str):
-    """添加白名单账号"""
-    WHITELIST_EMAILS.add(email.lower())
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
 
 
-def remove_whitelist(email: str):
-    """移除白名单账号"""
-    WHITELIST_EMAILS.discard(email.lower())
+def _replace_cache(emails: set[str]) -> None:
+    """原地更新缓存，兼容模块内已经持有的集合引用。"""
+    WHITELIST_EMAILS.clear()
+    WHITELIST_EMAILS.update(emails)
+
+
+async def refresh(db: AsyncSession) -> set[str]:
+    """从 SystemConfig 加载白名单，供多 Worker 周期同步。"""
+    row = (
+        await db.execute(
+            select(SystemConfig)
+            .where(SystemConfig.key == WHITELIST_CONFIG_KEY)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    emails = set(DEFAULT_WHITELIST_EMAILS)
+    if row is not None:
+        try:
+            payload = json.loads(row.value or "[]")
+            if isinstance(payload, list):
+                emails = {
+                    normalized
+                    for item in payload
+                    if isinstance(item, str)
+                    and (normalized := _normalize_email(item))
+                }
+        except json.JSONDecodeError:
+            # 配置损坏时回退默认名单，避免把管理员锁在系统外。
+            emails = set(DEFAULT_WHITELIST_EMAILS)
+    _replace_cache(emails)
+    return emails
+
+
+async def _persist(db: AsyncSession, emails: set[str]) -> None:
+    payload = json.dumps(sorted(emails), ensure_ascii=False)
+    row = (
+        await db.execute(
+            select(SystemConfig)
+            .where(SystemConfig.key == WHITELIST_CONFIG_KEY)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        db.add(SystemConfig(key=WHITELIST_CONFIG_KEY, value=payload))
+    else:
+        row.value = payload
+    await db.flush()
+
+
+async def add_whitelist(db: AsyncSession, email: str) -> None:
+    """添加白名单账号并持久化到平台配置。"""
+    normalized = _normalize_email(email)
+    next_emails = set(WHITELIST_EMAILS)
+    next_emails.add(normalized)
+    await _persist(db, next_emails)
+    _replace_cache(next_emails)
+
+
+async def remove_whitelist(db: AsyncSession, email: str) -> None:
+    """移除白名单账号并持久化到平台配置。"""
+    normalized = _normalize_email(email)
+    next_emails = set(WHITELIST_EMAILS)
+    next_emails.discard(normalized)
+    await _persist(db, next_emails)
+    _replace_cache(next_emails)
 
 
 def is_whitelisted(user: User) -> bool:

@@ -63,7 +63,7 @@ export function MarketingImageBatchPanel({
             <Sparkles className="h-3.5 w-3.5 text-[var(--factory-accent)]" />
             批量生成营销图片
           </p>
-          <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+          <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
             每张图片独立入库，完成后可在活动素材板中管理和转视频。
           </p>
         </div>

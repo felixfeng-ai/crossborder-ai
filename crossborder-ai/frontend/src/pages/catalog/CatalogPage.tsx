@@ -314,7 +314,7 @@ export default function CatalogPage() {
               </div>
             </div>
             {matrixMessage && (
-              <p className="flex items-center gap-2 text-sm text-emerald-500">
+              <p className="flex items-center gap-2 text-sm text-[var(--factory-success)]">
                 <CheckCircle2 className="h-4 w-4" />
                 {matrixMessage}
               </p>
@@ -664,19 +664,19 @@ function ListingRow({ listing, onOpen }: { listing: CatalogListing; onOpen: () =
         <p className="truncate text-xs text-muted-foreground">{listing.product_title}</p>
         <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
           {problem && <span className="text-destructive">{problem.message}</span>}
-          {!problem && warning && <span className="text-amber-500">{warning.message}</span>}
+          {!problem && warning && <span className="text-[var(--factory-warning)]">{warning.message}</span>}
           {!problem && !warning && (
-            <span className="flex items-center gap-1 text-emerald-500">
+            <span className="flex items-center gap-1 text-[var(--factory-success)]">
               <CheckCircle2 className="h-3 w-3" />平台字段就绪
             </span>
           )}
         </div>
       </div>
       <div className="hidden shrink-0 text-right sm:block">
-        <p className={`metric-number text-sm font-semibold ${listing.readiness.ok ? 'text-emerald-500' : 'text-destructive'}`}>
+        <p className={`metric-number text-sm font-semibold ${listing.readiness.ok ? 'text-[var(--factory-success)]' : 'text-destructive'}`}>
           {listing.readiness.score}
         </p>
-        <p className="text-[10px] text-muted-foreground">就绪分</p>
+        <p className="text-[11px] text-muted-foreground">就绪分</p>
       </div>
       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
     </button>

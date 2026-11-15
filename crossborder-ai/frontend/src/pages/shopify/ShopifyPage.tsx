@@ -85,7 +85,7 @@ export default function ShopifyPage() {
 
   const statusBadge = (status: string) => {
     switch (status) {
-      case 'paid': return <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">{status}</Badge>
+      case 'paid': return <Badge className="bg-emerald-500/10 text-[var(--factory-success)] border-emerald-500/20">{status}</Badge>
       case 'pending': return <Badge variant="outline">{status}</Badge>
       case 'refunded': return <Badge variant="destructive">{status}</Badge>
       default: return <Badge variant="secondary">{status}</Badge>
@@ -169,7 +169,7 @@ export default function ShopifyPage() {
                 >
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium">{c.shop_name}</p>
-                    <Badge variant="success" className="text-[10px] h-5">已绑定</Badge>
+                    <Badge variant="success" className="text-[11px] h-5">已绑定</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">{c.domain}</p>
                 </div>

@@ -19,7 +19,12 @@ from app.models.listing_draft import ListingComplianceReport, ListingDraft
 from app.models.product import Product
 from app.models.user import User
 from app.services import provider_config
-from app.services.ai.compliance import check_text, merge_banned_words, suggest_replacements
+from app.services.ai.compliance import (
+    apply_suggested_replacements,
+    check_text,
+    merge_banned_words,
+    suggest_replacements,
+)
 from app.services.ai.deepseek import DeepSeekService
 from app.services.ai.persona_kit import (
     build_persona_kit,
@@ -451,6 +456,73 @@ async def run_listing_compliance(
     )
     await db.flush()
     return listing
+
+
+async def auto_fix_listing_compliance(
+    db: AsyncSession,
+    listing: ListingDraft,
+    user_banned_words: Optional[list[str]] = None,
+) -> tuple[int, list[dict]]:
+    """自动替换已知违规词并立即复检，返回替换次数和剩余建议。"""
+    word_list = merge_banned_words(user_banned_words or [])
+    bullets = _parse_string_list(listing.bullet_points)
+    texts = [
+        listing.title or "",
+        listing.description or "",
+        *bullets,
+        listing.seo_title or "",
+        listing.seo_description or "",
+    ]
+    violations: list[str] = []
+    for text in texts:
+        for word in check_text(text, word_list):
+            if word not in violations:
+                violations.append(word)
+
+    suggestions = suggest_replacements(violations)
+    fixed_title, title_count = apply_suggested_replacements(
+        listing.title or "",
+        suggestions,
+    )
+    fixed_description, description_count = apply_suggested_replacements(
+        listing.description or "",
+        suggestions,
+    )
+    fixed_bullets: list[str] = []
+    bullet_count = 0
+    for bullet in bullets:
+        fixed_bullet, count = apply_suggested_replacements(bullet, suggestions)
+        fixed_bullets.append(fixed_bullet)
+        bullet_count += count
+    fixed_seo_title, seo_title_count = apply_suggested_replacements(
+        listing.seo_title or "",
+        suggestions,
+    )
+    fixed_seo_description, seo_description_count = apply_suggested_replacements(
+        listing.seo_description or "",
+        suggestions,
+    )
+    fixed_count = (
+        title_count
+        + description_count
+        + bullet_count
+        + seo_title_count
+        + seo_description_count
+    )
+
+    if fixed_count:
+        update_listing_content(
+            listing,
+            title=fixed_title,
+            description=fixed_description,
+            bullet_points=fixed_bullets,
+            seo_title=fixed_seo_title,
+            seo_description=fixed_seo_description,
+        )
+
+    await run_listing_compliance(db, listing, user_banned_words=word_list)
+    remaining = _parse_string_list(listing.compliance_violations)
+    return fixed_count, suggest_replacements(remaining)
 
 
 async def get_owned_listing(

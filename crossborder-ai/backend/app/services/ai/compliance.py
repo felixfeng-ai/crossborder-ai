@@ -61,6 +61,7 @@ EXTREME_REPLACEMENTS: dict[str, str] = {
     "cheapest": "affordable",
     "top rated": "well-reviewed",
     "guaranteed": "designed to",
+    "perfect": "excellent",
 }
 
 
@@ -121,6 +122,26 @@ def suggest_replacements(violations: list[str]) -> list[dict]:
         seen.add(w)
         suggestions.append({"word": w, "replacement": EXTREME_REPLACEMENTS.get(w, "")})
     return suggestions
+
+
+def apply_suggested_replacements(
+    text: str,
+    suggestions: list[dict],
+) -> tuple[str, int]:
+    """按安全替换词改写文本，返回 (新文本, 替换次数)。
+
+    没有预置 replacement 的词保持原样，由前端引导卖家手动修改。
+    """
+    fixed = text or ""
+    total = 0
+    for item in suggestions:
+        word = str(item.get("word") or "").strip()
+        replacement = str(item.get("replacement") or "").strip()
+        if not word or not replacement:
+            continue
+        fixed, count = _word_regex(word).subn(replacement, fixed)
+        total += count
+    return fixed, total
 
 
 async def ai_review_fix(

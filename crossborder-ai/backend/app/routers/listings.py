@@ -12,11 +12,13 @@ from app.models.user import User
 from app.models.product import Product
 from app.services.ai.persona_kit import build_persona_kit, fetch_persona
 from app.services.listing_service import (
+    auto_fix_listing_compliance,
     get_owned_listing,
     run_listing_compliance,
     serialize_listing,
     update_listing_content,
 )
+from app.services.ai.compliance import suggest_replacements
 from app.services.ip_risk import screen_product_text
 
 
@@ -109,4 +111,48 @@ async def recheck_listing_compliance(
             scope="text",
         )
     await db.refresh(listing)
-    return {**serialize_listing(listing), "ip_risk": ip_risk}
+    return {
+        **serialize_listing(listing),
+        "suggestions": suggest_replacements(
+            serialize_listing(listing)["violations"]
+        ),
+        "ip_risk": ip_risk,
+    }
+
+
+@router.post("/{listing_id}/compliance/fix")
+async def auto_fix_listing(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """自动替换已知违规词并复检；无法映射的词保留给人工修改。"""
+    listing = await _owned_listing_or_404(db, listing_id, current_user)
+    persona = await fetch_persona(db, current_user.id)
+    persona_kit = build_persona_kit(persona) if persona else None
+    fixed_count, suggestions = await auto_fix_listing_compliance(
+        db,
+        listing,
+        user_banned_words=(persona_kit or {}).get("banned_words") or [],
+    )
+    product = await db.get(Product, listing.product_id)
+    ip_risk = None
+    if product is not None and product.user_id == current_user.id:
+        ip_risk = await screen_product_text(
+            db,
+            user=current_user,
+            product=product,
+            listing=listing,
+            platform=listing.platform,
+            category_code=(persona_kit or {}).get("product_category"),
+            trigger="manual",
+            scope="text",
+        )
+    await db.refresh(listing)
+    return {
+        **serialize_listing(listing),
+        "suggestions": suggestions,
+        "fixed_count": fixed_count,
+        "needs_manual": any(not item["replacement"] for item in suggestions),
+        "ip_risk": ip_risk,
+    }

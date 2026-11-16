@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Sparkles, Copy, CheckCircle2, Loader2, AlertCircle, AlertTriangle, Globe, Image as ImageIcon, ShoppingBag, ExternalLink } from 'lucide-react'
+import { Sparkles, Copy, CheckCircle2, Loader2, AlertCircle, AlertTriangle, Globe, Image as ImageIcon, ShoppingBag, ExternalLink, Pencil } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Label } from '@/components/ui/label'
 import RemoteImage from '@/components/common/RemoteImage'
 import ListingDescriptionCard from '@/components/content/ListingDescriptionCard'
 import ListingSeoCard from '@/components/content/ListingSeoCard'
@@ -57,6 +58,14 @@ interface PublishVariant {
   sku: string
   price: number | null
   is_active: boolean
+}
+
+interface ManualListingDraft {
+  title: string
+  description: string
+  bulletPoints: string
+  seoTitle: string
+  seoDescription: string
 }
 
 const PLATFORMS = [
@@ -116,6 +125,16 @@ export default function ContentPage() {
   const [selectedChannel, setSelectedChannel] = useState('')
   const [selectedVariantIds, setSelectedVariantIds] = useState<string[]>([])
   const [currentIpRisk, setCurrentIpRisk] = useState<IpRiskReport | null>(null)
+  const [listingResultState, setListingResultState] = useState<GenerateResult | null>(null)
+  const [fixFeedback, setFixFeedback] = useState('')
+  const [manualEditing, setManualEditing] = useState(false)
+  const [manualDraft, setManualDraft] = useState<ManualListingDraft>({
+    title: '',
+    description: '',
+    bulletPoints: '',
+    seoTitle: '',
+    seoDescription: '',
+  })
 
   const { data: capabilities } = useQuery<Record<string, PlatformCapability>>({
     queryKey: ['platform-capabilities'],
@@ -164,7 +183,7 @@ export default function ContentPage() {
   const publishMutation = useMutation({
     mutationFn: async () => {
       const res = await apiClient.post('/shopify/push', {
-        listing_id: generateMutation.data?.listing_id,
+        listing_id: listingResult?.listing_id,
         channel_id: selectedChannel,
         variant_ids: selectedVariantIds,
       }, {
@@ -176,8 +195,8 @@ export default function ContentPage() {
 
   const handlePublish = () => {
     if (
-      !generateMutation.data?.listing_id ||
-      generateMutation.data.compliance_status !== 'pass' ||
+      !listingResult?.listing_id ||
+      listingResult.compliance_status !== 'pass' ||
       isIpPublishBlocked(currentIpRisk) ||
       !selectedChannel ||
       !hasPublishableVariant ||
@@ -198,11 +217,99 @@ export default function ContentPage() {
       })
       return res.data as GenerateResult
     },
-    onSuccess: (data) => setCurrentIpRisk(data.ip_risk || null),
+    onSuccess: (data) => {
+      setListingResultState(data)
+      setCurrentIpRisk(data.ip_risk || null)
+      setManualEditing(false)
+      setFixFeedback('')
+    },
   })
+
+  const listingResult = listingResultState ?? generateMutation.data ?? null
+
+  const applyUpdatedListing = (data: GenerateResult, message: string) => {
+    setListingResultState((current) => {
+      const base = current || generateMutation.data
+      if (!base) return null
+      return {
+        ...base,
+        ...data,
+        blocked: data.compliance_status === 'block',
+        violations: data.violations || [],
+        suggestions: data.suggestions || [],
+      }
+    })
+    setCurrentIpRisk(data.ip_risk || null)
+    setFixFeedback(message)
+  }
+
+  const autoFixMutation = useMutation({
+    mutationFn: async () => {
+      if (!listingResult?.listing_id) throw new Error('Listing 尚未生成')
+      const response = await apiClient.post(
+        `/listings/${listingResult.listing_id}/compliance/fix`,
+      )
+      return response.data
+    },
+    onSuccess: (data) => {
+      const message =
+        data.compliance_status === 'pass'
+          ? `已自动修复 ${data.fixed_count} 处问题并复检通过`
+          : data.fixed_count > 0
+            ? `已自动修复 ${data.fixed_count} 处，仍有问题需要手动修改`
+            : '没有可安全替换的问题，请手动修改'
+      applyUpdatedListing(data, message)
+    },
+  })
+
+  const manualRecheckMutation = useMutation({
+    mutationFn: async () => {
+      if (!listingResult?.listing_id) throw new Error('Listing 尚未生成')
+      const bulletPoints = manualDraft.bulletPoints
+        .split('\n')
+        .map((item) => item.trim())
+        .filter(Boolean)
+      await apiClient.put(`/listings/${listingResult.listing_id}`, {
+        title: manualDraft.title.trim(),
+        description: manualDraft.description,
+        bullet_points: bulletPoints,
+        seo_title: manualDraft.seoTitle,
+        seo_description: manualDraft.seoDescription,
+      })
+      const response = await apiClient.post(
+        `/listings/${listingResult.listing_id}/compliance`,
+      )
+      return response.data
+    },
+    onSuccess: (data) => {
+      applyUpdatedListing(
+        data,
+        data.compliance_status === 'pass'
+          ? '手动修改已保存，复检通过'
+          : `手动修改已保存，仍有 ${data.violations?.length || 0} 处问题`,
+      )
+      setManualEditing(false)
+    },
+  })
+
+  const startManualEdit = () => {
+    if (!listingResult) return
+    setManualDraft({
+      title: listingResult.title,
+      description: listingResult.description,
+      bulletPoints: listingResult.bullet_points.join('\n'),
+      seoTitle: listingResult.seo_title,
+      seoDescription: listingResult.seo_description,
+    })
+    setFixFeedback('')
+    setManualEditing(true)
+  }
 
   useEffect(() => {
     setCurrentIpRisk(null)
+    setListingResultState(null)
+    setFixFeedback('')
+    setManualEditing(false)
   }, [selectedProduct])
 
   const copyText = (text: string, label: string) => {
@@ -390,17 +497,176 @@ export default function ContentPage() {
             </Card>
           )}
 
-          {generateMutation.data && (
+          {listingResult && (
             <>
-              {generateMutation.data.blocked && (
+              {listingResult.blocked && (
                 <Card className="border-destructive/40 bg-destructive/5">
-                  <CardContent className="pt-6 flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-destructive">合规审查未通过，当前 Listing 已禁止发布</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        命中：{generateMutation.data.violations.join('、') || '平台合规规则'}
+                  <CardContent className="space-y-4 pt-6">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                        <div>
+                          <p className="font-medium text-destructive">合规审查未通过，当前 Listing 已禁止发布</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            命中：{listingResult.violations.join('、') || '平台合规规则'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => autoFixMutation.mutate()}
+                          disabled={autoFixMutation.isPending || manualRecheckMutation.isPending}
+                        >
+                          {autoFixMutation.isPending ? (
+                            <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />修复中</>
+                          ) : (
+                            <><Sparkles className="mr-1.5 h-3.5 w-3.5" />自动修复</>
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={startManualEdit}
+                          disabled={autoFixMutation.isPending || manualRecheckMutation.isPending}
+                        >
+                          <Pencil className="mr-1.5 h-3.5 w-3.5" />手动修改
+                        </Button>
+                      </div>
+                    </div>
+                    {listingResult.suggestions.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {listingResult.suggestions.map((item) => (
+                          <Badge key={item.word} variant="outline" className="font-normal">
+                            {item.word} → {item.replacement || '需手动修改'}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                    {autoFixMutation.error && (
+                      <p className="text-xs text-destructive">
+                        {toErrorMessage(autoFixMutation.error, '自动修复失败')}
                       </p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {fixFeedback && (
+                <div className="border border-[color:color-mix(in_srgb,var(--factory-success)_35%,var(--factory-line))] bg-[color:color-mix(in_srgb,var(--factory-success)_8%,var(--factory-panel))] px-4 py-3 text-sm">
+                  <span className="flex items-center gap-2 text-[var(--factory-success)]">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {fixFeedback}
+                  </span>
+                </div>
+              )}
+
+              {manualEditing && (
+                <Card className="border-primary/30">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <Pencil className="h-4 w-4" />
+                      手动修改并复检
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="listing-edit-title">商品标题</Label>
+                      <Input
+                        id="listing-edit-title"
+                        value={manualDraft.title}
+                        onChange={(event) =>
+                          setManualDraft((current) => ({
+                            ...current,
+                            title: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="listing-edit-bullets">卖点，每行一条</Label>
+                      <textarea
+                        id="listing-edit-bullets"
+                        value={manualDraft.bulletPoints}
+                        onChange={(event) =>
+                          setManualDraft((current) => ({
+                            ...current,
+                            bulletPoints: event.target.value,
+                          }))
+                        }
+                        className="min-h-32 w-full resize-y border border-input bg-background px-3 py-2 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="listing-edit-description">商品详情</Label>
+                      <textarea
+                        id="listing-edit-description"
+                        value={manualDraft.description}
+                        onChange={(event) =>
+                          setManualDraft((current) => ({
+                            ...current,
+                            description: event.target.value,
+                          }))
+                        }
+                        className="min-h-40 w-full resize-y border border-input bg-background px-3 py-2 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="listing-edit-seo-title">SEO 标题</Label>
+                        <Input
+                          id="listing-edit-seo-title"
+                          value={manualDraft.seoTitle}
+                          onChange={(event) =>
+                            setManualDraft((current) => ({
+                              ...current,
+                              seoTitle: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="listing-edit-seo-description">SEO 描述</Label>
+                        <Input
+                          id="listing-edit-seo-description"
+                          value={manualDraft.seoDescription}
+                          onChange={(event) =>
+                            setManualDraft((current) => ({
+                              ...current,
+                              seoDescription: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    {manualRecheckMutation.error && (
+                      <p className="text-xs text-destructive">
+                        {toErrorMessage(manualRecheckMutation.error, '保存或复检失败')}
+                      </p>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setManualEditing(false)}
+                        disabled={manualRecheckMutation.isPending}
+                      >
+                        取消
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => manualRecheckMutation.mutate()}
+                        disabled={
+                          !manualDraft.title.trim() ||
+                          manualRecheckMutation.isPending
+                        }
+                      >
+                        {manualRecheckMutation.isPending ? (
+                          <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />复检中</>
+                        ) : (
+                          '保存并复检'
+                        )}
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -409,7 +675,7 @@ export default function ContentPage() {
               <IpRiskCard
                 report={currentIpRisk}
                 productId={selectedProduct}
-                listingId={generateMutation.data.listing_id}
+                listingId={listingResult.listing_id}
                 onReportChange={setCurrentIpRisk}
               />
 
@@ -417,12 +683,12 @@ export default function ContentPage() {
               <Card>
                 <CardHeader className="flex flex-row items-start justify-between">
                   <CardTitle className="text-sm">商品标题</CardTitle>
-                  <Button variant="ghost" size="icon" onClick={() => copyText(generateMutation.data.title, 'title')}>
+                  <Button variant="ghost" size="icon" onClick={() => copyText(listingResult.title, 'title')}>
                     {copied === 'title' ? <CheckCircle2 className="h-4 w-4 text-[var(--factory-success)]" /> : <Copy className="h-4 w-4" />}
                   </Button>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm">{generateMutation.data.title || '无'}</p>
+                  <p className="text-sm">{listingResult.title || '无'}</p>
                 </CardContent>
               </Card>
 
@@ -430,16 +696,16 @@ export default function ContentPage() {
               <Card>
                 <CardHeader className="flex flex-row items-start justify-between">
                   <CardTitle className="text-sm">卖点（Bullet Points）</CardTitle>
-                  <Button variant="ghost" size="icon" onClick={() => copyText(generateMutation.data.bullet_points.join('\n'), 'bullets')}>
+                  <Button variant="ghost" size="icon" onClick={() => copyText(listingResult.bullet_points.join('\n'), 'bullets')}>
                     {copied === 'bullets' ? <CheckCircle2 className="h-4 w-4 text-[var(--factory-success)]" /> : <Copy className="h-4 w-4" />}
                   </Button>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-1">
-                    {generateMutation.data.bullet_points.map((b, i) => (
+                    {listingResult.bullet_points.map((b, i) => (
                       <li key={i} className="text-sm flex items-start gap-2">
                         <span className="text-primary mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                        {b}
+                        {b.replace(/\*\*/g, '')}
                       </li>
                     ))}
                   </ul>
@@ -448,16 +714,16 @@ export default function ContentPage() {
 
               {/* 详情使用安全富文本预览，源码放在独立视图，避免格式标记直接铺开。 */}
               <ListingDescriptionCard
-                description={generateMutation.data.description}
+                description={listingResult.description}
                 copied={copied}
                 onCopy={copyText}
               />
 
               {/* SEO 描述保持摘要形态，并对历史超长数据提供折叠。 */}
-              {(generateMutation.data.seo_title || generateMutation.data.seo_description) && (
+              {(listingResult.seo_title || listingResult.seo_description) && (
                 <ListingSeoCard
-                  seoTitle={generateMutation.data.seo_title}
-                  seoDescription={generateMutation.data.seo_description}
+                  seoTitle={listingResult.seo_title}
+                  seoDescription={listingResult.seo_description}
                   copied={copied}
                   onCopy={copyText}
                 />
@@ -485,9 +751,9 @@ export default function ContentPage() {
                       <div className="space-y-3">
                         <p className="text-xs font-medium text-muted-foreground">译文（{language.toUpperCase()}）</p>
                         <div className="rounded-lg border bg-background p-3 space-y-1">
-                          <p className="text-sm font-medium">{generateMutation.data.title || '-'}</p>
-                          {generateMutation.data.bullet_points?.slice(0, 3).map((b: string, i: number) => (
-                            <p key={i} className="text-xs text-muted-foreground">• {b}</p>
+                          <p className="text-sm font-medium">{listingResult.title || '-'}</p>
+                          {listingResult.bullet_points?.slice(0, 3).map((b: string, i: number) => (
+                            <p key={i} className="text-xs text-muted-foreground">• {b.replace(/\*\*/g, '')}</p>
                           ))}
                         </div>
                       </div>
@@ -498,7 +764,7 @@ export default function ContentPage() {
             </>
           )}
 
-          {generateMutation.data && platform !== 'shopify' && capabilities && (
+          {listingResult && platform !== 'shopify' && capabilities && (
             <Card className="border-amber-500/20 bg-amber-500/5">
               <CardContent className="pt-6 text-sm text-muted-foreground">
                 {capabilities[platform]?.reason || '该平台暂不支持一键发布，当前仅生成 Listing 文案。'}
@@ -506,7 +772,7 @@ export default function ContentPage() {
             </Card>
           )}
 
-          {generateMutation.data && platform === 'shopify' && capabilities?.shopify?.publish_supported && channels && channels.length > 0 && (
+          {listingResult && platform === 'shopify' && capabilities?.shopify?.publish_supported && channels && channels.length > 0 && (
             <Card className="border-emerald-500/20 bg-emerald-500/5">
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -576,9 +842,9 @@ export default function ContentPage() {
                   disabled={
                     !selectedChannel ||
                     publishMutation.isPending ||
-                    generateMutation.data.compliance_status !== 'pass' ||
+                    listingResult.compliance_status !== 'pass' ||
                     isIpPublishBlocked(currentIpRisk) ||
-                    !generateMutation.data.listing_id ||
+                    !listingResult.listing_id ||
                     !hasPublishableVariant ||
                     selectedVariantIds.length === 0
                   }
@@ -586,7 +852,7 @@ export default function ContentPage() {
                 >
                   {publishMutation.isPending ? (
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" />发布中...</>
-                  ) : generateMutation.data.compliance_status !== 'pass' ? (
+                  ) : listingResult.compliance_status !== 'pass' ? (
                     <><AlertTriangle className="mr-2 h-4 w-4" />合规未通过，禁止发布</>
                   ) : isIpPublishBlocked(currentIpRisk) ? (
                     <><AlertTriangle className="mr-2 h-4 w-4" />{ipPublishBlockedLabel(currentIpRisk)}</>
@@ -613,7 +879,7 @@ export default function ContentPage() {
             </Card>
           )}
 
-          {!generateMutation.data && !generateMutation.isPending && (
+          {!listingResult && !generateMutation.isPending && (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                 <Sparkles className="h-12 w-12 mb-4 opacity-30" />

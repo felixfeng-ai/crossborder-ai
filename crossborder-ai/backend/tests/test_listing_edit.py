@@ -151,6 +151,65 @@ async def test_recheck_blocked_edited_listing(
 
 
 @pytest.mark.asyncio
+async def test_auto_fix_replaces_known_violation_and_passes(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """已知极限词应自动替换，复检后恢复可发布状态。"""
+    headers = await _register(client, "listing-auto-fix@example.com")
+    _, listing_id = await _create_generated_listing(client, headers, monkeypatch)
+
+    await client.put(
+        f"/api/v1/listings/{listing_id}",
+        json={
+            "title": "A perfect holiday gift",
+            "description": "A perfect choice for Christmas.",
+            "bullet_points": ["Perfect for small desks"],
+        },
+        headers=headers,
+    )
+    fixed = await client.post(
+        f"/api/v1/listings/{listing_id}/compliance/fix",
+        headers=headers,
+    )
+
+    assert fixed.status_code == 200, fixed.text
+    data = fixed.json()
+    assert data["compliance_status"] == "pass"
+    assert data["violations"] == []
+    assert data["fixed_count"] >= 3
+    assert "perfect" not in data["title"].lower()
+    assert "perfect" not in data["description"].lower()
+    assert all("perfect" not in item.lower() for item in data["bullet_points"])
+
+
+@pytest.mark.asyncio
+async def test_auto_fix_marks_unmapped_violation_for_manual_edit(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """没有安全替换词的命中项必须保留并提示手工修改。"""
+    headers = await _register(client, "listing-auto-fix-manual@example.com")
+    _, listing_id = await _create_generated_listing(client, headers, monkeypatch)
+
+    await client.put(
+        f"/api/v1/listings/{listing_id}",
+        json={"title": "Number one holiday decoration"},
+        headers=headers,
+    )
+    fixed = await client.post(
+        f"/api/v1/listings/{listing_id}/compliance/fix",
+        headers=headers,
+    )
+
+    assert fixed.status_code == 200, fixed.text
+    data = fixed.json()
+    assert data["compliance_status"] == "block"
+    assert data["needs_manual"] is True
+    assert "number one" in data["violations"]
+
+
+@pytest.mark.asyncio
 async def test_other_user_cannot_read_or_edit_listing(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,

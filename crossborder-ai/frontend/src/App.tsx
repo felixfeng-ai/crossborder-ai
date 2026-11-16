@@ -1,8 +1,9 @@
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { RouteFallback } from '@/components/common/RouteFallback'
 import { useAuthStore } from '@/stores/authStore'
 import { AdminGuard } from '@/pages/admin/AdminGuard'
+import { lazyWithRetry } from '@/lib/performance/lazyLoad'
 
 const PUBLIC_LEGAL_PATHS = [
   '/terms',
@@ -14,44 +15,44 @@ const PUBLIC_LEGAL_PATHS = [
   '/contact',
 ]
 
-const RootLayout = lazy(() =>
+const RootLayout = lazyWithRetry(() =>
   import('@/components/layout/root-layout').then((module) => ({
     default: module.RootLayout,
   })),
 )
-const LandingPage = lazy(() => import('@/pages/landing/LandingPage'))
-const LoginPage = lazy(() => import('@/pages/auth/LoginPage'))
-const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage'))
-const DashboardPage = lazy(() => import('@/pages/dashboard/DashboardPage'))
-const ProductsPage = lazy(() => import('@/pages/products/ProductsPage'))
-const ProductDetailPage = lazy(() => import('@/pages/products/ProductDetailPage'))
-const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'))
-const ContentPage = lazy(() => import('@/pages/content/ContentPage'))
-const BillingPage = lazy(() => import('@/pages/billing/BillingPage'))
-const AdminUpgradesPage = lazy(() => import('@/pages/billing/AdminUpgradesPage'))
-const ShopifyPage = lazy(() => import('@/pages/shopify/ShopifyPage'))
-const BatchPage = lazy(() => import('@/pages/batch/BatchPage'))
-const RadarPage = lazy(() => import('@/pages/radar/RadarPage'))
-const LedgerPage = lazy(() => import('@/pages/ledger/LedgerPage'))
-const AgentPage = lazy(() => import('@/pages/agent/AgentPage'))
-const ImagesPage = lazy(() => import('@/pages/images/ImagesPage'))
-const VideoWorkspacePage = lazy(() => import('@/pages/videos/VideoWorkspacePage'))
-const MaterialsPage = lazy(() => import('@/pages/assets/MaterialsPage'))
-const CatalogPage = lazy(() => import('@/pages/catalog/CatalogPage'))
-const OperationsPage = lazy(() => import('@/pages/operations/OperationsPage'))
-const TutorialPage = lazy(() => import('@/pages/tutorial/TutorialPage'))
-const LegalDocumentPage = lazy(() => import('@/pages/legal/LegalPage'))
-const FeedbackPage = lazy(() => import('@/pages/feedback/FeedbackPage'))
-const AdminLayout = lazy(() => import('@/pages/admin/AdminLayout'))
-const AdminOverviewPage = lazy(() => import('@/pages/admin/AdminOverviewPage'))
-const AdminAnalyticsPage = lazy(() => import('@/pages/admin/AdminAnalyticsPage'))
-const AdminPerformancePage = lazy(() => import('@/pages/admin/AdminPerformancePage'))
-const AdminPlansPage = lazy(() => import('@/pages/admin/AdminPlansPage'))
-const AdminFeedbackPage = lazy(() => import('@/pages/admin/AdminFeedbackPage'))
-const AdminAuditPage = lazy(() => import('@/pages/admin/AdminAuditPage'))
-const AdminProvidersPage = lazy(() => import('@/pages/admin/AdminProvidersPage'))
-const AdminPoliciesPage = lazy(() => import('@/pages/admin/AdminPoliciesPage'))
-const AdminAccessPage = lazy(() => import('@/pages/admin/AdminAccessPage'))
+const LandingPage = lazyWithRetry(() => import('@/pages/landing/LandingPage'))
+const LoginPage = lazyWithRetry(() => import('@/pages/auth/LoginPage'))
+const RegisterPage = lazyWithRetry(() => import('@/pages/auth/RegisterPage'))
+const DashboardPage = lazyWithRetry(() => import('@/pages/dashboard/DashboardPage'))
+const ProductsPage = lazyWithRetry(() => import('@/pages/products/ProductsPage'))
+const ProductDetailPage = lazyWithRetry(() => import('@/pages/products/ProductDetailPage'))
+const SettingsPage = lazyWithRetry(() => import('@/pages/settings/SettingsPage'))
+const ContentPage = lazyWithRetry(() => import('@/pages/content/ContentPage'))
+const BillingPage = lazyWithRetry(() => import('@/pages/billing/BillingPage'))
+const AdminUpgradesPage = lazyWithRetry(() => import('@/pages/billing/AdminUpgradesPage'))
+const ShopifyPage = lazyWithRetry(() => import('@/pages/shopify/ShopifyPage'))
+const BatchPage = lazyWithRetry(() => import('@/pages/batch/BatchPage'))
+const RadarPage = lazyWithRetry(() => import('@/pages/radar/RadarPage'))
+const LedgerPage = lazyWithRetry(() => import('@/pages/ledger/LedgerPage'))
+const AgentPage = lazyWithRetry(() => import('@/pages/agent/AgentPage'))
+const ImagesPage = lazyWithRetry(() => import('@/pages/images/ImagesPage'))
+const VideoWorkspacePage = lazyWithRetry(() => import('@/pages/videos/VideoWorkspacePage'))
+const MaterialsPage = lazyWithRetry(() => import('@/pages/assets/MaterialsPage'))
+const CatalogPage = lazyWithRetry(() => import('@/pages/catalog/CatalogPage'))
+const OperationsPage = lazyWithRetry(() => import('@/pages/operations/OperationsPage'))
+const TutorialPage = lazyWithRetry(() => import('@/pages/tutorial/TutorialPage'))
+const LegalDocumentPage = lazyWithRetry(() => import('@/pages/legal/LegalPage'))
+const FeedbackPage = lazyWithRetry(() => import('@/pages/feedback/FeedbackPage'))
+const AdminLayout = lazyWithRetry(() => import('@/pages/admin/AdminLayout'))
+const AdminOverviewPage = lazyWithRetry(() => import('@/pages/admin/AdminOverviewPage'))
+const AdminAnalyticsPage = lazyWithRetry(() => import('@/pages/admin/AdminAnalyticsPage'))
+const AdminPerformancePage = lazyWithRetry(() => import('@/pages/admin/AdminPerformancePage'))
+const AdminPlansPage = lazyWithRetry(() => import('@/pages/admin/AdminPlansPage'))
+const AdminFeedbackPage = lazyWithRetry(() => import('@/pages/admin/AdminFeedbackPage'))
+const AdminAuditPage = lazyWithRetry(() => import('@/pages/admin/AdminAuditPage'))
+const AdminProvidersPage = lazyWithRetry(() => import('@/pages/admin/AdminProvidersPage'))
+const AdminPoliciesPage = lazyWithRetry(() => import('@/pages/admin/AdminPoliciesPage'))
+const AdminAccessPage = lazyWithRetry(() => import('@/pages/admin/AdminAccessPage'))
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore()

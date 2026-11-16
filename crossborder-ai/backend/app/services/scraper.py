@@ -365,15 +365,15 @@ def _normalize_justone_product(data: dict) -> dict:
             "未能从 Just One API 识别商品标题，请稍后重试，或手动录入该商品"
         )
 
-    # V2 使用 main_imgs；V1 使用 mainPic.offerImgList。
-    images = data.get("main_imgs") or main_pic.get("offerImgList") or []
-    main_image_url = images[0] if images else item.get("defaultOfferImg")
-    if not main_image_url:
-        for image in data.get("images") or []:
-            if isinstance(image, dict):
-                main_image_url = image.get("fullPathImageURI")
-                if main_image_url:
-                    break
+    # V2 把主图视频放到 video_url，静态图仍放在 main_imgs；
+    # 图集为空时再使用 SKU 图，避免“视频主图”被误判为无图商品。
+    image_urls = _collect_justone_image_urls(data, item, main_pic)
+    main_image_url = image_urls[0] if image_urls else None
+    video_url = _clean_media_url(
+        data.get("video_url")
+        or item.get("videoUrl")
+        or item.get("video_url")
+    )
 
     raw_price = item.get("price")
     if raw_price is None:
@@ -404,7 +404,9 @@ def _normalize_justone_product(data: dict) -> dict:
     shop_info = data.get("shop_info") or {}
     return {
         "title": title,
-        "main_image_url": _clean_image_url(main_image_url),
+        "main_image_url": main_image_url,
+        "image_urls": image_urls,
+        "video_url": video_url,
         "price": round(price, 2) if price is not None else None,
         "sales_count": _clean_int(sales),
         "shop_name": _clean_text(
@@ -415,6 +417,60 @@ def _normalize_justone_product(data: dict) -> dict:
             max_len=255,
         ),
     }
+
+
+def _collect_justone_image_urls(
+    data: dict,
+    item: dict,
+    main_pic: dict,
+) -> list[str]:
+    """收集 Just One 的静态商品图和 SKU 图，保持原顺序并去重。"""
+    candidates: list[Any] = []
+    candidates.extend(data.get("main_imgs") or [])
+    candidates.extend(main_pic.get("offerImgList") or [])
+
+    # 兼容旧版 images 结构：元素可能是 URL，也可能是带 URI 的对象。
+    for image in data.get("images") or []:
+        if isinstance(image, dict):
+            candidates.append(
+                image.get("fullPathImageURI")
+                or image.get("imageUrl")
+                or image.get("image_url")
+            )
+        else:
+            candidates.append(image)
+
+    # V2 的 SKU 图位于 sku_props[].values[].imageUrl。
+    for prop in data.get("sku_props") or []:
+        if not isinstance(prop, dict):
+            continue
+        for value in prop.get("values") or []:
+            if isinstance(value, dict):
+                candidates.append(
+                    value.get("imageUrl")
+                    or value.get("image_url")
+                    or value.get("image")
+                )
+
+    # 部分历史响应会把图片直接挂在 SKU 上。
+    for sku in data.get("skus") or []:
+        if isinstance(sku, dict):
+            candidates.append(
+                sku.get("imageUrl")
+                or sku.get("image_url")
+                or sku.get("image")
+            )
+
+    candidates.append(item.get("defaultOfferImg"))
+
+    urls: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        url = _clean_image_url(candidate)
+        if url and url not in seen:
+            seen.add(url)
+            urls.append(url)
+    return urls
 
 
 # ════════════════════════════════════════════════════════════════
@@ -725,6 +781,11 @@ def _clean_int(value: Any) -> int | None:
 
 def _clean_image_url(value: Any) -> str | None:
     """归一主图地址：协议相对「//x」补 https；仅保留 http(s)。"""
+    return _clean_media_url(value)
+
+
+def _clean_media_url(value: Any) -> str | None:
+    """归一图片/视频地址：协议相对「//x」补 https；仅保留 http(s)。"""
     if not value:
         return None
     s = str(value).strip()
@@ -755,9 +816,12 @@ def _normalize_product(raw: dict, source: str) -> dict:
             "商品价格解析异常，请换一个商品链接试试，或手动录入该商品"
         )
 
+    main_image_url = _clean_image_url(raw.get("main_image_url"))
     return {
         "title": title,
-        "main_image_url": _clean_image_url(raw.get("main_image_url")),
+        "main_image_url": main_image_url,
+        "image_urls": [main_image_url] if main_image_url else [],
+        "video_url": _clean_media_url(raw.get("video_url")),
         "price": round(price, 2) if price is not None else None,
         "sales_count": _clean_int(raw.get("sales_count")),
         "shop_name": _clean_text(raw.get("shop_name"), max_len=255),

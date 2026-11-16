@@ -8,6 +8,7 @@
 5. 使用缓存装饰器减少重复查询
 """
 
+import json
 import math
 from datetime import datetime
 from typing import Literal, Optional
@@ -32,7 +33,7 @@ from app.services.plan_service import (
     feature_allowance_snapshot,
 )
 from app.services import provider_config
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -52,6 +53,8 @@ class ManualProductRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     description: Optional[str] = None
     main_image_url: Optional[str] = None
+    image_urls: Optional[list[str]] = None
+    video_url: Optional[str] = None
     price: Optional[float] = Field(
         None,
         ge=0,
@@ -74,6 +77,8 @@ class ProductResponse(BaseModel):
     url: str
     title: Optional[str] = None
     main_image_url: Optional[str] = None
+    image_urls: list[str] = Field(default_factory=list)
+    video_url: Optional[str] = None
     description: Optional[str] = None
     origin_type: str = "1688"
     price: Optional[float] = Field(
@@ -91,6 +96,22 @@ class ProductResponse(BaseModel):
 
     # from_attributes=True 允许从 SQLAlchemy 模型直接转换
     model_config = {"from_attributes": True}
+
+    @field_validator("image_urls", mode="before")
+    @classmethod
+    def parse_image_urls(cls, value):
+        """把数据库 JSON 文本解析为数组，兼容旧响应中的单个 URL。"""
+        if value is None or value == "":
+            return []
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except (TypeError, ValueError):
+                return [value] if value.startswith(("http://", "https://")) else []
+            return parsed if isinstance(parsed, list) else []
+        return []
 
 
 class ProductListResponse(BaseModel):
@@ -213,6 +234,12 @@ async def scrape_product(
         origin_type="1688",
         title=data["title"],
         main_image_url=data["main_image_url"],
+        image_urls=json.dumps(
+            data.get("image_urls")
+            or ([data["main_image_url"]] if data.get("main_image_url") else []),
+            ensure_ascii=False,
+        ),
+        video_url=data.get("video_url"),
         price=data["price"],
         sales_count=data["sales_count"],
         shop_name=data["shop_name"],
@@ -267,6 +294,12 @@ async def create_product_manual(
         title=payload.title,
         description=payload.description,
         main_image_url=payload.main_image_url,
+        image_urls=json.dumps(
+            payload.image_urls
+            or ([payload.main_image_url] if payload.main_image_url else []),
+            ensure_ascii=False,
+        ),
+        video_url=payload.video_url,
         price=payload.price,
         sales_count=payload.sales_count,
         shop_name=payload.shop_name,

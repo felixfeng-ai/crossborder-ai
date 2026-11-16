@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import RemoteImage from '@/components/common/RemoteImage'
 import ListingDescriptionCard from '@/components/content/ListingDescriptionCard'
 import ListingSeoCard from '@/components/content/ListingSeoCard'
 import VocInsightsCard from '@/components/content/VocInsightsCard'
@@ -14,7 +15,6 @@ import { IpRiskCard } from '@/components/content/IpRiskCard'
 import apiClient from '@/api/client'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { createIdempotencyKey } from '@/utils/idempotency'
-import { resolveMediaUrl } from '@/lib/apiUrl'
 import {
   ipPublishBlockedLabel,
   isIpPublishBlocked,
@@ -270,15 +270,12 @@ export default function ContentPage() {
                 <div className="space-y-3 border-t border-border pt-3">
                   <div className="flex items-start gap-3">
                     <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden border border-border bg-[var(--factory-raised)]">
-                      {selected.main_image_url ? (
-                        <img
-                          src={resolveMediaUrl(selected.main_image_url)}
-                          alt={selected.title || '商品主图'}
-                          className="h-full w-full object-contain p-1"
-                        />
-                      ) : (
-                        <ImageIcon className="h-5 w-5 text-muted-foreground" />
-                      )}
+                      <RemoteImage
+                        src={selected.main_image_url}
+                        alt={selected.title || '商品主图'}
+                        className="h-full w-full object-contain p-1"
+                        fallback={<ImageIcon className="h-5 w-5 text-muted-foreground" />}
+                      />
                     </div>
                     <div className="min-w-0 text-xs text-muted-foreground">
                       <p>供货参考价: {selected.price != null ? `¥${selected.price}` : '-'}</p>

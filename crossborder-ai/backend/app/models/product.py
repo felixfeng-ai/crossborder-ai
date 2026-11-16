@@ -66,6 +66,15 @@ class Product(Base):
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # 主图链接，后续 AI 生成 Listing 时可以直接引用
     main_image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # 完整商品图集以 JSON 文本保存，兼容 SQLite/PostgreSQL。
+    image_urls: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="[]",
+        server_default="[]",
+    )
+    # 1688 主图视频与静态图分开保存，视频不作为 main_image_url。
+    video_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     # ── 供货价/销量/店铺 ──────────────────────────────────────
     # price 是 1688 来源供货参考价，不是 Shopify/Amazon 的销售价。

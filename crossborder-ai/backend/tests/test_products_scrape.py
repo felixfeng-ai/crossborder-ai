@@ -61,7 +61,20 @@ def _justone_v2_raw() -> dict:
     return {
         "title": "智能感应垃圾桶家用卧室带盖",
         "item_id": 649418033224,
-        "main_imgs": ["https://img.example.com/v2-main.jpg"],
+        "main_imgs": [
+            "https://img.example.com/v2-main.jpg",
+            "https://img.example.com/v2-gallery.jpg",
+        ],
+        "video_url": "https://video.example.com/v2-main.mp4",
+        "sku_props": [
+            {
+                "prop_name": "颜色",
+                "values": [
+                    {"imageUrl": "https://img.example.com/v2-sku-white.jpg"},
+                    {"imageUrl": "https://img.example.com/v2-sku-gray.jpg"},
+                ],
+            }
+        ],
         "price_info": {
             "price": "13.90",
             "price_min": "13.90",
@@ -399,13 +412,35 @@ def test_justone_empty_data_is_product_not_found():
 
 
 def test_justone_v2_field_mapping():
-    """解析真实 V2 字段：main_imgs/price_info/sale_info/shop_info。"""
+    """主图视频存在时，静态图集和视频地址必须分别保留。"""
     product = scraper_mod._normalize_justone_product(_justone_v2_raw())
     assert product["title"] == "智能感应垃圾桶家用卧室带盖"
     assert product["main_image_url"] == "https://img.example.com/v2-main.jpg"
+    assert product["image_urls"] == [
+        "https://img.example.com/v2-main.jpg",
+        "https://img.example.com/v2-gallery.jpg",
+        "https://img.example.com/v2-sku-white.jpg",
+        "https://img.example.com/v2-sku-gray.jpg",
+    ]
+    assert product["video_url"] == "https://video.example.com/v2-main.mp4"
     assert product["price"] == 13.9
     assert product["sales_count"] == 268
     assert product["shop_name"] == "义乌市测试日用百货有限公司"
+
+
+def test_justone_video_only_falls_back_to_sku_image():
+    """没有主图静态图时，必须使用第一张 SKU 图兜底。"""
+    raw = _justone_v2_raw()
+    raw["main_imgs"] = []
+
+    product = scraper_mod._normalize_justone_product(raw)
+
+    assert product["main_image_url"] == "https://img.example.com/v2-sku-white.jpg"
+    assert product["image_urls"] == [
+        "https://img.example.com/v2-sku-white.jpg",
+        "https://img.example.com/v2-sku-gray.jpg",
+    ]
+    assert product["video_url"] == "https://video.example.com/v2-main.mp4"
 
 
 @pytest.mark.asyncio
@@ -426,3 +461,48 @@ async def test_scrape_status_configured_by_justone_only(
     )
     assert response.status_code == 200, response.text
     assert response.json()["configured"] is True
+
+
+@pytest.mark.asyncio
+async def test_scrape_persists_justone_gallery_and_video(
+    client: AsyncClient,
+    auth_headers: dict,
+    db_session,
+    monkeypatch,
+):
+    """Just One 图集和视频地址必须随商品落库，并可从详情接口读取。"""
+    db_session.add(
+        SystemConfig(key="provider:justone:token", value="justone-token")
+    )
+    await db_session.flush()
+
+    async def fake_justone(offer_id, token):
+        assert offer_id == "610699151352"
+        assert token == "justone-token"
+        return _justone_v2_raw()
+
+    monkeypatch.setattr(scraper_mod, "_fetch_justone", fake_justone)
+
+    response = await client.post(
+        "/api/v1/products/scrape",
+        json={"url": OFFER_URL},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201, response.text
+    product = response.json()["product"]
+    assert product["main_image_url"] == "https://img.example.com/v2-main.jpg"
+    assert product["image_urls"] == [
+        "https://img.example.com/v2-main.jpg",
+        "https://img.example.com/v2-gallery.jpg",
+        "https://img.example.com/v2-sku-white.jpg",
+        "https://img.example.com/v2-sku-gray.jpg",
+    ]
+    assert product["video_url"] == "https://video.example.com/v2-main.mp4"
+
+    detail = await client.get(
+        f"/api/v1/products/{product['id']}",
+        headers=auth_headers,
+    )
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["image_urls"] == product["image_urls"]
+    assert detail.json()["video_url"] == product["video_url"]

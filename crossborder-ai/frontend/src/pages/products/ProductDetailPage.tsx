@@ -19,15 +19,18 @@ import {
   Boxes,
   Save,
   X,
+  PlayCircle,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import RemoteImage from '@/components/common/RemoteImage'
 import apiClient from '@/api/client'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { variantSaveErrorMessage } from '@/lib/productVariantError'
+import { normalizeProductMedia } from '@/lib/products/media'
 
 const PLATFORMS = [
   { id: 'amazon', label: 'Amazon', color: 'bg-amber-500/10 text-[var(--factory-warning)]' },
@@ -86,6 +89,7 @@ export default function ProductDetailPage() {
   const [variantStock, setVariantStock] = useState('0')
   const [isBatchStockEditing, setIsBatchStockEditing] = useState(false)
   const [batchStockValues, setBatchStockValues] = useState<Record<string, string>>({})
+  const [selectedImageUrl, setSelectedImageUrl] = useState('')
 
   const { data: product, isLoading } = useQuery({
     queryKey: ['product', id],
@@ -122,6 +126,11 @@ export default function ProductDetailPage() {
     },
     enabled: !!editingListingId,
   })
+
+  useEffect(() => {
+    const media = normalizeProductMedia(product || {})
+    setSelectedImageUrl(media.images[0] || '')
+  }, [product])
 
   useEffect(() => {
     if (!editingListing) return
@@ -273,6 +282,11 @@ export default function ProductDetailPage() {
     )
   }
 
+  const media = normalizeProductMedia(product)
+  const selectedImage = media.images.includes(selectedImageUrl)
+    ? selectedImageUrl
+    : media.images[0]
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       {/* 返回按钮 */}
@@ -285,13 +299,38 @@ export default function ProductDetailPage() {
         <div className="space-y-4 lg:col-span-1">
           <Card>
             <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden rounded-t-xl">
-              {product.main_image_url ? (
-                <img src={product.main_image_url} alt={product.title} className="h-full w-full object-cover" />
-              ) : (
-                <ShoppingBag className="h-16 w-16 text-muted-foreground/30" />
-              )}
+              <RemoteImage
+                src={selectedImage}
+                alt={product.title}
+                className="h-full w-full object-cover"
+                fallback={<ShoppingBag className="h-16 w-16 text-muted-foreground/30" />}
+              />
             </div>
             <CardContent className="p-4 space-y-3">
+              {media.images.length > 1 && (
+                <div className="grid grid-cols-5 gap-2">
+                  {media.images.slice(0, 10).map((image, index) => (
+                    <button
+                      key={image}
+                      type="button"
+                      onClick={() => setSelectedImageUrl(image)}
+                      className={`aspect-square overflow-hidden rounded-md border ${
+                        selectedImage === image
+                          ? 'border-primary ring-1 ring-primary/30'
+                          : 'border-border'
+                      }`}
+                      aria-label={`查看商品图片 ${index + 1}`}
+                    >
+                      <RemoteImage
+                        src={image}
+                        alt={`${product.title || '商品'} ${index + 1}`}
+                        className="h-full w-full object-cover"
+                        fallback={<ShoppingBag className="h-5 w-5 text-muted-foreground/40" />}
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
               <h1 className="font-semibold leading-snug">{product.title || '无标题'}</h1>
               <div className="flex items-center justify-between">
                 {product.price != null && (
@@ -316,6 +355,18 @@ export default function ProductDetailPage() {
                 <ExternalLink className="h-3 w-3" />
                 查看 1688 原链接
               </a>
+              {media.videoUrl && (
+                <a
+                  href={media.videoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerPolicy="no-referrer"
+                  className="flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <PlayCircle className="h-3 w-3" />
+                  查看商品主图视频
+                </a>
+              )}
             </CardContent>
           </Card>
         </div>

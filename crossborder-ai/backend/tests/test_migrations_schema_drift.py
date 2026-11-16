@@ -107,6 +107,8 @@ def test_repair_migration_restores_stamped_schema_drift(
         "cost_currency",
         "moq",
         "lead_time_days",
+        "image_urls",
+        "video_url",
     } <= _column_names(engine, "products")
     assert {
         "origin_type",
@@ -130,7 +132,7 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "048_marketing_image_suites"
+    assert version == "049_product_media"
     assert {
         "traffic_events",
         "feedback_tickets",
@@ -242,10 +244,12 @@ def test_full_sqlite_upgrade_from_empty_database(
         "cost_currency",
         "moq",
         "lead_time_days",
+        "image_urls",
+        "video_url",
     } <= _column_names(engine, "products")
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "048_marketing_image_suites"
+    assert version == "049_product_media"
     assert {
         "traffic_events",
         "feedback_tickets",

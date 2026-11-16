@@ -83,8 +83,16 @@ echo "[2/6] 后端依赖就绪"
 cd "$PROJECT_DIR/frontend"
 npm ci --no-audit --no-fund
 npm run build
-rm -rf "$WEB_ROOT"/*
-cp -r dist/* "$WEB_ROOT/"
+
+# 新哈希资源先落盘，再切换 index.html；旧 chunk 保留 14 天，
+# 避免仍停留在旧版本的页面在懒加载时拿到 404。
+install -d "$WEB_ROOT" "$WEB_ROOT/assets"
+cp -a dist/assets/. "$WEB_ROOT/assets/"
+find dist -mindepth 1 -maxdepth 1 ! -name assets ! -name index.html \
+  -exec cp -a {} "$WEB_ROOT/" \;
+cp dist/index.html "$WEB_ROOT/index.html.tmp"
+mv -f "$WEB_ROOT/index.html.tmp" "$WEB_ROOT/index.html"
+find "$WEB_ROOT/assets" -type f -mtime +14 -delete
 echo "[3/6] 前端已发布到 $WEB_ROOT"
 
 # 迁移失败必须阻断发布，不能再 stamp head 掩盖 schema 漂移。

@@ -16,7 +16,6 @@ import {
   Settings,
   Sparkles,
   Trash2,
-  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Upload,
@@ -27,8 +26,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import ConfirmDialog from '@/components/common/ConfirmDialog'
+import RemoteImage from '@/components/common/RemoteImage'
 import apiClient from '@/api/client'
-import { resolveMediaUrl } from '@/lib/apiUrl'
 import {
   buildOwnProductPayload,
   productOriginLabel,
@@ -46,6 +46,8 @@ interface Product {
   url: string
   title: string | null
   main_image_url: string | null
+  image_urls: string[]
+  video_url: string | null
   price: number | null
   sales_count: number | null
   shop_name: string | null
@@ -80,6 +82,7 @@ export default function ProductsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState<'single' | 'batch' | 'all' | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState('')
 
   // 手动输入表单
   const [manualForm, setManualForm] = useState({
@@ -151,15 +154,32 @@ export default function ProductsPage() {
     },
   })
 
+  const closeDeleteDialog = () => {
+    setConfirmDelete(null)
+    setDeleteTarget(null)
+    setDeleteError('')
+  }
+
+  const finishDelete = () => {
+    queryClient.invalidateQueries({ queryKey: ['products'] })
+    setSelected(new Set())
+    closeDeleteDialog()
+  }
+
+  const handleDeleteError = (error: unknown) => {
+    setDeleteError(toErrorMessage(error, '删除失败，请稍后重试'))
+  }
+
   // 删除单个
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiClient.delete(`/products/${id}`)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      setSelected(new Set())
+    onMutate: () => {
+      setDeleteError('')
     },
+    onSuccess: finishDelete,
+    onError: handleDeleteError,
   })
 
   // 批量删除
@@ -167,10 +187,11 @@ export default function ProductsPage() {
     mutationFn: async (ids: string[]) => {
       await apiClient.post('/products/batch-delete', { ids })
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      setSelected(new Set())
+    onMutate: () => {
+      setDeleteError('')
     },
+    onSuccess: finishDelete,
+    onError: handleDeleteError,
   })
 
   // 全量删除
@@ -178,10 +199,11 @@ export default function ProductsPage() {
     mutationFn: async () => {
       await apiClient.delete('/products')
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      setSelected(new Set())
+    onMutate: () => {
+      setDeleteError('')
     },
+    onSuccess: finishDelete,
+    onError: handleDeleteError,
   })
 
   const handleScrape = () => {
@@ -234,9 +256,10 @@ export default function ProductsPage() {
     }
   }
 
-  const handleDeleteClick = (id: string) => {
-    setDeleteTarget(id)
-    setConfirmDelete('single')
+  const openDeleteDialog = (mode: 'single' | 'batch' | 'all', id?: string) => {
+    setDeleteError('')
+    setDeleteTarget(id || null)
+    setConfirmDelete(mode)
   }
 
   const executeDelete = () => {
@@ -247,11 +270,23 @@ export default function ProductsPage() {
     } else if (confirmDelete === 'all') {
       deleteAllMutation.mutate()
     }
-    setConfirmDelete(null)
-    setDeleteTarget(null)
   }
 
   const isDeleting = deleteMutation.isPending || batchDeleteMutation.isPending || deleteAllMutation.isPending
+  const deleteTargetProduct = data?.items.find((product) => product.id === deleteTarget)
+  const deleteDialogTitle =
+    confirmDelete === 'batch'
+      ? `删除选中的 ${selected.size} 个商品？`
+      : confirmDelete === 'all'
+        ? '删除全部商品？'
+        : '删除这个商品？'
+  const deleteDialogDescription =
+    deleteError ||
+    (confirmDelete === 'single'
+      ? `商品「${deleteTargetProduct?.title || '无标题商品'}」删除后无法恢复。`
+      : confirmDelete === 'batch'
+        ? `将删除当前选中的 ${selected.size} 个商品，此操作无法恢复。`
+        : '将删除你账号下的全部商品，此操作无法恢复。')
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
@@ -268,13 +303,13 @@ export default function ProductsPage() {
           {selected.size > 0 && (
             <>
               <span className="text-sm text-muted-foreground self-center">已选 {selected.size} 个</span>
-              <Button variant="destructive" size="sm" onClick={() => setConfirmDelete('batch')} className="gap-1">
+              <Button variant="destructive" size="sm" onClick={() => openDeleteDialog('batch')} className="gap-1">
                 <Trash2 className="h-4 w-4" />删除选中
               </Button>
             </>
           )}
           {data && data.total > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setConfirmDelete('all')} className="gap-1 text-destructive">
+            <Button variant="outline" size="sm" onClick={() => openDeleteDialog('all')} className="gap-1 text-destructive">
               <Trash2 className="h-4 w-4" />删除全部
             </Button>
           )}
@@ -332,30 +367,14 @@ export default function ProductsPage() {
         </button>
       </div>
 
-      {/* 确认弹窗 */}
-      {confirmDelete && (
-        <Card className={`${confirmDelete === 'all' ? 'border-destructive' : 'border-destructive/50'} bg-destructive/5`}>
-          <CardContent className="pt-4 flex items-start justify-between">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
-              <div>
-                <p className="font-medium text-sm">
-                  {confirmDelete === 'single' ? '确认删除此商品？' :
-                   confirmDelete === 'batch' ? `确认删除选中的 ${selected.size} 个商品？` :
-                   '确认删除全部商品？'}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">此操作不可撤销</p>
-              </div>
-            </div>
-            <div className="flex gap-2 shrink-0">
-              <Button size="sm" variant="destructive" onClick={executeDelete} disabled={isDeleting}>
-                {isDeleting ? '删除中...' : '确认删除'}
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setConfirmDelete(null)}>取消</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title={deleteDialogTitle}
+        description={deleteDialogDescription}
+        pending={isDeleting}
+        onCancel={closeDeleteDialog}
+        onConfirm={executeDelete}
+      />
 
       {/* 自动抓取 */}
       {entryMode === '1688' && (
@@ -415,15 +434,12 @@ export default function ProductsPage() {
                 <div>
                   <Label>商品主图</Label>
                   <div className="mt-2 flex aspect-square items-center justify-center overflow-hidden border border-dashed border-border bg-secondary">
-                    {manualForm.mainImageUrl ? (
-                      <img
-                        src={resolveMediaUrl(manualForm.mainImageUrl)}
-                        alt="自有商品主图"
-                        className="h-full w-full object-contain p-2"
-                      />
-                    ) : (
-                      <ImagePlus className="h-6 w-6 text-muted-foreground" />
-                    )}
+                    <RemoteImage
+                      src={manualForm.mainImageUrl}
+                      alt="自有商品主图"
+                      className="h-full w-full object-contain p-2"
+                      fallback={<ImagePlus className="h-6 w-6 text-muted-foreground" />}
+                    />
                   </div>
                   <Button
                     type="button"
@@ -610,16 +626,17 @@ export default function ProductsPage() {
                     className="flex h-14 w-14 items-center justify-center overflow-hidden rounded border border-border bg-secondary"
                     aria-label={`打开 ${product.title || '无标题商品'}`}
                   >
-                    {product.main_image_url ? (
-                      <img
-                        src={resolveMediaUrl(product.main_image_url)}
-                        alt=""
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <ShoppingBag className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
-                    )}
+                    <RemoteImage
+                      src={product.main_image_url}
+                      alt={product.title || '商品主图'}
+                      className="h-full w-full object-cover"
+                      fallback={
+                        <ShoppingBag
+                          className="h-6 w-6 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                      }
+                    />
                   </button>
                   <div className="min-w-0">
                     <button
@@ -662,7 +679,7 @@ export default function ProductsPage() {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDeleteClick(product.id)}
+                    onClick={() => openDeleteDialog('single', product.id)}
                     aria-label={`删除 ${product.title || '无标题商品'}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />

@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import RemoteImage from '@/components/common/RemoteImage'
 import apiClient from '@/api/client'
 import { toErrorMessage } from '@/utils/errorMessage'
 
@@ -213,11 +214,14 @@ export default function RadarPage() {
                     ) : (
                       <div className="flex gap-3">
                         <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0">
-                          {c.main_image_url ? (
-                            <img src={c.main_image_url} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <ShoppingBag className="h-6 w-6 text-muted-foreground/40" />
-                          )}
+                          <RemoteImage
+                            src={c.main_image_url}
+                            alt={c.title || '竞品商品主图'}
+                            className="w-full h-full object-cover"
+                            fallback={
+                              <ShoppingBag className="h-6 w-6 text-muted-foreground/40" />
+                            }
+                          />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium leading-snug line-clamp-2">{c.title || '未知商品'}</p>

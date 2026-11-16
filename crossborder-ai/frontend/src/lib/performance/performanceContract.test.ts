@@ -10,12 +10,20 @@ describe('frontend performance contract', () => {
   it('lazy-loads every route and suspends while chunks load', () => {
     const app = readSource('src/App.tsx')
 
-    expect(app).toContain('lazy(')
+    expect(app).toContain('lazyWithRetry(')
     expect(app).toContain('<Suspense')
     expect(app).toContain("import('@/pages/landing/LandingPage')")
     expect(app).toContain("import('@/pages/images/ImagesPage')")
     expect(app).not.toContain("import LandingPage from '@/pages/landing/LandingPage'")
     expect(app).not.toContain("import ImagesPage from '@/pages/images/ImagesPage'")
+  })
+
+  it('keeps old hashed chunks available during a production release', () => {
+    const deploy = readSource('../deploy/veyaship/cicd-deploy.sh')
+
+    expect(deploy).not.toContain('rm -rf "$WEB_ROOT"/*')
+    expect(deploy).toContain('index.html.tmp')
+    expect(deploy).toContain('-mtime +14')
   })
 
   it('defers below-fold paint and lazy-loads the demo image', () => {

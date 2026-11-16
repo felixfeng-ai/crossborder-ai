@@ -16,6 +16,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import type { SelectionReport } from '@/types'
+import { normalizeSelectionProducts } from '@/lib/agent/selectionReport'
 
 /**
  * ProductReportCard - Agent 品类/选品报告卡片
@@ -24,9 +25,16 @@ import type { SelectionReport } from '@/types'
  * 市场指标 KPI 网格 → 候选商品列表 → 推荐结论横幅。
  * 字段缺失自动隐藏对应区块（LLM 输出容错）。
  */
-export default function ProductReportCard({ report }: { report: SelectionReport }) {
+export default function ProductReportCard({
+  report,
+  mode = 'select',
+}: {
+  report: SelectionReport
+  mode?: 'select' | 'category'
+}) {
   const market = report.market
-  const products = report.products || []
+  const products =
+    mode === 'category' ? [] : normalizeSelectionProducts(report.products)
   const rec = report.recommendation
 
   // LLM 字段漂移容错：reasons/risks/user_pains/risk_tips 可能是字符串而非数组

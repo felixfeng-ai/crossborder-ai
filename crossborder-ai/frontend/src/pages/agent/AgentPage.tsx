@@ -383,7 +383,11 @@ export default function AgentPage({
 
           {/* 结构化报告卡片（品类分析 + 选品可并存，逐张渲染） */}
           {reportSteps.map((step, idx) => (
-            <ProductReportCard key={idx} report={step.data!.structured!} />
+            <ProductReportCard
+              key={idx}
+              report={step.data!.structured!}
+              mode={step.action === 'analyze_category' ? 'category' : 'select'}
+            />
           ))}
 
           {policySteps.map((step, idx) => (

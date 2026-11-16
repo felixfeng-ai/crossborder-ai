@@ -59,6 +59,7 @@ from app.services.shopify_operations_sync import (
 )
 from app.services.store_check_service import run_store_check as execute_store_check
 from app.services.ip_risk import screen_product_text
+from app.services.selection_report import normalize_selection_report
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1803,6 +1804,10 @@ class AgentOrchestrator:
 
             structured = _extract_json(raw)
             if structured:
+                structured = normalize_selection_report(
+                    structured,
+                    include_products=True,
+                )
                 structured = _attach_product_links(structured)
                 data = {
                     "keyword": keyword,
@@ -1849,6 +1854,10 @@ class AgentOrchestrator:
 
             structured = _extract_json(raw)
             if structured:
+                structured = normalize_selection_report(
+                    structured,
+                    include_products=False,
+                )
                 structured = _attach_product_links(structured)
                 data = {
                     "keyword": keyword,

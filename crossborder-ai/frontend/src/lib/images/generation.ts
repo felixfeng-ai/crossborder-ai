@@ -115,9 +115,21 @@ export function imageGenerationCredits(
   mode: ImageGenerationMode,
   qualityTier: ImageQualityTier,
   count = 1,
+  referenceCount?: number,
 ): number {
   const safeCount = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1
-  return IMAGE_QUALITY_TIERS[qualityTier].credits[mode] * safeCount
+  const billingMode = effectiveImageGenerationMode(mode, referenceCount)
+  return IMAGE_QUALITY_TIERS[qualityTier].credits[billingMode] * safeCount
+}
+
+export function effectiveImageGenerationMode(
+  mode: ImageGenerationMode,
+  referenceCount?: number,
+): ImageGenerationMode {
+  if (mode === 'product_scene' && referenceCount === 0) {
+    return 'free_creation'
+  }
+  return mode
 }
 
 export function validateImageGeneration(
@@ -131,7 +143,6 @@ export function validateImageGeneration(
   }
   if (!(draft.qualityTier in IMAGE_QUALITY_TIERS)) return '请选择有效的质量档位'
   if (draft.mode === 'product_scene') {
-    if (draft.referenceAssetIds.length < 1) return '商品场景至少需要 1 张参考图'
     if (draft.referenceAssetIds.length > 4) return '商品场景最多支持 4 张参考图'
   }
   if (draft.mode === 'platform_white' && draft.referenceAssetIds.length < 1) {

@@ -98,9 +98,11 @@ def image_generation_credits(
     mode: str,
     quality_tier: str,
     num_outputs: int,
+    reference_count: int | None = None,
 ) -> int:
     """按模式、质量档和数量计算积分；旧请求继续沿用每张 3 积分。"""
     count = max(1, min(int(num_outputs or 1), 4))
+    mode = effective_image_generation_mode(mode, reference_count)
     if mode == "legacy":
         return count * 3
     if mode in IMAGE_EDIT_CREDITS:
@@ -118,8 +120,10 @@ def estimate_image_cost_micros(
     mode: str,
     quality_tier: str,
     num_outputs: int,
+    reference_count: int | None = None,
 ) -> int:
     """估算服务商成本；白底本地处理不产生模型调用成本。"""
+    mode = effective_image_generation_mode(mode, reference_count)
     if mode == "platform_white":
         return 0
     if mode == "upscale":
@@ -137,6 +141,16 @@ def estimate_image_cost_micros(
     )
 
 
+def effective_image_generation_mode(
+    mode: str,
+    reference_count: int | None,
+) -> str:
+    """商品场景没有参考图时降级为文字生成，避免调用参考图专用路由。"""
+    if mode == "product_scene" and reference_count == 0:
+        return "free_creation"
+    return mode
+
+
 def public_image_capabilities() -> dict:
     """返回前端可见的图片生成能力矩阵。"""
     return {
@@ -152,7 +166,7 @@ def public_image_capabilities() -> dict:
             for spec in IMAGE_QUALITY_TIERS.values()
         ],
         "aspect_ratios": list(IMAGE_ASPECT_RATIOS),
-        "reference_image_limit": {"min": 1, "max": 4},
+        "reference_image_limit": {"min": 0, "max": 4},
         "edit_operations": [
             {
                 "id": operation,

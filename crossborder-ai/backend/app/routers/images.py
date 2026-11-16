@@ -54,6 +54,7 @@ from app.services.image_processing import (
     normalize_uploaded_image,
 )
 from app.services.image_quality import (
+    effective_image_generation_mode,
     estimate_image_cost_micros,
     image_generation_credits as calculate_image_credits,
     public_image_capabilities,
@@ -644,8 +645,14 @@ async def schedule_image_task(
     idempotency_key: Optional[str] = None,
 ) -> str:
     """建 pending 记录并后台调度生成；返回 task_id（供 POST /generate 与 content 主图复用）。"""
-    credits_cost = calculate_image_credits(mode, quality_tier or "fast", num_outputs)
     reference_ids = reference_asset_ids or []
+    effective_mode = effective_image_generation_mode(mode, len(reference_ids))
+    credits_cost = calculate_image_credits(
+        mode,
+        quality_tier or "fast",
+        num_outputs,
+        len(reference_ids),
+    )
     task = ImageGenerationTask(
         user_id=user_id,
         campaign_id=campaign_id,
@@ -664,6 +671,7 @@ async def schedule_image_task(
         generation_params_json=json.dumps(
             {
                 "mode": mode,
+                "effective_mode": effective_mode,
                 "quality_tier": quality_tier,
                 "provider": provider,
                 "resolution": resolution,
@@ -676,6 +684,7 @@ async def schedule_image_task(
             mode,
             quality_tier or "fast",
             num_outputs,
+            len(reference_ids),
         ),
         idempotency_key=idempotency_key,
         status="pending",
@@ -747,8 +756,6 @@ async def _resolve_reference_assets(
 ) -> list[ImageAsset]:
     """逐张校验参考图归属；跨用户素材统一返回 404，避免泄露存在性。"""
     if not payload.reference_asset_ids:
-        if _image_mode(payload) == "product_scene":
-            raise HTTPException(status_code=400, detail="商品场景至少需要 1 张参考图")
         return []
     ids = list(dict.fromkeys(payload.reference_asset_ids))
     if len(ids) > 4:
@@ -860,8 +867,12 @@ async def generate_image(
         payload,
         current_user.id,
     )
+    effective_mode = effective_image_generation_mode(
+        mode,
+        len(reference_assets),
+    )
     provider_status = _configured_image_providers()
-    if mode == "product_scene":
+    if effective_mode == "product_scene":
         if payload.provider == "aliyun":
             raise HTTPException(
                 status_code=400,
@@ -899,7 +910,7 @@ async def generate_image(
             detail="Seedream 图片生成服务暂未配置，请管理员检查方舟 API Key",
         )
     elif (
-        mode != "platform_white"
+        effective_mode != "platform_white"
         and not provider_status["aliyun"]
         and not provider_status["replicate"]
         and not provider_status["seedream"]
@@ -911,6 +922,7 @@ async def generate_image(
             mode,
             quality_tier or "fast",
             payload.num_outputs,
+            len(reference_assets),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

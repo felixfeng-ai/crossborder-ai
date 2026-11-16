@@ -26,6 +26,7 @@ from app.services.image_provider import (
 )
 from app.services.image_quality import (
     IMAGE_QUALITY_TIERS,
+    effective_image_generation_mode,
     resolve_image_resolution,
 )
 
@@ -83,14 +84,14 @@ async def run_image_generation(
         supported = [
             name
             for name in _provider_order(task)
-            if get_image_provider(name).supports(task.mode, request.quality_tier)
+            if get_image_provider(name).supports(request.mode, request.quality_tier)
         ]
         if not supported:
             await update(
                 status="failed",
                 error=(
                     "商品场景参考图生成服务暂不可用，请管理员检查 Seedream 或 Replicate 配置"
-                    if task.mode == "product_scene"
+                    if request.mode == "product_scene"
                     else "图片编辑服务暂未配置，请管理员检查 Replicate 编辑模型"
                     if task.mode in {"inpaint", "outpaint", "remove_object", "upscale"}
                     else "暂无可用图片生成服务，请稍后重试"
@@ -153,7 +154,7 @@ async def run_image_generation(
         logger.warning("图片生成 Provider 全部失败 task=%s: %s", tid, errors)
         await update(
             status="failed",
-            error=_provider_failure_message(task.mode, errors),
+            error=_provider_failure_message(request.mode, errors),
             finished_at=datetime.now(timezone.utc),
         )
     except Exception as exc:
@@ -167,7 +168,11 @@ async def run_image_generation(
 
 def _provider_order(task: ImageGenerationTask) -> list[str]:
     """按任务能力选择 Provider，商品场景只进入支持参考图的候选集合。"""
-    if task.mode == "product_scene":
+    effective_mode = effective_image_generation_mode(
+        task.mode,
+        _task_reference_count(task),
+    )
+    if effective_mode == "product_scene":
         if task.provider in {"seedream", "replicate"}:
             return [task.provider]
         return ["seedream", "replicate"]
@@ -178,6 +183,15 @@ def _provider_order(task: ImageGenerationTask) -> list[str]:
     if task.provider in {"aliyun", "replicate", "seedream"}:
         return [task.provider]
     return ["aliyun", "replicate", "seedream"]
+
+
+def _task_reference_count(task: ImageGenerationTask) -> int:
+    """从任务快照读取参考图数量，兼容空值和历史脏数据。"""
+    try:
+        items = json.loads(task.reference_assets_json or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return 0
+    return len(items) if isinstance(items, list) else 0
 
 
 def _provider_failure_message(mode: str, errors: list[str]) -> str:
@@ -225,16 +239,20 @@ def _build_provider_request(
     )
     quality = IMAGE_QUALITY_TIERS.get(quality_tier)
     aspect_ratio = task.aspect_ratio or "1:1"
+    effective_mode = effective_image_generation_mode(
+        task.mode,
+        len(references),
+    )
     resolution = (
         resolve_image_resolution(quality_tier, aspect_ratio)
-        if task.mode in {"free_creation", "legacy"}
+        if effective_mode in {"free_creation", "legacy"}
         else task.resolution or (
             quality.resolution if quality is not None else "1024x1024"
         )
     )
     return ImageProviderRequest(
         prompt=prompt,
-        mode=task.mode,
+        mode=effective_mode,
         quality_tier=quality_tier,
         resolution=resolution,
         aspect_ratio=aspect_ratio,

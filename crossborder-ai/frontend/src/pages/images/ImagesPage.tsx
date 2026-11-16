@@ -44,6 +44,7 @@ import {
   IMAGE_GENERATION_MODES,
   IMAGE_QUALITY_TIERS,
   buildImageGenerationRequest,
+  effectiveImageGenerationMode,
   imageGenerationCredits,
   validateImageGeneration,
   type ImageGenerationMode,
@@ -179,7 +180,18 @@ export default function ImagesPage() {
     (asset) => asset.kind !== 'processed' || asset.source_asset_id,
   )
   const selectedMode = IMAGE_GENERATION_MODES.find((item) => item.id === mode)
-  const estimatedCredits = imageGenerationCredits(mode, qualityTier, numOutputs)
+  const billingMode = effectiveImageGenerationMode(
+    mode,
+    mode === 'product_scene' || mode === 'platform_white'
+      ? referenceAssetIds.length
+      : undefined,
+  )
+  const estimatedCredits = imageGenerationCredits(
+    mode,
+    qualityTier,
+    numOutputs,
+    mode === 'product_scene' ? referenceAssetIds.length : undefined,
+  )
   const validationError = validateImageGeneration({
     mode,
     prompt,
@@ -355,7 +367,11 @@ export default function ImagesPage() {
     } else {
       setUseBrandPersona(true)
     }
-    if (nextMode === 'product_scene' && provider === 'aliyun') {
+    if (
+      nextMode === 'product_scene' &&
+      provider === 'aliyun' &&
+      referenceAssetIds.length > 0
+    ) {
       setProvider('auto')
     }
     if (
@@ -479,7 +495,9 @@ export default function ImagesPage() {
                 <div className="text-xs leading-5 text-muted-foreground">
                   <span>
                     {mode === 'product_scene'
-                      ? '商品主体、Logo、材质和颜色会以参考图为准'
+                      ? referenceAssetIds.length > 0
+                        ? '商品主体、Logo、材质和颜色会以参考图为准'
+                        : '未选择参考图，将按文字生成，商品外观一致性会降低'
                       : '自由创作默认不注入品牌人设，需要时可手动开启'}
                   </span>
                 </div>
@@ -507,6 +525,13 @@ export default function ImagesPage() {
                 onUpload={() => fileInputRef.current?.click()}
                 max={4}
                 disabled={generationPending}
+                description={
+                  mode === 'product_scene'
+                    ? referenceAssetIds.length > 0
+                      ? '已选参考图会用于保持商品主体和关键细节一致'
+                      : '参考图可选；不选时将仅根据画面描述生成，商品一致性会降低'
+                    : '平台白底必须选择 1 张商品图'
+                }
               />
             )}
           </div>
@@ -605,7 +630,8 @@ export default function ImagesPage() {
                         <option
                           value="aliyun"
                           disabled={
-                            mode === 'product_scene' ||
+                            (mode === 'product_scene' &&
+                              referenceAssetIds.length > 0) ||
                             (providerCapabilities.length > 0 &&
                               !availableProviderNames.has('aliyun'))
                           }
@@ -688,7 +714,11 @@ export default function ImagesPage() {
                 </span>
               </Button>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                {mode === 'platform_white' ? '本地处理，不扣积分' : '生成成功后扣费'}
+                {mode === 'platform_white'
+                  ? '本地处理，不扣积分'
+                  : mode === 'product_scene' && billingMode === 'free_creation'
+                    ? '无参考图按文字生成，按自由创作积分计费'
+                    : '生成成功后扣费'}
               </p>
             </div>
             {validationError && (

@@ -84,6 +84,32 @@ def test_provider_capability_snapshot_never_exposes_secrets(monkeypatch):
     assert "secret-value" not in payload
 
 
+def test_text_only_product_scene_provider_request_uses_free_creation_mode():
+    from app.services.image_task_executor import _build_provider_request
+
+    task = ImageGenerationTask(
+        user_id=None,
+        prompt="圣诞桌面摆件",
+        mode="product_scene",
+        quality_tier="standard",
+        provider="seedream",
+        aspect_ratio="1:1",
+        reference_assets_json="[]",
+        num_outputs=1,
+        credits_cost=5,
+        image_urls="[]",
+    )
+
+    request = _build_provider_request(
+        task,
+        prompt=task.prompt,
+        num_outputs=1,
+        references=[],
+    )
+
+    assert request.mode == "free_creation"
+
+
 @pytest.mark.asyncio
 async def test_executor_passes_private_references_to_product_scene_provider(
     db_session,

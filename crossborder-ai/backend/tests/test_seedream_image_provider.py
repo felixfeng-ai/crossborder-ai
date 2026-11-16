@@ -1,5 +1,7 @@
 """火山方舟 Seedream 直连图片 Provider 契约测试。"""
 
+import json
+
 import pytest
 
 from app.core.config import settings
@@ -99,12 +101,30 @@ def test_product_scene_provider_order_prefers_seedream_without_hardcoding():
         prompt="商品场景",
         mode="product_scene",
         provider="auto",
+        reference_assets_json=json.dumps(["reference-1"]),
         num_outputs=1,
         credits_cost=10,
         image_urls="[]",
     )
 
     assert _provider_order(task) == ["seedream", "replicate"]
+
+
+def test_text_only_product_scene_uses_text_generation_provider_order():
+    from app.services.image_task_executor import _provider_order
+
+    task = ImageGenerationTask(
+        user_id=None,
+        prompt="圣诞桌面摆件",
+        mode="product_scene",
+        provider="auto",
+        reference_assets_json="[]",
+        num_outputs=1,
+        credits_cost=5,
+        image_urls="[]",
+    )
+
+    assert _provider_order(task) == ["aliyun", "replicate", "seedream"]
 
 
 @pytest.mark.asyncio

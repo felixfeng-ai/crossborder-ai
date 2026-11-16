@@ -239,6 +239,44 @@ async def test_product_scene_accepts_seedream_without_replicate(
 
 
 @pytest.mark.asyncio
+async def test_product_scene_text_only_uses_free_creation_credit(
+    client: AsyncClient,
+    auth_headers: dict,
+    db_session,
+    monkeypatch,
+):
+    """无参考图时按文字生成，不强制 Seedream/Replicate 参考图能力。"""
+    await _prepare_user(db_session)
+    monkeypatch.setattr(settings, "SEEDREAM_API_KEY", "ark-test-key")
+    monkeypatch.setattr(settings, "REPLICATE_API_KEY", "")
+    monkeypatch.setattr(settings, "REPLICATE_IMAGE_REFERENCE_MODEL", "")
+    monkeypatch.setattr(images_router, "_execute_image_task", _noop_execute)
+
+    response = await client.post(
+        "/api/v1/images/generate",
+        json={
+            "mode": "product_scene",
+            "prompt": "外贸圣诞装饰品，木质桌面，暖光商业摄影",
+            "reference_asset_ids": [],
+            "quality_tier": "standard",
+            "provider": "seedream",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    task = await db_session.get(
+        ImageGenerationTask,
+        uuid.UUID(response.json()["task_id"]),
+    )
+    assert task.mode == "product_scene"
+    assert task.reference_assets_json == "[]"
+    assert task.reference_coverage == "none"
+    assert task.credits_cost == 5
+
+
+@pytest.mark.asyncio
 async def test_free_creation_accepts_seedream_without_replicate(
     client: AsyncClient,
     auth_headers: dict,

@@ -4,6 +4,7 @@ import {
   IMAGE_GENERATION_MODES,
   IMAGE_QUALITY_TIERS,
   buildImageGenerationRequest,
+  effectiveImageGenerationMode,
   imageGenerationCredits,
   validateImageGeneration,
 } from './generation'
@@ -21,15 +22,15 @@ describe('image generation modes', () => {
     expect(imageGenerationCredits('product_scene', 'hd', 1)).toBe(12)
   })
 
-  it('requires one to four product references in product scene mode', () => {
+  it('allows a text-only product scene but caps references at four', () => {
     expect(
       validateImageGeneration({
         mode: 'product_scene',
-        prompt: '保持商品一致，生成圣诞场景',
+        prompt: '生成圣诞商品场景',
         referenceAssetIds: [],
         qualityTier: 'standard',
       }),
-    ).toContain('参考图')
+    ).toBe('')
     expect(
       validateImageGeneration({
         mode: 'product_scene',
@@ -38,6 +39,14 @@ describe('image generation modes', () => {
         qualityTier: 'standard',
       }),
     ).toBe('')
+  })
+
+  it('bills a text-only product scene at free-creation rates', () => {
+    expect(effectiveImageGenerationMode('product_scene', 0)).toBe(
+      'free_creation',
+    )
+    expect(imageGenerationCredits('product_scene', 'standard', 1, 0)).toBe(5)
+    expect(imageGenerationCredits('product_scene', 'standard', 1, 1)).toBe(10)
   })
 
   it('allows local platform white processing without an AI prompt', () => {

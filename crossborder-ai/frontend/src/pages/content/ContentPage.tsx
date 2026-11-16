@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Sparkles, Copy, CheckCircle2, Loader2, AlertCircle, AlertTriangle, Globe, Image as ImageIcon, ShoppingBag, ExternalLink, Pencil } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,6 +16,7 @@ import { IpRiskCard } from '@/components/content/IpRiskCard'
 import apiClient from '@/api/client'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { createIdempotencyKey } from '@/utils/idempotency'
+import { buildImageWorkbenchHref } from '@/lib/products/imageWorkbenchContext'
 import {
   ipPublishBlockedLabel,
   isIpPublishBlocked,
@@ -392,13 +393,16 @@ export default function ContentPage() {
                       </p>
                     </div>
                   </div>
-                  <a
-                    href="/app/images"
+                  <Link
+                    to={buildImageWorkbenchHref(
+                      selectedProduct,
+                      selected.title,
+                    )}
                     className="inline-flex min-h-9 items-center gap-1.5 border border-border px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
                     去图片工作台处理主图
                     <ExternalLink className="h-3.5 w-3.5" />
-                  </a>
+                  </Link>
                   <p className="text-[11px] leading-5 text-muted-foreground">
                     Listing 仅使用真实商品素材，平台主图和白底图在图片工作台独立处理。
                   </p>

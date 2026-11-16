@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
+import { useSearchParams } from 'react-router-dom'
 import {
   Check,
   Copy,
@@ -49,6 +50,7 @@ import {
   type ImageGenerationProvider,
   type ImageQualityTier,
 } from '@/lib/images/generation'
+import { imagePromptFromProductTitle } from '@/lib/products/imageWorkbenchContext'
 
 interface PlatformPreset {
   id: string
@@ -91,6 +93,7 @@ const IMAGE_STYLE_PRESETS = [
 ] as const
 
 export default function ImagesPage() {
+  const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedId, setSelectedId] = useState('')
@@ -107,7 +110,9 @@ export default function ImagesPage() {
   const [provider, setProvider] = useState<ImageGenerationProvider>('auto')
   const [useBrandPersona, setUseBrandPersona] = useState(true)
   const [generationState, setGenerationState] = useState<GenerationState>('idle')
-  const [prompt, setPrompt] = useState('')
+  const [prompt, setPrompt] = useState(() =>
+    imagePromptFromProductTitle(searchParams.get('title')),
+  )
   const [actionError, setActionError] = useState('')
   const [actionSuccess, setActionSuccess] = useState('')
   const [uploadProgress, setUploadProgress] = useState(0)

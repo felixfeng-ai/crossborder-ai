@@ -23,10 +23,12 @@
 ### Expo 网页版构建方式
 
 1. 打开 [VeyaShip Agent](https://expo.dev/accounts/felix-ai/projects/veyaship-agent)。
-2. 在 Build 中选择 Android。
-3. Build profile 选择 `ui-preview`。
-4. 构建完成后安装 internal distribution APK，直接查看 App 界面与核心页面。
-5. 如需真实登录，先给 `preview` 环境配置
+2. Git 分支选择 `codex/veyaship-mobile-internal-build`。
+3. Base directory 填 `crossborder-ai/mobile`。
+4. 在 Build 中选择 Android。
+5. Build profile 选择 `ui-preview`。
+6. 构建完成后安装 internal distribution APK，直接查看 App 界面与核心页面。
+7. 如需真实登录，先给 `preview` 环境配置
    `EXPO_PUBLIC_API_URL=<当前移动 API 的 HTTPS 根地址>`，再切换到 `preview` 档位。
 
 `ui-preview` 只用于界面验收，不代表真实账号、真实店铺、推送或后台 Agent 已通过

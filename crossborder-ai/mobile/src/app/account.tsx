@@ -13,7 +13,14 @@ import {
   UserRound,
 } from "lucide-react-native";
 import { useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { PREVIEW_MODE } from "@/api/client";
@@ -49,6 +56,7 @@ export default function AccountScreen() {
     (state) => state.setActiveWorkspace,
   );
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [switchAccountOpen, setSwitchAccountOpen] = useState(false);
   const bootstrap = useBootstrapQuery(PREVIEW_MODE ? "preview" : token);
   const activeWorkspace =
     bootstrap.data?.workspaces.find(
@@ -71,6 +79,9 @@ export default function AccountScreen() {
     await clearWorkspace();
     router.replace("/sign-in");
   };
+  const confirmSwitchAccount = () => {
+    setSwitchAccountOpen(true);
+  };
   const signOutAll = async () => {
     await logoutAll();
     await clearWorkspace();
@@ -86,7 +97,10 @@ export default function AccountScreen() {
         onBack={() => router.back()}
       />
 
-      <View style={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.card}>
           <View style={styles.profile}>
             <AgentAvatar size={44} />
@@ -97,6 +111,18 @@ export default function AccountScreen() {
                 {workspaceRoleLabel(activeWorkspace?.role)}
               </Text>
             </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="切换账号"
+              onPress={confirmSwitchAccount}
+              style={({ pressed }) => [
+                styles.switchAccount,
+                pressed && styles.pressed,
+              ]}
+            >
+              <LogOut color={colors.mutedStrong} size={13} strokeWidth={1.8} />
+              <Text style={styles.switchAccountText}>切换账号</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -295,7 +321,7 @@ export default function AccountScreen() {
         <Text style={styles.version}>
           VeyaShip {Constants.expoConfig?.version ?? "1.0.0"} · 预览版
         </Text>
-      </View>
+      </ScrollView>
 
       <Modal
         transparent
@@ -356,6 +382,52 @@ export default function AccountScreen() {
           </View>
         </SafeAreaView>
       </Modal>
+
+      <Modal
+        transparent
+        visible={switchAccountOpen}
+        animationType="slide"
+        onRequestClose={() => setSwitchAccountOpen(false)}
+      >
+        <Pressable
+          style={styles.backdrop}
+          onPress={() => setSwitchAccountOpen(false)}
+        />
+        <SafeAreaView style={styles.sheet} edges={["bottom"]}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>切换账号</Text>
+          <Text style={styles.sheetText}>
+            将退出当前账号并返回登录页，工作区数据不会删除。
+          </Text>
+          <View style={styles.sheetActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setSwitchAccountOpen(false)}
+              style={({ pressed }) => [
+                styles.sheetButton,
+                styles.sheetButtonSecondary,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.sheetButtonSecondaryText}>取消</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setSwitchAccountOpen(false);
+                void signOut();
+              }}
+              style={({ pressed }) => [
+                styles.sheetButton,
+                styles.sheetButtonDanger,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.sheetButtonDangerText}>切换账号</Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -366,7 +438,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 4,
     paddingBottom: 40,
@@ -393,6 +465,24 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 4,
+  },
+  switchAccount: {
+    minHeight: 44,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.cardBorder,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
+  },
+  switchAccountText: {
+    color: colors.mutedStrong,
+    fontFamily: fonts.medium,
+    fontSize: typeScale.caption,
+    lineHeight: 18,
   },
   name: {
     color: colors.ink,
@@ -529,6 +619,35 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: typeScale.meta,
     lineHeight: 20,
+  },
+  sheetActions: {
+    marginTop: 22,
+    marginBottom: 10,
+    flexDirection: "row",
+    gap: 10,
+  },
+  sheetButton: {
+    minHeight: 52,
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.small,
+  },
+  sheetButtonSecondary: {
+    backgroundColor: colors.surfaceQuiet,
+  },
+  sheetButtonSecondaryText: {
+    color: colors.ink,
+    fontFamily: fonts.semibold,
+    fontSize: typeScale.body,
+  },
+  sheetButtonDanger: {
+    backgroundColor: colors.danger,
+  },
+  sheetButtonDangerText: {
+    color: colors.white,
+    fontFamily: fonts.semibold,
+    fontSize: typeScale.body,
   },
   workspaceList: {
     marginTop: 16,

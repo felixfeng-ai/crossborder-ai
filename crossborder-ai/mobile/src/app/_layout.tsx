@@ -95,6 +95,10 @@ export default function RootLayout() {
                 }}
               />
               <Stack.Screen
+                name="legal/[slug]"
+                options={{ animation: "slide_from_right" }}
+              />
+              <Stack.Screen
                 name="account"
                 options={{
                   presentation: "modal",

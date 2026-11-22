@@ -9,7 +9,7 @@ import {
   ShieldCheck,
 } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ModalScreenHeader } from "@/components/ModalScreenHeader";
@@ -17,6 +17,7 @@ import { colors, fonts, radii, type as typeScale } from "@/design/tokens";
 import {
   LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_VERSIONS,
+  legalDocumentPath,
   type LegalDocument,
   type LegalDocumentId,
 } from "@/features/legal/documents";
@@ -40,19 +41,15 @@ function LegalRow({
 }) {
   const Icon = documentIcons[document.id];
 
-  const openDocument = async () => {
-    try {
-      await Linking.openURL(document.url);
-    } catch {
-      Alert.alert("暂时无法打开", "请检查网络后再试。");
-    }
-  };
-
   return (
     <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={`打开${document.title}`}
-      onPress={() => void openDocument()}
+      accessibilityRole="button"
+      accessibilityLabel={`阅读${document.title}`}
+      onPress={() =>
+        router.push(
+          legalDocumentPath(document.id) as Parameters<typeof router.push>[0],
+        )
+      }
       style={({ pressed }) => [
         styles.row,
         divided && styles.rowDivided,

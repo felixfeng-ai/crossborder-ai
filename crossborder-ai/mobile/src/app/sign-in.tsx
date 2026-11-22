@@ -14,7 +14,6 @@ import {
   ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -44,21 +43,18 @@ import {
 } from "@/design/auth-layout";
 import { colors, fonts } from "@/design/tokens";
 import {
-  getLegalDocument,
   LEGAL_CENTER_PATH,
+  legalDocumentPath,
   loginConsentCopy,
   registerConsentCopy,
   registerConsentLinks,
   registerConsentTitle,
+  type LegalDocumentId,
   validateRegistrationConsent,
 } from "@/features/legal/documents";
 import { useAuthStore } from "@/stores/auth";
 
 type Mode = "login" | "register";
-
-const termsUrl = getLegalDocument("terms").url;
-const privacyUrl = getLegalDocument("privacy").url;
-const aiDisclosureUrl = getLegalDocument("ai-disclosure").url;
 
 const webInputStyle =
   Platform.OS === "web"
@@ -208,10 +204,8 @@ export default function SignInScreen() {
     }
   };
 
-  const openLegalPage = (url: string) => {
-    void Linking.openURL(url).catch(() => {
-      setError("暂时无法打开协议页面");
-    });
+  const openLegalPage = (documentId: LegalDocumentId) => {
+    router.push(legalDocumentPath(documentId) as Href);
   };
 
   return (
@@ -463,7 +457,7 @@ export default function SignInScreen() {
                 <Pressable
                   accessibilityRole="link"
                   hitSlop={{ top: 13, bottom: 13, left: 2, right: 2 }}
-                  onPress={() => openLegalPage(termsUrl)}
+                  onPress={() => openLegalPage("terms")}
                 >
                   <Text style={styles.legalLink}>《服务条款》</Text>
                 </Pressable>
@@ -471,7 +465,7 @@ export default function SignInScreen() {
                 <Pressable
                   accessibilityRole="link"
                   hitSlop={{ top: 13, bottom: 13, left: 2, right: 2 }}
-                  onPress={() => openLegalPage(privacyUrl)}
+                  onPress={() => openLegalPage("privacy")}
                 >
                   <Text style={styles.legalLink}>《隐私政策》</Text>
                 </Pressable>
@@ -479,7 +473,7 @@ export default function SignInScreen() {
                 <Pressable
                   accessibilityRole="link"
                   hitSlop={{ top: 13, bottom: 13, left: 2, right: 2 }}
-                  onPress={() => openLegalPage(aiDisclosureUrl)}
+                  onPress={() => openLegalPage("ai-disclosure")}
                 >
                   <Text style={styles.legalLink}>《AI 使用说明》</Text>
                 </Pressable>

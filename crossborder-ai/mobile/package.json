@@ -55,7 +55,8 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "legal:sync": "node ../scripts/generate-mobile-legal-content.mjs"
   },
   "private": true
 }

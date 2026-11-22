@@ -58,6 +58,19 @@ import { useAuthStore } from "@/stores/auth";
 import { useAgentComposerStore } from "@/stores/agentComposer";
 import { useWorkspaceStore } from "@/stores/workspace";
 
+/**
+ * 空状态不是「没内容」，而是「没有待办时也要能一步开工」。
+ * 每条都写成 Agent 能直接接住的一句话，点一下填进输入框，不替用户盲发。
+ */
+const QUICK_STARTERS = [
+  {
+    label: "上架一个新品",
+    prompt: "帮我上架一个新品，先告诉我需要准备哪些资料",
+  },
+  { label: "查今天的订单", prompt: "查一下今天的订单，有异常的先告诉我" },
+  { label: "回复客户消息", prompt: "有哪些客户消息还没回？帮我起草回复" },
+] as const;
+
 function formatDate() {
   const date = new Date();
   const weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
@@ -87,6 +100,9 @@ export default function HomeScreen() {
   const composerDraft = useAgentComposerStore((state) => state.draft);
   const consumeComposerDraft = useAgentComposerStore(
     (state) => state.consumeDraft,
+  );
+  const requestComposerDraft = useAgentComposerStore(
+    (state) => state.requestDraft,
   );
   const effectiveToken = PREVIEW_MODE ? "preview" : token;
 
@@ -344,10 +360,31 @@ export default function HomeScreen() {
             <PrimaryTaskCard item={primary} onPress={() => openItem(primary)} />
           ) : (
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>今天还没有需要你处理的事</Text>
-              <Text style={styles.emptyText}>
-                可以直接告诉 Agent 要铺货、查订单或回复客户。
-              </Text>
+              <Text style={styles.emptyKicker}>今天没有待办</Text>
+              <Text style={styles.emptyTitle}>挑一件让 Agent 开始</Text>
+              <View style={styles.starters}>
+                {QUICK_STARTERS.map((starter, index) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={starter.label}
+                    key={starter.label}
+                    onPress={() => requestComposerDraft(starter.prompt)}
+                    style={({ pressed }) => [
+                      styles.starterRow,
+                      index === QUICK_STARTERS.length - 1 &&
+                        styles.starterRowLast,
+                      pressed && styles.starterRowPressed,
+                    ]}
+                  >
+                    <Text style={styles.starterLabel}>{starter.label}</Text>
+                    <ChevronRight
+                      color={colors.faint}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                  </Pressable>
+                ))}
+              </View>
             </View>
           )}
 
@@ -617,12 +654,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+  // 空状态沿用白卡 + 发丝线，和「有任务」时的黑卡保持同一层级语言：
+  // 没活干不等于没内容，这里要把「现在能做什么」直接摆出来。
   empty: {
-    marginTop: spacing.x5,
-    paddingVertical: 34,
-    paddingHorizontal: 22,
+    marginTop: spacing.x2,
+    padding: 18,
     borderRadius: radii.large,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.cardBorder,
   },
   planRow: {
     minHeight: 44,
@@ -655,17 +695,44 @@ const styles = StyleSheet.create({
     color: colors.mutedStrong,
     fontFamily: fonts.semibold,
   },
+  emptyKicker: {
+    color: colors.faint,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   emptyTitle: {
+    marginTop: 2,
     color: colors.ink,
     fontFamily: fonts.semibold,
-    fontSize: 18,
-    lineHeight: 25,
+    fontSize: 17,
+    lineHeight: 24,
   },
-  emptyText: {
-    marginTop: 8,
-    color: colors.muted,
+  starters: {
+    marginTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.line,
+  },
+  starterRow: {
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.line,
+  },
+  starterRowLast: {
+    borderBottomWidth: 0,
+  },
+  // 触压只降透明度，不做位移动画：这一行是「填空」不是「跳转」。
+  starterRowPressed: {
+    opacity: 0.5,
+  },
+  starterLabel: {
+    color: colors.inkSoft,
     fontFamily: fonts.medium,
-    fontSize: 13,
+    fontSize: 15,
     lineHeight: 21,
   },
   quietList: {

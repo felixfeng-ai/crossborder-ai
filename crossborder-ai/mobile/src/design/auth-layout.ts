@@ -29,7 +29,7 @@ export const SIGN_IN_LAYOUT = {
   logoTop: 150,
   logoSize: 62,
   logoToWordmark: 26,
-  wordmarkToTagline: 12,
+  wordmarkToTagline: 20,
   taglineToFields: 36,
   fieldHeight: 54,
   fieldGap: 8,

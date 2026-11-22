@@ -1,34 +1,31 @@
-import {
-  Image as SvgImage,
-  Svg,
-} from "react-native-svg";
+import { Path, Svg } from "react-native-svg";
 
-import { signInWordmark } from "@/design/assets";
+import {
+  WORDMARK_ASPECT,
+  WORDMARK_PATH,
+  WORDMARK_VIEWBOX,
+} from "@/design/wordmark-path";
 
 type Props = {
   width?: number;
+  fill?: string;
 };
 
 /**
- * 字标始终通过 SVG 容器渲染，避免 iOS 与 Android 因书法字体缺省而出现差异。
- * 内部素材取自设计定稿，视觉尺寸对应 44pt 光学字号。
+ * 字标是真正的矢量路径（Inter 600，字距 -1%），不再是以位图包一层 SVG 的壳，
+ * 也不依赖设备字体，因此任意宽度下边缘都是干净的，iOS 与 Android 完全一致。
  */
-export function VeyaShipWordmark({ width = 160 }: Props) {
-  const height = (width / 430) * 155;
+export function VeyaShipWordmark({ width = 168, fill = "#111213" }: Props) {
+  const height = width / WORDMARK_ASPECT;
 
   return (
     <Svg
       accessibilityLabel="VeyaShip"
       width={width}
       height={height}
-      viewBox="0 0 430 155"
+      viewBox={WORDMARK_VIEWBOX}
     >
-      <SvgImage
-        href={signInWordmark}
-        width={430}
-        height={155}
-        preserveAspectRatio="xMidYMid meet"
-      />
+      <Path d={WORDMARK_PATH} fill={fill} />
     </Svg>
   );
 }

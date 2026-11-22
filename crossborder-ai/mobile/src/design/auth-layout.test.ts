@@ -22,7 +22,7 @@ describe("sign-in design contract", () => {
     expect(SIGN_IN_LAYOUT.logoTop).toBe(150);
     expect(SIGN_IN_LAYOUT.logoSize).toBe(62);
     expect(SIGN_IN_LAYOUT.logoToWordmark).toBe(26);
-    expect(SIGN_IN_LAYOUT.wordmarkToTagline).toBe(12);
+    expect(SIGN_IN_LAYOUT.wordmarkToTagline).toBe(20);
     expect(SIGN_IN_LAYOUT.taglineToFields).toBe(36);
     expect(SIGN_IN_LAYOUT.fieldHeight).toBe(54);
     expect(SIGN_IN_LAYOUT.fieldGap).toBe(8);

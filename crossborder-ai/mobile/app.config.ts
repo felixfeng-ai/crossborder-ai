@@ -55,7 +55,8 @@ const config: ExpoConfig = {
     package: "com.veyaship.agent",
     predictiveBackGestureEnabled: true,
     adaptiveIcon: {
-      backgroundColor: "#FFFFFF",
+      // 前景是白色标记，背景必须用品牌墨色，避免白底白标。
+      backgroundColor: "#0B0E12",
       foregroundImage: "./assets/android-icon-foreground.png",
       backgroundImage: "./assets/android-icon-background.png",
       monochromeImage: "./assets/android-icon-monochrome.png",

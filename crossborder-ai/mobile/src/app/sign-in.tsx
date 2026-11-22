@@ -233,7 +233,7 @@ export default function SignInScreen() {
             />
 
             <View style={styles.wordmark}>
-              <VeyaShipWordmark width={160} />
+              <VeyaShipWordmark width={168} />
             </View>
 
             <Text style={styles.tagline}>

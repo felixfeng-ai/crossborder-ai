@@ -3,6 +3,54 @@
 本文件记录每个已完成交付版本的业务变化、技术变化、迁移和验证证据。
 后续版本按时间倒序追加，最新版本放在最上方。
 
+## v3.12.0 - 2026-11-23
+
+### 交付主题
+
+生产移动 API 上线与 Android 真实登录内测包。
+
+### 业务变化
+
+- `https://veyaship.com` 已提供新版移动 API，登录不再是只打不开的 UI 预览。
+- 内测用户可以使用真实邮箱、密码和 Agent 工作区登录。
+- 注册成功后自动创建个人工作区，bootstrap 返回合同版本和工作区信息。
+- EAS `preview` 使用生产 HTTPS API，`previewMode=false`，不再使用固定预览数据。
+- Android internal distribution APK 已生成，可直接安装体验。
+
+### 技术与数据
+
+- 生产后端已升级并执行迁移 `050` 至 `081`，当前数据库版本为
+  `081_work_item_channel_scope (head)`。
+- 修复 `077_workspace_automation` 中 PostgreSQL 布尔默认值错误：
+  `server_default=sa.text("1")` 改为 `sa.true()`。
+- 新增 PostgreSQL 布尔默认值回归测试。
+- EAS `preview` profile 固定 `EXPO_PUBLIC_API_URL=https://veyaship.com`，
+  并明确绑定 `preview` 环境。
+- 生产部署前已备份数据库与后端代码：
+  `crossborder_ai-pre-mobile-20261122.dump` 和
+  `backend-pre-mobile-20261122.tar.gz`。
+
+### 验证
+
+- 生产健康检查：`200`
+- 未登录移动 bootstrap：`401`，不再为 `404`
+- 真实注册：成功
+- 真实登录：成功
+- 真实 bootstrap：返回 1 个个人工作区
+- 生产数据库迁移：`081_work_item_channel_scope (head)`
+- PostgreSQL 迁移与启动门禁：`16 passed`
+- 移动 API、认证、工作区和迁移组合门禁：`63 passed`
+- EAS Android `preview`：`FINISHED`
+- APK 下载检查：`200`，约 `150.9 MB`
+- Android versionCode：`5`
+- EAS Build：`4386fa83-5e8d-4912-b15b-ab7a42388f18`
+
+### 当前边界
+
+- 当前完成 Android 内测 APK；iOS TestFlight 仍需 Apple Developer 凭据。
+- APNs/FCM 真机推送、相机、麦克风、相册和深链仍需真实设备验收。
+- 真机尚未安装本轮 APK，设备端到端验收仍待执行。
+
 ## v3.11.0 - 2026-11-22
 
 ### 交付主题

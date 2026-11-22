@@ -5,9 +5,40 @@ from pathlib import Path
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+def test_migration_revision_ids_fit_alembic_version_column() -> None:
+    """revision id 必须适配 VARCHAR(32)，避免 PostgreSQL 升级中断。"""
+
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
+    revisions = ScriptDirectory.from_config(config).walk_revisions()
+    too_long = {
+        revision.revision: len(revision.revision)
+        for revision in revisions
+        if len(revision.revision) > 32
+    }
+
+    assert too_long == {}
+
+
+def test_workspace_automation_boolean_defaults_are_postgresql_safe() -> None:
+    """布尔默认值必须用 true/false，不能被 SQLite 的 1/0 习惯带进 PostgreSQL。"""
+
+    migration = (
+        BACKEND_DIR
+        / "migrations"
+        / "versions"
+        / "077_workspace_automation.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'server_default=sa.text("1")' not in migration
+    assert 'server_default=sa.text("0")' not in migration
+    assert migration.count("server_default=sa.true()") == 4
 
 
 def _column_names(engine: sa.Engine, table_name: str) -> set[str]:
@@ -21,6 +52,13 @@ def _index_names(engine: sa.Engine, table_name: str) -> set[str]:
     return {
         index["name"]
         for index in sa.inspect(engine).get_indexes(table_name)
+    }
+
+
+def _column_map(engine: sa.Engine, table_name: str) -> dict[str, dict]:
+    return {
+        column["name"]: column
+        for column in sa.inspect(engine).get_columns(table_name)
     }
 
 
@@ -132,7 +170,13 @@ def test_repair_migration_restores_stamped_schema_drift(
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "049_product_media"
+    assert version == ScriptDirectory.from_config(config).get_current_head()
+    assert "action_runs" in sa.inspect(engine).get_table_names()
+    assert "customer_channels" in sa.inspect(engine).get_table_names()
+    assert "notification_outbox" in sa.inspect(engine).get_table_names()
+    assert "agent_signals" in sa.inspect(engine).get_table_names()
+    assert "integration_events" in sa.inspect(engine).get_table_names()
+    assert "workspace_id" in _column_names(engine, "image_assets")
     assert {
         "traffic_events",
         "feedback_tickets",
@@ -141,9 +185,42 @@ def test_repair_migration_restores_stamped_schema_drift(
         "plan_versions",
         "credit_pack_versions",
     } <= set(sa.inspect(engine).get_table_names())
+    assert {
+        "workspaces",
+        "workspace_members",
+        "workspace_invitations",
+        "workspace_audit_logs",
+    } <= set(sa.inspect(engine).get_table_names())
+    assert {"owner_user_id", "type", "status"} <= _column_names(
+        engine,
+        "workspaces",
+    )
+    assert {"role", "status", "joined_at"} <= _column_names(
+        engine,
+        "workspace_members",
+    )
+    assert {
+        "agent_turns",
+        "agent_turn_inputs",
+        "work_items",
+        "work_item_events",
+        "work_item_commands",
+    } <= set(sa.inspect(engine).get_table_names())
+    assert {"workspace_id", "version", "requires_action"} <= _column_names(
+        engine,
+        "work_items",
+    )
     assert "provider" in _column_names(engine, "marketing_video_projects")
     assert "workspace" in _column_names(engine, "conversations")
     assert "campaign_id" in _column_names(engine, "conversations")
+    assert "user_sessions" in sa.inspect(engine).get_table_names()
+    assert {
+        "user_id",
+        "refresh_token_hash",
+        "previous_refresh_token_hash",
+        "expires_at",
+        "revoked_at",
+    } <= _column_names(engine, "user_sessions")
     assert "marketing_campaigns" in sa.inspect(engine).get_table_names()
     assert "campaign_id" in _column_names(engine, "image_generation_tasks")
     assert "campaign_id" in _column_names(engine, "video_generation_tasks")
@@ -249,7 +326,13 @@ def test_full_sqlite_upgrade_from_empty_database(
     } <= _column_names(engine, "products")
     with engine.connect() as conn:
         version = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version == "049_product_media"
+    assert version == ScriptDirectory.from_config(config).get_current_head()
+    assert "action_runs" in inspector.get_table_names()
+    assert "customer_channels" in inspector.get_table_names()
+    assert "notification_outbox" in inspector.get_table_names()
+    assert "agent_signals" in inspector.get_table_names()
+    assert "integration_events" in inspector.get_table_names()
+    assert "workspace_id" in _column_names(engine, "image_assets")
     assert {
         "traffic_events",
         "feedback_tickets",
@@ -258,6 +341,23 @@ def test_full_sqlite_upgrade_from_empty_database(
         "plan_versions",
         "credit_pack_versions",
     } <= set(sa.inspect(engine).get_table_names())
+    assert {
+        "workspaces",
+        "workspace_members",
+        "workspace_invitations",
+        "workspace_audit_logs",
+    } <= set(inspector.get_table_names())
+    assert {"owner_user_id", "type", "status"} <= _column_names(
+        engine,
+        "workspaces",
+    )
+    assert {
+        "agent_turns",
+        "agent_turn_inputs",
+        "work_items",
+        "work_item_events",
+        "work_item_commands",
+    } <= set(inspector.get_table_names())
     assert "provider" in _column_names(engine, "marketing_video_projects")
     assert "workspace" in _column_names(engine, "conversations")
     assert "campaign_id" in _column_names(engine, "conversations")
@@ -313,6 +413,35 @@ def test_full_sqlite_upgrade_from_empty_database(
         "credit_purchases",
     } <= set(inspector.get_table_names())
     assert "voc_analyses" in inspector.get_table_names()
+    user_columns = _column_map(engine, "users")
+    workspace_columns = _column_map(engine, "workspaces")
+    assert {"deleted_at", "deletion_reason"} <= set(user_columns)
+    assert {
+        "archived_at",
+        "purge_after",
+        "archived_by_user_id",
+    } <= set(workspace_columns)
+    assert workspace_columns["owner_user_id"]["nullable"] is True
+    for table_name in (
+        "image_generation_tasks",
+        "video_generation_tasks",
+        "marketing_campaigns",
+        "marketing_copy_assets",
+        "marketing_image_suites",
+        "marketing_video_projects",
+        "personas",
+        "content_generations",
+        "batch_jobs",
+        "store_check_logs",
+        "operation_alerts",
+        "publications",
+        "voc_analyses",
+        "agent_tasks",
+        "conversations",
+    ):
+        columns = _column_map(engine, table_name)
+        assert "workspace_id" in columns
+        assert columns["user_id"]["nullable"] is True
     assert "subtitles_burned_in" in _column_names(
         engine,
         "marketing_video_projects",
@@ -323,6 +452,10 @@ def test_full_sqlite_upgrade_from_empty_database(
     )
     assert "source_text" in _column_names(engine, "marketing_video_shots")
     assert "credit_period_start" in _column_names(engine, "users")
+    assert "credit_period_start" in _column_names(
+        engine,
+        "workspace_credit_wallets",
+    )
     assert {"credits_cost", "credits_charged"} <= _column_names(
         engine, "image_generation_tasks"
     )
@@ -336,3 +469,89 @@ def test_full_sqlite_upgrade_from_empty_database(
         "bonus_credits",
         "duration_days",
     } <= _column_names(engine, "plan_upgrade_requests")
+
+
+def test_personal_billing_migration_backfills_workspace_period(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """073 升级必须把存量用户的额度周期复制到个人工作区钱包。"""
+
+    db_path = tmp_path / "personal-billing-period.db"
+    sync_url = f"sqlite:///{db_path.as_posix()}"
+    async_url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+    engine = sa.create_engine(sync_url)
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
+    config.set_main_option("sqlalchemy.url", async_url)
+    monkeypatch.setenv("DATABASE_URL", async_url)
+
+    command.upgrade(config, "072_user_workspace_lifecycle")
+    user_id = "11111111111111111111111111111111"
+    workspace_id = "22222222222222222222222222222222"
+    with engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                """
+                INSERT INTO users (
+                    id, email, password_hash, credits, plan,
+                    credit_period_start
+                )
+                VALUES (
+                    :user_id, :email, :password_hash, 30, 'free',
+                    :credit_period_start
+                )
+                """
+            ),
+            {
+                "user_id": user_id,
+                "email": "period-migration@example.com",
+                "password_hash": "not-used",
+                "credit_period_start": "2026-11-01 08:00:00.000000",
+            },
+        )
+        conn.execute(
+            sa.text(
+                """
+                INSERT INTO workspaces (
+                    id, name, slug, type, owner_user_id, status
+                )
+                VALUES (
+                    :workspace_id, :name, :slug, 'personal', :user_id, 'active'
+                )
+                """
+            ),
+            {
+                "workspace_id": workspace_id,
+                "name": "Personal",
+                "slug": "period-migration",
+                "user_id": user_id,
+            },
+        )
+        conn.execute(
+            sa.text(
+                """
+                INSERT INTO workspace_credit_wallets (
+                    workspace_id, plan_credits, purchased_credits
+                )
+                VALUES (:workspace_id, 30, 0)
+                """
+            ),
+            {"workspace_id": workspace_id},
+        )
+
+    command.upgrade(config, "head")
+
+    with engine.connect() as conn:
+        period = conn.execute(
+            sa.text(
+                """
+                SELECT credit_period_start
+                FROM workspace_credit_wallets
+                WHERE workspace_id = :workspace_id
+                """
+            ),
+            {"workspace_id": workspace_id},
+        ).scalar_one()
+
+    assert str(period).startswith("2026-11-01 08:00:00")

@@ -17,10 +17,12 @@
 | AI 内容告知 | App 内已解决 | 登录告知和注册显式勾选均包含《AI 使用说明》 |
 | UI 预览构建 | 已可用 | `ui-preview` 解析成功，Android 输出 APK，预览模式为 `true` |
 | 真实 API 门禁 | 已加固 | 缺少 HTTPS API 时 EAS 真实构建直接失败，不再生成无效包 |
-| 测试 API | 仍阻塞 | `https://veyaship.com/health` 为 `200`，但移动 API 为 `404` |
+| 测试 API | 已解决 | 生产移动 API 已上线，未登录 bootstrap 正确返回 `401` |
+| 真实登录 | 已解决 | 生产注册、登录和 bootstrap 已通过，返回 1 个工作区 |
+| Android 真实内测包 | 已解决 | EAS `preview` APK 构建成功，versionCode `5` |
 | APNs/FCM | 仍阻塞 | 缺少 Apple/Google 推送凭据 |
 | iOS/Android 签名 | 部分可用 | Android 托管 Keystore 已创建；iOS 仍需 Apple Developer 凭据 |
-| 真机端到端 | 未执行 | 当前没有 iOS/Android 真机验收结果 |
+| 真机端到端 | 待执行 | APK 已生成，仍需在真实 Android 设备安装并验收 |
 | 平台真实写操作 | 未完成 | 需要 Amazon/Temu 等测试店铺与开放平台权限 |
 | 同意版本服务端留痕 | 未完成 | 当前客户端完成告知与勾选，尚未写入服务端审计表 |
 

@@ -17,7 +17,9 @@
       "distribution": "internal",
       "channel": "preview",
       "autoIncrement": true,
+      "environment": "preview",
       "env": {
+        "EXPO_PUBLIC_API_URL": "https://veyaship.com",
         "EXPO_PUBLIC_PREVIEW_MODE": "0",
         "EXPO_PUBLIC_REQUIRE_REMOTE_API": "1"
       },
@@ -39,6 +41,7 @@
     "production": {
       "autoIncrement": true,
       "channel": "production",
+      "environment": "production",
       "env": {
         "EXPO_PUBLIC_PREVIEW_MODE": "0",
         "EXPO_PUBLIC_REQUIRE_REMOTE_API": "1"

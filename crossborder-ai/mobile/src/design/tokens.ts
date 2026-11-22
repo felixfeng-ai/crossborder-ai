@@ -45,6 +45,8 @@ export const colors = {
   amber: "#FBE8C8",
   amberInk: "#7A4A0A",
   amberLine: "#F0D8AE",
+  // 品牌星点固定使用暖金，不参与状态语义，避免与在线绿点混色。
+  brandStar: "#E7A33A",
   // 时间轴上的「现在」标记：黑白底上都要立得住，所以取中间明度。
   amberDot: "#E39A33",
   green: "#3FA872",

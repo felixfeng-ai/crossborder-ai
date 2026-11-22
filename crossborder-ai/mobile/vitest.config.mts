@@ -16,6 +16,7 @@ export default defineConfig({
         "src/features/time/timezone.ts",
         "src/features/commerce/channel-selection.ts",
         "src/features/library/library-order.ts",
+        "src/features/legal/documents.ts",
         "src/features/notifications/preference-form.ts",
         "src/features/media/video-save.ts",
       ],

@@ -1,6 +1,14 @@
 import { Image } from "expo-image";
-import { router } from "expo-router";
-import { Eye, EyeOff, Lock, Mail, UserRound } from "lucide-react-native";
+import { router, type Href } from "expo-router";
+import {
+  Check,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Lock,
+  Mail,
+  UserRound,
+} from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -35,14 +43,22 @@ import {
   validateUsername,
 } from "@/design/auth-layout";
 import { colors, fonts } from "@/design/tokens";
+import {
+  getLegalDocument,
+  LEGAL_CENTER_PATH,
+  loginConsentCopy,
+  registerConsentCopy,
+  registerConsentLinks,
+  registerConsentTitle,
+  validateRegistrationConsent,
+} from "@/features/legal/documents";
 import { useAuthStore } from "@/stores/auth";
 
 type Mode = "login" | "register";
 
-const LEGAL_URLS = {
-  terms: "https://veyaship.com/terms",
-  privacy: "https://veyaship.com/privacy",
-} as const;
+const termsUrl = getLegalDocument("terms").url;
+const privacyUrl = getLegalDocument("privacy").url;
+const aiDisclosureUrl = getLegalDocument("ai-disclosure").url;
 
 const webInputStyle =
   Platform.OS === "web"
@@ -59,6 +75,7 @@ export default function SignInScreen() {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [pending, setPending] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
   const [error, setError] = useState("");
   const scrollRef = useRef<ScrollViewInstance>(null);
   const usernameTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -144,6 +161,11 @@ export default function SignInScreen() {
     if (pending) return;
 
     if (mode === "register") {
+      const consentError = validateRegistrationConsent(legalAccepted);
+      if (consentError) {
+        setError(consentError);
+        return;
+      }
       const normalizedUsername = username.trim();
       if (validateUsername(normalizedUsername)) {
         setUsernameError("请输入 4–12 位中文、字母、数字或下划线");
@@ -358,13 +380,54 @@ export default function SignInScreen() {
               </View>
             </View>
 
+            {mode === "register" && (
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityLabel={registerConsentCopy}
+                accessibilityState={{ checked: legalAccepted }}
+                onPress={() => {
+                  setLegalAccepted((current) => !current);
+                  if (error) setError("");
+                }}
+                style={({ pressed }) => [
+                  styles.consentRow,
+                  pressed && styles.consentRowPressed,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.checkbox,
+                    legalAccepted && styles.checkboxChecked,
+                  ]}
+                >
+                  {legalAccepted && (
+                    <Check
+                      color={SIGN_IN_COLORS.white}
+                      size={13}
+                      strokeWidth={2.4}
+                    />
+                  )}
+                </View>
+                <View style={styles.consentCopy}>
+                  <Text style={styles.consentTitle}>
+                    {registerConsentTitle}
+                  </Text>
+                  <Text style={styles.consentLinks}>
+                    {registerConsentLinks}
+                  </Text>
+                </View>
+              </Pressable>
+            )}
+
             <Pressable
               accessibilityLabel={
                 pending
                   ? mode === "register"
                     ? "正在创建账号"
                     : "正在登录"
-                  : "进入工作台"
+                  : mode === "register"
+                    ? "创建账号"
+                    : "进入工作台"
               }
               accessibilityRole="button"
               disabled={pending}
@@ -379,7 +442,9 @@ export default function SignInScreen() {
                   <ActivityIndicator color={SIGN_IN_COLORS.white} />
                 </View>
               ) : (
-                <Text style={styles.buttonText}>进入工作台</Text>
+                <Text style={styles.buttonText}>
+                  {mode === "register" ? "创建账号" : "进入工作台"}
+                </Text>
               )}
             </Pressable>
 
@@ -387,26 +452,56 @@ export default function SignInScreen() {
               <Text accessibilityLiveRegion="polite" style={styles.legalError}>
                 {error}
               </Text>
-            ) : (
-              <View style={styles.legalRow}>
+            ) : null}
+
+            {mode === "login" && (
+              <View
+                accessibilityLabel={loginConsentCopy}
+                style={styles.legalRow}
+              >
                 <Text style={styles.legalText}>登录即代表同意</Text>
                 <Pressable
                   accessibilityRole="link"
                   hitSlop={{ top: 13, bottom: 13, left: 2, right: 2 }}
-                  onPress={() => openLegalPage(LEGAL_URLS.terms)}
+                  onPress={() => openLegalPage(termsUrl)}
                 >
-                  <Text style={styles.legalLink}>《服务协议》</Text>
+                  <Text style={styles.legalLink}>《服务条款》</Text>
+                </Pressable>
+                <Text style={styles.legalText}>、</Text>
+                <Pressable
+                  accessibilityRole="link"
+                  hitSlop={{ top: 13, bottom: 13, left: 2, right: 2 }}
+                  onPress={() => openLegalPage(privacyUrl)}
+                >
+                  <Text style={styles.legalLink}>《隐私政策》</Text>
                 </Pressable>
                 <Text style={styles.legalText}>与</Text>
                 <Pressable
                   accessibilityRole="link"
                   hitSlop={{ top: 13, bottom: 13, left: 2, right: 2 }}
-                  onPress={() => openLegalPage(LEGAL_URLS.privacy)}
+                  onPress={() => openLegalPage(aiDisclosureUrl)}
                 >
-                  <Text style={styles.legalLink}>《隐私政策》</Text>
+                  <Text style={styles.legalLink}>《AI 使用说明》</Text>
                 </Pressable>
               </View>
             )}
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="查看全部法律与隐私说明"
+              onPress={() => router.push(LEGAL_CENTER_PATH as Href)}
+              style={({ pressed }) => [
+                styles.allLegalButton,
+                pressed && styles.allLegalButtonPressed,
+              ]}
+            >
+              <Text style={styles.allLegalText}>全部法律与隐私</Text>
+              <ChevronRight
+                color={SIGN_IN_COLORS.secondary}
+                size={13}
+                strokeWidth={1.9}
+              />
+            </Pressable>
 
             <Pressable
               accessibilityHint={
@@ -419,6 +514,7 @@ export default function SignInScreen() {
                 );
                 setError("");
                 setUsernameError("");
+                setLegalAccepted(false);
                 if (usernameTimerRef.current) {
                   clearTimeout(usernameTimerRef.current);
                 }
@@ -555,12 +651,54 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  consentRow: {
+    minHeight: 44,
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  consentRowPressed: {
+    opacity: 0.62,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: SIGN_IN_COLORS.border,
+    borderRadius: 6,
+    backgroundColor: SIGN_IN_COLORS.white,
+  },
+  checkboxChecked: {
+    borderColor: SIGN_IN_COLORS.button,
+    backgroundColor: SIGN_IN_COLORS.button,
+  },
+  consentCopy: {
+    flex: 1,
+    gap: 1,
+  },
+  consentTitle: {
+    color: SIGN_IN_COLORS.secondary,
+    fontFamily: fonts.regular,
+    fontSize: SIGN_IN_TYPE.legal,
+    lineHeight: 18,
+  },
+  consentLinks: {
+    color: SIGN_IN_COLORS.placeholder,
+    fontFamily: fonts.regular,
+    fontSize: SIGN_IN_TYPE.legal,
+    lineHeight: 18,
+  },
   legalRow: {
     minHeight: 18,
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
     marginTop: SIGN_IN_LAYOUT.buttonToLegal,
+    rowGap: 2,
   },
   legalText: {
     color: SIGN_IN_COLORS.placeholder,
@@ -584,6 +722,22 @@ const styles = StyleSheet.create({
     fontSize: SIGN_IN_TYPE.legal,
     lineHeight: 18,
     textAlign: "center",
+  },
+  allLegalButton: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+  },
+  allLegalButtonPressed: {
+    opacity: 0.55,
+  },
+  allLegalText: {
+    color: SIGN_IN_COLORS.secondary,
+    fontFamily: fonts.regular,
+    fontSize: SIGN_IN_TYPE.legal,
+    lineHeight: 18,
   },
   createAccount: {
     minHeight: 44,

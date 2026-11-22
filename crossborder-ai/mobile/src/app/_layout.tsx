@@ -12,6 +12,7 @@ import { colors } from "@/design/tokens";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { WorkspaceEventBridge } from "@/components/WorkspaceEventBridge";
 import { useNetworkStatus } from "@/features/connectivity/useNetworkStatus";
+import { LEGAL_CENTER_PATH } from "@/features/legal/documents";
 import { NotificationBridge } from "@/notifications/NotificationBridge";
 import { useAuthStore } from "@/stores/auth";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -81,6 +82,13 @@ export default function RootLayout() {
               />
               <Stack.Screen
                 name="notification-settings"
+                options={{
+                  presentation: "modal",
+                  animation: "slide_from_bottom",
+                }}
+              />
+              <Stack.Screen
+                name={LEGAL_CENTER_PATH}
                 options={{
                   presentation: "modal",
                   animation: "slide_from_bottom",

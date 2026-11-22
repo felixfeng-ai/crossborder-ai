@@ -7,6 +7,7 @@ import {
   ChevronRight,
   LogOut,
   Power,
+  Scale,
   ShieldCheck,
   Smartphone,
   UserRound,
@@ -28,6 +29,7 @@ import {
   workspaceRoleLabel,
   workspaceTypeLabel,
 } from "@/features/account/account-labels";
+import { LEGAL_CENTER_PATH } from "@/features/legal/documents";
 import { useAuthStore } from "@/stores/auth";
 import { useWorkspaceStore } from "@/stores/workspace";
 
@@ -220,6 +222,30 @@ export default function AccountScreen() {
             </RowIcon>
             <Text style={styles.rowLabel}>通知偏好</Text>
             <Text style={styles.rowValue}>提醒与免打扰</Text>
+            <ChevronRight color={colors.faint} size={16} strokeWidth={2} />
+          </Pressable>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>法律与隐私</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="打开法律与隐私"
+            onPress={() => router.push(LEGAL_CENTER_PATH as Href)}
+            style={({ pressed }) => [
+              styles.row,
+              pressed && styles.pressed,
+            ]}
+          >
+            <RowIcon>
+              <Scale
+                color={colors.mutedStrong}
+                size={16}
+                strokeWidth={1.7}
+              />
+            </RowIcon>
+            <Text style={styles.rowLabel}>法律与隐私</Text>
+            <Text style={styles.rowValue}>协议、AI 与数据</Text>
             <ChevronRight color={colors.faint} size={16} strokeWidth={2} />
           </Pressable>
         </View>

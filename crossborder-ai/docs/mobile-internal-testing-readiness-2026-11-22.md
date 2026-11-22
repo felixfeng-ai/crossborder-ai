@@ -13,6 +13,8 @@
 | EAS 项目关联 | 已解决 | `@felix-ai/veyaship-agent`，projectId `85dd918e-3671-4472-be2b-dcdb951c3930` |
 | GitHub 仓库连接 | 已解决 | `felixfeng-ai/crossborder-ai`，Base directory 为 `crossborder-ai/mobile` |
 | 原生依赖 | 已解决 | `expo-doctor` 为 `20/20` |
+| App 法律与隐私中心 | 已解决 | 登录、账号和注册页均提供入口，覆盖 7 份公开文档 |
+| AI 内容告知 | App 内已解决 | 登录告知和注册显式勾选均包含《AI 使用说明》 |
 | UI 预览构建 | 已可用 | `ui-preview` 解析成功，Android 输出 APK，预览模式为 `true` |
 | 真实 API 门禁 | 已加固 | 缺少 HTTPS API 时 EAS 真实构建直接失败，不再生成无效包 |
 | 测试 API | 仍阻塞 | `https://veyaship.com/health` 为 `200`，但移动 API 为 `404` |
@@ -20,6 +22,7 @@
 | iOS/Android 签名 | 部分可用 | Android 托管 Keystore 已创建；iOS 仍需 Apple Developer 凭据 |
 | 真机端到端 | 未执行 | 当前没有 iOS/Android 真机验收结果 |
 | 平台真实写操作 | 未完成 | 需要 Amazon/Temu 等测试店铺与开放平台权限 |
+| 同意版本服务端留痕 | 未完成 | 当前客户端完成告知与勾选，尚未写入服务端审计表 |
 
 ### Expo 网页版构建方式
 

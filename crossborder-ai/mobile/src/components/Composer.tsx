@@ -12,6 +12,7 @@ import {
   requestCameraPermissionsAsync,
 } from "expo-image-picker";
 import {
+  ArrowUp,
   AudioLines,
   Camera,
   ImagePlus,
@@ -26,15 +27,28 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import type { TextStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, fonts } from "@/design/tokens";
+import { shouldShowSendButton } from "./composer-state";
+import { describeVoiceFailure } from "@/features/media/voice-errors";
+
+const webInputStyle =
+  Platform.OS === "web"
+    ? ({
+        outlineColor: "transparent",
+        outlineStyle: "none",
+        outlineWidth: 0,
+      } as unknown as TextStyle)
+    : undefined;
 
 export type AudioRecordingAsset = {
   uri: string;
@@ -108,9 +122,9 @@ export function Composer({
   const submit = async () => {
     const text = value.trim();
     if (!text || sending) return;
-    setValue("");
     setInputMode("default");
     await onSendText(text);
+    setValue("");
   };
 
   const pickImage = async () => {
@@ -197,10 +211,10 @@ export function Composer({
           "当前页面还未开通语音转写。",
         );
       }
-    } catch {
+    } catch (reason) {
       Alert.alert(
         "语音识别失败",
-        "网络恢复后可以重新录制，不会重复创建任务。",
+        describeVoiceFailure(reason),
       );
     }
   };
@@ -214,6 +228,7 @@ export function Composer({
       : inputMode === "order"
         ? "输入订单号或物流单号"
         : "告诉小 Veya 要做什么";
+  const showSendButton = shouldShowSendButton({ value, voiceMode });
 
   return (
     <View style={styles.outer}>
@@ -273,32 +288,51 @@ export function Composer({
             value={value}
             onChangeText={setValue}
             onSubmitEditing={submit}
-            editable={!recording && !voiceProcessing}
+            editable={!recording && !voiceProcessing && !sending}
             placeholder={placeholder}
             placeholderTextColor={colors.muted}
             returnKeyType="send"
-            style={styles.input}
+            style={[styles.input, webInputStyle]}
           />
         )}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={voiceMode ? "切换到文字输入" : "语音输入"}
-          onPress={() => {
-            setVoiceMode((current) => !current);
-            setInputMode("default");
-          }}
-          disabled={sending || recording}
-          style={({ pressed }) => [
-            styles.voiceIconButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          {voiceMode ? (
-            <Keyboard color={colors.inkSoft} size={20} strokeWidth={1.8} />
-          ) : (
-            <AudioLines color={colors.inkSoft} size={21} strokeWidth={1.8} />
-          )}
-        </Pressable>
+        {showSendButton ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="发送"
+            disabled={sending}
+            onPress={() => void submit()}
+            style={({ pressed }) => [
+              styles.sendButton,
+              pressed && !sending && styles.pressed,
+            ]}
+          >
+            {sending ? (
+              <ActivityIndicator color={colors.white} size="small" />
+            ) : (
+              <ArrowUp color={colors.white} size={20} strokeWidth={2} />
+            )}
+          </Pressable>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={voiceMode ? "切换到文字输入" : "语音输入"}
+            onPress={() => {
+              setVoiceMode((current) => !current);
+              setInputMode("default");
+            }}
+            disabled={sending || recording}
+            style={({ pressed }) => [
+              styles.voiceIconButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            {voiceMode ? (
+              <Keyboard color={colors.inkSoft} size={20} strokeWidth={1.8} />
+            ) : (
+              <AudioLines color={colors.inkSoft} size={21} strokeWidth={1.8} />
+            )}
+          </Pressable>
+        )}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="更多输入方式"
@@ -435,6 +469,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   moreButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.black,
+  },
+  sendButton: {
     width: 38,
     height: 38,
     borderRadius: 19,

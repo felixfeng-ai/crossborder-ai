@@ -21,6 +21,22 @@ def _clear_provider_cache():
     provider_config.clear_cache()
 
 
+def test_empty_runtime_value_falls_back_to_environment(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """数据库中的空值不能遮蔽已部署的环境凭据。"""
+
+    provider_config.clear_cache()
+    monkeypatch.setattr(
+        provider_config.settings,
+        "ALIYUN_DASHSCOPE_API_KEY",
+        "env-dashscope-key",
+    )
+    provider_config._cache["aliyun"] = {"api_key": ""}
+
+    assert provider_config.get("aliyun", "api_key", "") == "env-dashscope-key"
+
+
 async def _register(client: AsyncClient, email: str) -> dict:
     response = await client.post(
         "/api/v1/auth/register",

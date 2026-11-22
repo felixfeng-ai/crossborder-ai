@@ -14,13 +14,27 @@ from app.core.crypto import decrypt_value, encrypt_value, mask_secret
 from app.models.system_config import SystemConfig
 
 
-SECRET_FIELDS = {"api_key", "api_secret", "token", "client_secret", "group_id"}
+SECRET_FIELDS = {
+    "api_key",
+    "api_secret",
+    "app_secret",
+    "token",
+    "client_secret",
+    "group_id",
+}
 
 PROVIDER_FIELDS: dict[str, tuple[str, ...]] = {
     "deepseek": ("api_key", "model"),
     "onebound": ("api_key", "api_secret"),
     "justone": ("token",),
-    "aliyun": ("api_key", "model", "vision_model", "embedding_model"),
+    "aliyun": (
+        "api_key",
+        "model",
+        "vision_model",
+        "embedding_model",
+        "asr_base_url",
+        "asr_model",
+    ),
     "replicate": (
         "api_key",
         "model",
@@ -32,6 +46,7 @@ PROVIDER_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     "shopify": ("api_key", "api_secret", "redirect_uri"),
     "amazon": ("app_id", "client_id", "client_secret", "redirect_uri"),
+    "temu": ("app_key", "app_secret", "redirect_uri", "region"),
     "minimax": (
         "api_key",
         "group_id",
@@ -58,6 +73,8 @@ def _env_fallback(provider: str, field: str) -> str:
         ("aliyun", "model"): settings.ALIYUN_IMAGE_MODEL,
         ("aliyun", "vision_model"): settings.IP_VISION_MODEL,
         ("aliyun", "embedding_model"): settings.POLICY_EMBEDDING_MODEL,
+        ("aliyun", "asr_base_url"): settings.ALIYUN_ASR_BASE_URL,
+        ("aliyun", "asr_model"): settings.ALIYUN_ASR_MODEL,
         ("replicate", "api_key"): settings.REPLICATE_API_KEY or "",
         ("replicate", "model"): settings.REPLICATE_MODEL,
         ("replicate", "reference_model"): settings.REPLICATE_IMAGE_REFERENCE_MODEL,
@@ -74,6 +91,10 @@ def _env_fallback(provider: str, field: str) -> str:
         ("amazon", "client_id"): settings.AMAZON_CLIENT_ID or "",
         ("amazon", "client_secret"): settings.AMAZON_CLIENT_SECRET or "",
         ("amazon", "redirect_uri"): settings.AMAZON_REDIRECT_URI or "",
+        ("temu", "app_key"): settings.TEMU_APP_KEY or "",
+        ("temu", "app_secret"): settings.TEMU_APP_SECRET or "",
+        ("temu", "redirect_uri"): settings.TEMU_REDIRECT_URI or "",
+        ("temu", "region"): settings.TEMU_DEFAULT_REGION,
         ("minimax", "api_key"): settings.MINIMAX_API_KEY or "",
         ("minimax", "group_id"): settings.MINIMAX_GROUP_ID,
         ("minimax", "base_url"): settings.MINIMAX_VIDEO_BASE_URL,
@@ -108,7 +129,14 @@ def clear_cache() -> None:
 def get(provider: str, field: str, default: str | None = None) -> str:
     values = _cache.get(provider)
     if values is not None and field in values:
-        return values[field]
+        value = values[field]
+        if value.strip():
+            return value
+        # 管理端清空运行时值时应恢复环境回退，而不是把已部署凭据一起清空。
+        fallback = _env_fallback(provider, field)
+        if fallback.strip():
+            return fallback
+        return value
     # Seedream 与 Seedance 同属火山方舟账号，未单独配置时可复用即梦凭据。
     if provider == "seedream" and field in {"api_key", "base_url"}:
         seedream_value = _env_fallback("seedream", field)
@@ -203,7 +231,10 @@ def provider_status(provider: str) -> dict[str, Any]:
         value = get(provider, field)
         fields[field] = mask_secret(value) if field in SECRET_FIELDS else value
     # 不同服务商的必填凭据字段不同，Just One 使用 token 而不是 api_key。
-    required = "token" if provider == "justone" else "api_key"
+    required = {
+        "justone": "token",
+        "temu": "app_key",
+    }.get(provider, "api_key")
     return {
         "configured": bool(get(provider, required)),
         "required_field": required,

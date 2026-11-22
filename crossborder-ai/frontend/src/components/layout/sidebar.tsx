@@ -55,8 +55,8 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       {/* Logo */}
       <div className="flex h-[58px] items-center justify-between border-b border-border px-4">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center border border-border bg-secondary">
-            <BrandMark className="h-5 w-5 text-foreground" />
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+            <BrandMark className="h-8 w-8 text-foreground" />
           </div>
           {!collapsed && (
             <div className="min-w-0">

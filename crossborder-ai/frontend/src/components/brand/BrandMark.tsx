@@ -1,30 +1,31 @@
 export function BrandMark({ className = '' }: { className?: string }) {
   return (
     <svg
-      viewBox="0 0 32 32"
+      viewBox="0 0 96 96"
       className={className}
       role="img"
       aria-label="VeyaShip"
       fill="none"
     >
+      {/* 与 App AgentAvatar 共用黑圆、白色 V、底线和暖金星的几何比例。 */}
+      <circle cx="48" cy="48" r="48" fill="#0B0E12" />
       <path
-        d="M6.5 8.5 16 24.5 25.5 8.5"
-        stroke="currentColor"
-        strokeWidth="2.1"
+        d="M31 28 46 60 61 28"
+        stroke="#FFFFFF"
+        strokeWidth="8"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx="6.5" cy="8.5" r="2" fill="currentColor" />
-      <circle cx="16" cy="24.5" r="2.3" fill="var(--factory-accent)" />
-      <circle cx="25.5" cy="8.5" r="2" fill="currentColor" />
       <path
-        d="M22.5 18.5h4.5"
-        stroke="var(--factory-accent)"
-        strokeWidth="1.5"
+        d="M35 76h26"
+        stroke="#FFFFFF"
+        strokeWidth="7"
         strokeLinecap="round"
-        strokeDasharray="2 2.5"
       />
-      <circle cx="28" cy="18.5" r="1.4" fill="var(--factory-accent)" />
+      <path
+        d="M72 11Q73 17.5 80 20Q73 22.5 72 29Q71 22.5 64 20Q71 17.5 72 11Z"
+        fill="#E7A33A"
+      />
     </svg>
   )
 }

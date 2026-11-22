@@ -4,7 +4,7 @@ export type FunctionShortcutTarget =
   | { type: "work-item"; workItemId: string }
   | {
       type: "route";
-      href: "/library" | "/plan" | "/activity" | "/account";
+      href: "/library" | "/plan" | "/activity" | "/account" | "/stores";
     }
   | { type: "draft"; text: string };
 
@@ -184,6 +184,13 @@ export function buildFunctionHub(
     count: 0,
     target: { type: "route", href: "/account" },
   };
+  const stores: FunctionShortcut = {
+    id: "stores",
+    title: "店铺与渠道",
+    detail: "连接、查看和检查店铺授权",
+    count: 0,
+    target: { type: "route", href: "/stores" },
+  };
   const assetLibrary: FunctionShortcut = {
     id: "asset-library",
     title: "素材库",
@@ -213,7 +220,7 @@ export function buildFunctionHub(
       {
         id: "system",
         title: "计划与设置",
-        shortcuts: [plan, activity, account],
+        shortcuts: [stores, plan, activity, account],
       },
     ],
   };

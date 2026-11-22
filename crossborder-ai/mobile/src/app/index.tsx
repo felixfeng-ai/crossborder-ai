@@ -1,10 +1,12 @@
-import { router, Redirect } from "expo-router";
+import { router, Redirect, type Href } from "expo-router";
 import {
   CalendarDays,
   Check,
   ChevronDown,
   ChevronRight,
   LayoutGrid,
+  Plus,
+  Store,
 } from "lucide-react-native";
 import type { ImagePickerAsset } from "expo-image-picker";
 import { useEffect, useState } from "react";
@@ -43,8 +45,15 @@ import { PageLoader } from "@/components/PageLoader";
 import { PrimaryTaskCard } from "@/components/PrimaryTaskCard";
 import { QuietTaskRow } from "@/components/QuietTaskRow";
 import { formatGreetingName } from "@/features/account/display-name";
+import { storeStatusLabel } from "@/features/stores/providers";
 import { untilHour } from "@/features/time/relative";
-import { colors, fonts, radii, spacing } from "@/design/tokens";
+import {
+  colors,
+  fonts,
+  radii,
+  spacing,
+  type as typeScale,
+} from "@/design/tokens";
 import { useAuthStore } from "@/stores/auth";
 import { useAgentComposerStore } from "@/stores/agentComposer";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -444,7 +453,7 @@ export default function HomeScreen() {
                   key={`${store.channel_type}:${store.channel_id}`}
                   selected={selected}
                   title={store.name}
-                  detail={`${store.channel_type.toUpperCase()} · ${store.status}`}
+                  detail={`${store.channel_type.toUpperCase()} · ${storeStatusLabel(store.status)}`}
                   onPress={() => {
                     if (!workspaceId) return;
                     void setActiveChannel({
@@ -459,6 +468,30 @@ export default function HomeScreen() {
               );
             })}
           </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="添加店铺"
+            onPress={() => {
+              setStorePickerOpen(false);
+              router.push("/stores" as Href);
+            }}
+            style={({ pressed }) => [
+              styles.addStoreRow,
+              pressed && styles.functionButtonPressed,
+            ]}
+          >
+            <View style={styles.addStoreIcon}>
+              <Store color={colors.inkSoft} size={17} strokeWidth={1.8} />
+              <View style={styles.addStorePlus}>
+                <Plus color={colors.white} size={10} strokeWidth={2.2} />
+              </View>
+            </View>
+            <View style={styles.addStoreCopy}>
+              <Text style={styles.addStoreTitle}>添加店铺</Text>
+              <Text style={styles.addStoreText}>连接 Shopify、Amazon 或 Temu</Text>
+            </View>
+            <ChevronRight color={colors.faint} size={16} strokeWidth={2} />
+          </Pressable>
           {commerceStores.isError && (
             <Text style={styles.storeError}>
               店铺列表暂时无法同步，请稍后重试。
@@ -725,6 +758,52 @@ const styles = StyleSheet.create({
   storeList: {
     marginTop: 16,
     gap: 8,
+  },
+  addStoreRow: {
+    minHeight: 64,
+    marginTop: 10,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: radii.small,
+    backgroundColor: colors.surface,
+  },
+  addStoreIcon: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 17,
+    backgroundColor: colors.card,
+  },
+  addStorePlus: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 16,
+    height: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    backgroundColor: colors.black,
+  },
+  addStoreCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  addStoreTitle: {
+    color: colors.ink,
+    fontFamily: fonts.semibold,
+    fontSize: typeScale.body,
+    lineHeight: 20,
+  },
+  addStoreText: {
+    color: colors.muted,
+    fontFamily: fonts.medium,
+    fontSize: typeScale.caption,
+    lineHeight: 17,
   },
   storeOption: {
     minHeight: 62,

@@ -196,6 +196,9 @@ describe("buildFunctionHub", () => {
     const account = system?.shortcuts.find(
       (shortcut) => shortcut.id === "account",
     );
+    const stores = system?.shortcuts.find(
+      (shortcut) => shortcut.id === "stores",
+    );
 
     expect(plan).toMatchObject({
       count: 3,
@@ -208,6 +211,10 @@ describe("buildFunctionHub", () => {
     expect(account).toMatchObject({
       count: 0,
       target: { type: "route", href: "/account" },
+    });
+    expect(stores).toMatchObject({
+      count: 0,
+      target: { type: "route", href: "/stores" },
     });
   });
 

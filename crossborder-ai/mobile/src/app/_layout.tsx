@@ -87,6 +87,7 @@ export default function RootLayout() {
                   animation: "slide_from_bottom",
                 }}
               />
+              <Stack.Screen name="stores" />
               <Stack.Screen
                 name={LEGAL_CENTER_PATH}
                 options={{

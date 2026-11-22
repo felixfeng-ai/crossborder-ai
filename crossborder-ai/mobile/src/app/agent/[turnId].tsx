@@ -74,7 +74,7 @@ export default function AgentTurnScreen() {
 
   if (queryState === "loading") {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
         <View style={styles.loading}>
           <ActivityIndicator color={colors.ink} />
         </View>
@@ -83,7 +83,7 @@ export default function AgentTurnScreen() {
   }
   if (queryState === "error" || !item) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
         <ModalScreenHeader title="执行结果" onBack={() => router.back()} />
         <QueryErrorState
           title="执行结果暂时无法同步"
@@ -118,7 +118,7 @@ export default function AgentTurnScreen() {
           .join(" · ");
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
       <ModalScreenHeader title="执行结果" onBack={() => router.back()} />
 
       <ScrollView

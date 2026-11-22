@@ -135,6 +135,36 @@ export async function checkUsernameAvailability(username: string) {
   );
 }
 
+export async function createShopifyConnectUrl(token: string, shop: string) {
+  return request<{ auth_url: string; expires_in: number }>(
+    "/api/v1/shopify/connect",
+    {
+      method: "POST",
+      body: JSON.stringify({ shop }),
+    },
+    token,
+  );
+}
+
+export async function createAmazonConnectUrl(token: string) {
+  return request<{ auth_url: string; expires_in: number }>(
+    "/api/v1/platforms/amazon/connect-url",
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function createTemuConnectUrl(token: string, region = "global") {
+  return request<{ auth_url: string; expires_in: number; region: string }>(
+    "/api/v1/platforms/temu/connect-url",
+    {
+      method: "POST",
+      body: JSON.stringify({ region }),
+    },
+    token,
+  );
+}
+
 export async function refreshAuthSession(refreshToken: string) {
   return request<AuthTokens>(
     "/api/v1/auth/refresh",

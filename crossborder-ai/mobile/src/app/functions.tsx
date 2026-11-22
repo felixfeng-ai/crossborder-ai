@@ -12,6 +12,7 @@ import {
   RotateCcw,
   ShoppingBag,
   Star,
+  Store,
   Truck,
   UserRound,
 } from "lucide-react-native";
@@ -72,6 +73,8 @@ function ShortcutIcon({ id, size = 18 }: { id: string; size?: number }) {
       return <Bell {...common} />;
     case "account":
       return <UserRound {...common} />;
+    case "stores":
+      return <Store {...common} />;
     default:
       return <Truck {...common} />;
   }

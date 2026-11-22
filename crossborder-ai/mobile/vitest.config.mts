@@ -19,6 +19,7 @@ export default defineConfig({
         "src/features/library/library-order.ts",
         "src/features/legal/documents.ts",
         "src/features/media/voice-errors.ts",
+        "src/features/stores/providers.ts",
         "src/features/notifications/preference-form.ts",
         "src/features/media/video-save.ts",
       ],

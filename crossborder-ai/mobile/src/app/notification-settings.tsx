@@ -152,7 +152,7 @@ export default function NotificationSettingsScreen() {
 
   if (queryState === "loading") {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
         <ModalScreenHeader
           title="通知偏好"
           onBack={() => router.back()}
@@ -165,7 +165,7 @@ export default function NotificationSettingsScreen() {
   }
   if (queryState === "error" || !draft) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
         <ModalScreenHeader
           title="通知偏好"
           onBack={() => router.back()}

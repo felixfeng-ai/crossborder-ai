@@ -10,6 +10,7 @@ import {
   Scale,
   ShieldCheck,
   Smartphone,
+  Store,
   UserRound,
 } from "lucide-react-native";
 import { useState } from "react";
@@ -178,6 +179,30 @@ export default function AccountScreen() {
               </Text>
             </View>
           </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>店铺</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="打开店铺与渠道"
+            onPress={() => router.push("/stores" as Href)}
+            style={({ pressed }) => [
+              styles.row,
+              pressed && styles.pressed,
+            ]}
+          >
+            <RowIcon>
+              <Store
+                color={colors.mutedStrong}
+                size={16}
+                strokeWidth={1.7}
+              />
+            </RowIcon>
+            <Text style={styles.rowLabel}>店铺与渠道</Text>
+            <Text style={styles.rowValue}>连接与查看店铺</Text>
+            <ChevronRight color={colors.faint} size={16} strokeWidth={2} />
+          </Pressable>
         </View>
 
         <View style={styles.card}>

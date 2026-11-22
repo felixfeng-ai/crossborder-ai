@@ -1,0 +1,56 @@
+# 仓库根是 D:\Project，下面挂着 20 多个项目（十几个 GB，还夹着无权限的 pytest 目录和
+# 指向 Chrome 用户目录的符号链接）。EAS 默认整仓打包，所以这里改成排除清单：
+# 只留下 crossborder-ai/mobile，其余一律不进压缩包。
+/.claude/
+/.github/
+/.vscode/
+/main/
+/.git/
+/ai-workflow-platform/
+/backend/
+/crossborder-intel/
+/cs-agent/
+/drama-outline/
+/drama-outline-app/
+/drama-outline-logo-verify/
+/drama-outline-logo-verify-node_modules-link
+/drama-outline-spacing-verify/
+/find-diff/
+/interview-coach/
+/lulu-pet/
+/meshy-demo/
+/meshy-landing/
+/my-meshy-landing/
+/VideCodeing/
+/wechat-agent/
+
+# crossborder-ai 里除 mobile 之外的部分
+/crossborder-ai/.claude/
+/crossborder-ai/.downloads/
+/crossborder-ai/.pytest_cache/
+/crossborder-ai/.taste-skill/
+/crossborder-ai/.tmp/
+/crossborder-ai/.tools/
+/crossborder-ai/backend/
+/crossborder-ai/backups/
+/crossborder-ai/deploy/
+/crossborder-ai/design-previews/
+/crossborder-ai/docs/
+/crossborder-ai/frontend/
+/crossborder-ai/miniprogram/
+/crossborder-ai/nginx/
+/crossborder-ai/previews/
+/crossborder-ai/scripts/
+/crossborder-ai/specs/
+
+# mobile 内部不进包的部分
+/crossborder-ai/mobile/node_modules/
+/crossborder-ai/mobile/.expo/
+/crossborder-ai/mobile/.chrome-preview/
+/crossborder-ai/mobile/dist-preview*/
+/crossborder-ai/mobile/artifacts/
+/crossborder-ai/mobile/android/
+/crossborder-ai/mobile/ios/
+
+**/.pytest_runtime*/
+**/.pytest_cache/

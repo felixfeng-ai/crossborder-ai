@@ -18,6 +18,7 @@ import apiClient from '@/api/client'
 import { getHeaderContext } from '@/lib/navigation'
 import { normalizeLanguageCode } from '@/i18n/language'
 import { ThemeSwitcher } from '@/components/theme/ThemeSwitcher'
+import { DownloadAppDialog } from '@/components/layout/DownloadAppDialog'
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -146,6 +147,8 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
         </DropdownMenu>
 
         <ThemeSwitcher />
+
+        <DownloadAppDialog />
 
         {/* 店铺切换 */}
         {stores.length > 0 && (

@@ -21,6 +21,9 @@ Expo/EAS UI 预览构建闭环与真实内测环境门禁。
 
 - EAS 项目固定为 `@felix-ai/veyaship-agent`，projectId 为
   `85dd918e-3671-4472-be2b-dcdb951c3930`。
+- EAS 项目已连接 GitHub 仓库 `felixfeng-ai/crossborder-ai`，Base directory 为
+  `crossborder-ai/mobile`。
+- 已创建 Android 托管 Keystore，应用标识为 `com.veyaship.agent`。
 - `app.config.ts` 增加真实构建 API 必填、HTTPS 协议和尾部斜杠规范化校验。
 - `eas.json` 增加 `EXPO_PUBLIC_REQUIRE_REMOTE_API`，本地开发仍可使用回环 API。
 - `ui-preview` 继续使用 `EXPO_PUBLIC_PREVIEW_MODE=1`，不会与真实构建混淆。
@@ -29,6 +32,8 @@ Expo/EAS UI 预览构建闭环与真实内测环境门禁。
 
 - `expo-doctor`：`20/20` 通过。
 - EAS `project:info`：成功识别 `@felix-ai/veyaship-agent`。
+- Expo GitHub 设置：仓库连接成功，Base directory 保存成功。
+- Android 凭据页：已显示应用标识 `com.veyaship.agent`，托管 Keystore 创建成功。
 - EAS `ui-preview` 配置解析：成功，`previewMode: true`，Android 输出 APK。
 - EAS 真实 `preview` 配置在缺少 API 时：按预期失败。
 - 移动端全量：`16 files / 62 tests passed`。
@@ -41,7 +46,8 @@ Expo/EAS UI 预览构建闭环与真实内测环境门禁。
 
 - `https://veyaship.com/health` 可访问，但当前部署仍是旧后端；
   `/api/mobile/v1/bootstrap` 返回 `404`，不能供真实内测包登录。
-- APNs、FCM、iOS 签名、Android 正式签名和真机端到端验收仍需外部凭据与设备。
+- APNs、FCM、iOS 签名和真机端到端验收仍需外部凭据与设备；Android
+  `ui-preview` 已具备云端签名和 APK 构建入口。
 - Amazon/Temu 等平台的真实店铺写操作仍需测试店铺和开放平台权限验收。
 
 ## v3.8.0 - 2026-11-22

@@ -11,12 +11,13 @@
 | 检查项 | 最新状态 | 证据 |
 | --- | --- | --- |
 | EAS 项目关联 | 已解决 | `@felix-ai/veyaship-agent`，projectId `85dd918e-3671-4472-be2b-dcdb951c3930` |
+| GitHub 仓库连接 | 已解决 | `felixfeng-ai/crossborder-ai`，Base directory 为 `crossborder-ai/mobile` |
 | 原生依赖 | 已解决 | `expo-doctor` 为 `20/20` |
 | UI 预览构建 | 已可用 | `ui-preview` 解析成功，Android 输出 APK，预览模式为 `true` |
 | 真实 API 门禁 | 已加固 | 缺少 HTTPS API 时 EAS 真实构建直接失败，不再生成无效包 |
 | 测试 API | 仍阻塞 | `https://veyaship.com/health` 为 `200`，但移动 API 为 `404` |
 | APNs/FCM | 仍阻塞 | 缺少 Apple/Google 推送凭据 |
-| iOS/Android 签名 | 部分可用 | Android 可由 EAS 生成签名；iOS 仍需 Apple Developer 凭据 |
+| iOS/Android 签名 | 部分可用 | Android 托管 Keystore 已创建；iOS 仍需 Apple Developer 凭据 |
 | 真机端到端 | 未执行 | 当前没有 iOS/Android 真机验收结果 |
 | 平台真实写操作 | 未完成 | 需要 Amazon/Temu 等测试店铺与开放平台权限 |
 

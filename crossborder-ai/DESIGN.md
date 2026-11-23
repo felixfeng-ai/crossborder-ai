@@ -84,7 +84,9 @@ VeyaShip 是跨境卖家的石墨决策台：以中性近黑层级、纸白命�
 
 - Mobile model: 58px top bar, drawer navigation, single-column content, no horizontal page scroll.
 - Desktop model: 232px labelled sidebar, 58px top bar, continuous graphite work surface.
-- Primary navigation groups: 经营（仪表盘、商品库、Listing 中心）、AI 创作（AI 助手、图片工作台、视频工作台、素材中心）、运营（运营监控、渠道发布）、账户（账单、设置）。
+- Primary navigation groups: 经营（今日 Agent、商品库、Listing 中心、仪表盘）、AI 创作（AI 助手、图片工作台、视频工作台、素材中心）、运营（运营监控、店铺与渠道）、账户（账单、设置）。
+- Notification center opens from the top-bar bell; channel publishing opens from 店铺与渠道 instead of occupying a second peer navigation item.
+- Today Agent uses the daily greeting, the most important task, a compact Agent composer and the work timeline as its hierarchy. All-zero KPI strips are hidden.
 - Batch import is an action inside 商品库; AI Listing generation is an action inside Listing 中心; upgrade approval is an admin action in the account menu.
 - What is intentionally not navigation: onboarding hints, recent products, billing upgrades and provider configuration stay inside their owning surface.
 - Safe areas and keyboard behaviour: `min-h-[100dvh]`, safe-area insets, visible focus rings and keyboard reachable controls.
@@ -102,7 +104,7 @@ VeyaShip 是跨境卖家的石墨决策台：以中性近黑层级、纸白命�
 - Card: opaque panel with 1px hairline; no blur, glow or hover lift at rest.
 - Input: opaque field on panel, 6px radius, visible label and brand focus ring.
 - Sidebar: neutral active fill and text weight change; no coloured pill and no left accent bar.
-- Header: shows current workspace group and page title; carries credits, language and account; does not repeat the brand slogan.
+- Header: shows current workspace group and page title; keeps App download visible, places credits, language, theme and store switching in the tools menu, and keeps account as the final action.
 - Brand mark: geometric V-route with three route nodes and one amber destination node; sidebar subtitle is `AI 跨境运营台`.
 - Pipeline: ordered operational steps with completed, running, blocked and waiting states.
 - AI status: model/tool activity is shown only where it helps the current decision.

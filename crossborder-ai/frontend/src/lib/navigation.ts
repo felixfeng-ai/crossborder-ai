@@ -32,9 +32,9 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
     label: '经营',
     items: [
       { label: '今日 Agent', path: '/app/today' },
-      { label: '仪表盘', path: '/app/dashboard' },
       { label: '商品库', path: '/app/products' },
       { label: 'Listing 中心', path: '/app/catalog' },
+      { label: '仪表盘', path: '/app/dashboard' },
     ],
   },
   {
@@ -54,8 +54,6 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
     items: [
       { label: '运营监控', path: '/app/operations' },
       { label: '店铺与渠道', path: '/app/stores' },
-      { label: '渠道发布', path: '/app/shopify' },
-      { label: '通知', path: '/app/activity' },
     ],
   },
   {

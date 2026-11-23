@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   ArrowUp,
   AudioLines,
+  Bot,
   Camera,
   CheckCircle2,
   CircleAlert,
@@ -13,7 +14,6 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   buildAgentTurnPayload,
@@ -200,14 +200,19 @@ export function CrossSurfaceComposer({
       className="border border-border bg-[var(--factory-panel)]"
       data-cross-surface-composer="true"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">交给 Agent</span>
-          <Badge variant="outline" className="text-[11px]">
-            Web + App 同一工作区
-          </Badge>
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-[var(--factory-accent)]">
+            <Bot className="h-4 w-4" />
+          </span>
+          <span>
+            <span className="block text-sm font-medium">交给小 Veya</span>
+            <span className="mt-0.5 block text-[11px] text-muted-foreground">
+              文字、链接、订单号、图片或语音都可以
+            </span>
+          </span>
         </div>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {MODES.map((item) => {
             const Icon = item.icon
             return (
@@ -229,11 +234,11 @@ export function CrossSurfaceComposer({
         </div>
       </div>
 
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         <textarea
           value={text}
           onChange={(event) => setText(event.target.value)}
-          rows={3}
+          rows={2}
           placeholder={
             mode === 'link'
               ? '粘贴 1688、Shopify、Amazon 或 Temu 商品链接'
@@ -241,7 +246,7 @@ export function CrossSurfaceComposer({
                 ? '输入订单号、物流单号或买家问题'
                 : '告诉 Agent 今天要处理什么'
           }
-          className="min-h-24 w-full resize-y border border-border bg-background px-3 py-2.5 text-sm leading-6 outline-none focus:border-[var(--factory-accent)]"
+          className="min-h-[72px] w-full resize-y border border-border bg-background px-3 py-2.5 text-sm leading-6 outline-none focus:border-[var(--factory-accent)]"
         />
 
         {!!images.length && (
@@ -301,7 +306,7 @@ export function CrossSurfaceComposer({
           onChange={(event) => void pickImages(event.target.files)}
         />
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
@@ -342,14 +347,14 @@ export function CrossSurfaceComposer({
           <Button
             onClick={() => void submit()}
             disabled={!canSubmit}
-            className="min-w-28"
+            className="min-w-32"
           >
             {submitTurn.isPending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <ArrowUp className="mr-2 h-4 w-4" />
             )}
-            交给 Agent
+            开始处理
           </Button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowRight,
   Bot,
   CalendarDays,
@@ -38,6 +39,21 @@ function categoryTone(category: string) {
   if (category === 'monitor') return 'destructive' as const
   if (category === 'auto') return 'success' as const
   return 'secondary' as const
+}
+
+function greetingForHour(hour: number): string {
+  if (hour < 6) return '夜深了'
+  if (hour < 12) return '早上好'
+  if (hour < 18) return '下午好'
+  return '晚上好'
+}
+
+function formatToday(): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  }).format(new Date())
 }
 
 function PlanRow({
@@ -129,160 +145,309 @@ function TimelineRow({
   )
 }
 
+function SyncNotice({
+  onRetry,
+  retrying,
+}: {
+  onRetry: () => void
+  retrying: boolean
+}) {
+  return (
+    <div
+      role="status"
+      className="flex flex-col gap-3 border border-[color:rgba(217,139,112,0.32)] bg-[color:rgba(217,139,112,0.08)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <p className="flex items-start gap-2 text-xs leading-5 text-[var(--factory-coral)]">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+        部分今日数据暂时未同步，页面会保留最近一次成功结果。
+      </p>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="w-fit text-[var(--factory-coral)]"
+        onClick={onRetry}
+      >
+        <RefreshCw
+          className={`mr-2 h-3.5 w-3.5 ${retrying ? 'animate-spin' : ''}`}
+        />
+        重试同步
+      </Button>
+    </div>
+  )
+}
+
+function UnavailableBlock({
+  title,
+  onRetry,
+}: {
+  title: string
+  onRetry: () => void
+}) {
+  return (
+    <div className="px-5 py-8">
+      <p className="text-sm font-medium">{title}</p>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+        当前没有把它显示成空数据，已有任务不会因这次同步失败被删除。
+      </p>
+      <Button
+        size="sm"
+        variant="outline"
+        className="mt-4"
+        onClick={onRetry}
+      >
+        <RefreshCw className="mr-2 h-3.5 w-3.5" />
+        重新加载
+      </Button>
+    </div>
+  )
+}
+
 export default function TodayPage() {
   const navigate = useNavigate()
   const workspaceId = useWorkspaceContextStore(
     (state) => state.activeWorkspaceId,
+  )
+  const workspaceDisplayName = useWorkspaceContextStore(
+    (state) => state.displayName,
   )
   const activeWorkspace = useWorkspaceContextStore((state) =>
     state.workspaces.find((workspace) => workspace.id === state.activeWorkspaceId),
   )
   const plan = useDailyPlanQuery(workspaceId)
   const timeline = useTimelineQuery(workspaceId)
-  const isLoading = (plan.isLoading && !plan.data) || (timeline.isLoading && !timeline.data)
-  const error = plan.error ?? timeline.error
-
-  const refresh = () => {
-    void plan.refetch()
-    void timeline.refetch()
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-[420px] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--factory-accent)]" />
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="mx-auto max-w-2xl border border-border bg-[var(--factory-panel)] p-6">
-        <AlertCircle className="h-5 w-5 text-[var(--factory-coral)]" />
-        <h1 className="mt-3 text-lg font-semibold">今日工作暂时无法同步</h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          当前不会把加载失败显示成“今天没有任务”。
-        </p>
-        <Button className="mt-4" variant="outline" onClick={refresh}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          重新加载
-        </Button>
-      </div>
-    )
-  }
-
   const planItems = plan.data?.items ?? []
   const timelineItems = timeline.data?.items ?? []
-  const stats = [
-    ['待你决定', plan.data?.decision_count ?? 0, CalendarDays],
-    ['Agent 执行', plan.data?.auto_count ?? 0, Bot],
-    ['需要关注', plan.data?.monitor_count ?? 0, AlertCircle],
-    ['昨日结转', plan.data?.carryover_count ?? 0, Sparkles],
+  const planUnavailable = Boolean(plan.error && !plan.data)
+  const timelineUnavailable = Boolean(timeline.error && !timeline.data)
+  const hasSyncError = Boolean(plan.error || timeline.error)
+  const planPending = Boolean(!plan.data && plan.isLoading)
+  const timelinePending = Boolean(!timeline.data && timeline.isLoading)
+  const loading = planPending || timelinePending
+  const retrying = plan.isFetching || timeline.isFetching
+  const allEmpty =
+    !loading &&
+    !planUnavailable &&
+    !timelineUnavailable &&
+    planItems.length === 0 &&
+    timelineItems.length === 0
+
+  const metrics = [
+    ['待你决定', plan.data?.decision_count],
+    ['Agent 执行', plan.data?.auto_count],
+    ['需要关注', plan.data?.monitor_count],
+    ['昨日结转', plan.data?.carryover_count],
   ] as const
+  const metricTotal = metrics.reduce(
+    (sum, [, value]) => sum + Number(value ?? 0),
+    0,
+  )
+  const leadPlan = planItems[0]
+  const leadTimeline = timelineItems[0]
+  const greeting = greetingForHour(new Date().getHours())
+  const refresh = () => {
+    void Promise.allSettled([plan.refetch(), timeline.refetch()])
+  }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8" data-agent-today="true">
+    <div className="mx-auto max-w-6xl space-y-6" data-agent-today="true">
       <header className="flex flex-col justify-between gap-4 border-b border-border pb-6 sm:flex-row sm:items-end">
         <div>
-          <div className="flex items-center gap-2 text-xs font-medium text-[var(--factory-accent)]">
-            <CalendarDays className="h-4 w-4" />
-            {activeWorkspace?.name ?? '当前工作区'}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <CalendarDays className="h-4 w-4 text-[var(--factory-accent)]" />
+              {formatToday()}
+            </span>
+            <span>{activeWorkspace?.name ?? '当前工作区'}</span>
           </div>
-          <h1 className="page-title mt-2">今日 Agent</h1>
+          <h1 className="page-title mt-3">
+            {greeting}，{workspaceDisplayName || '老板'}
+          </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
             {plan.data?.overview ||
-              'Agent 会把需要决定、正在执行和需要关注的工作集中到今天。'}
+              (planUnavailable
+                ? '今日计划暂时未同步，最近工作流仍会继续显示。'
+                : '小 Veya 会先处理明确工作，需要你判断的事情会留在这里。')}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={refresh}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            刷新
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="刷新今日工作"
+            title="刷新今日工作"
+            onClick={refresh}
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${retrying ? 'animate-spin' : ''}`}
+            />
           </Button>
-          <Button onClick={() => navigate('/app/agent')}>
+          <Button
+            variant="outline"
+            onClick={() => navigate('/app/agent')}
+          >
             <Bot className="mr-2 h-4 w-4" />
-            打开 Agent
+            完整对话
           </Button>
         </div>
       </header>
 
-      <section className="grid grid-cols-2 border border-border bg-[var(--factory-panel)] lg:grid-cols-4">
-        {stats.map(([label, value, Icon], index) => (
-          <div
-            key={label}
-            className={`p-4 ${index === 1 || index === 3 ? 'border-l border-border' : ''} ${index >= 2 ? 'border-t border-border lg:border-t-0' : ''} ${index === 2 ? 'lg:border-l' : ''}`}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-xs text-muted-foreground">{label}</span>
-              <Icon className="h-4 w-4 text-[var(--factory-accent)]" />
-            </div>
-            <p className="metric-number mt-3 text-3xl font-semibold">{value}</p>
-          </div>
-        ))}
-      </section>
+      {hasSyncError && (
+        <SyncNotice onRetry={refresh} retrying={retrying} />
+      )}
 
-      {workspaceId && <CrossSurfaceComposer workspaceId={workspaceId} />}
+      {metricTotal > 0 && (
+            <section
+              className="flex flex-wrap items-center gap-x-8 gap-y-3 border-y border-border py-3"
+              aria-label="今日工作概览"
+            >
+              {metrics.map(([label, value]) => (
+                <span
+                  key={label}
+                  className="inline-flex items-baseline gap-2 text-xs text-muted-foreground"
+                >
+                  <span className="metric-number text-lg font-semibold text-foreground">
+                    {value ?? '—'}
+                  </span>
+                  {label}
+                </span>
+              ))}
+            </section>
+          )}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
-        <section className="border border-border bg-[var(--factory-panel)]">
-          <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-            <div>
-              <h2 className="section-title">今天的计划</h2>
+          {leadPlan ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/app/tasks/${leadPlan.work_item_id}`)}
+              className="group grid w-full gap-5 border border-[color:rgba(216,181,109,0.32)] bg-[var(--factory-side)] p-5 text-left transition-colors hover:border-[var(--factory-accent)] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:p-6"
+            >
+              <span className="min-w-0">
+                <span className="flex items-center gap-2 text-xs text-[var(--factory-accent)]">
+                  <Sparkles className="h-4 w-4" />
+                  今天最重要
+                </span>
+                <span className="mt-3 block text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
+                  {leadPlan.title}
+                </span>
+                <span className="mt-3 block max-w-3xl text-sm leading-6 text-muted-foreground">
+                  {leadPlan.reason}
+                </span>
+              </span>
+              <span className="flex items-center gap-3 text-sm font-medium text-foreground">
+                处理这件事
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </span>
+            </button>
+          ) : leadTimeline && !timelineUnavailable ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/app/tasks/${leadTimeline.id}`)}
+              className="group flex w-full items-center justify-between gap-4 border border-border bg-[var(--factory-panel)] px-5 py-4 text-left hover:border-[var(--factory-accent)]"
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">
+                  {leadTimeline.title}
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {leadTimeline.summary}
+                </span>
+              </span>
+              <ArrowRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-1" />
+            </button>
+          ) : null}
+
+          {workspaceId && <CrossSurfaceComposer workspaceId={workspaceId} />}
+
+          {loading ? (
+            <section className="border-y border-border py-10 text-center">
+              <Loader2 className="mx-auto h-5 w-5 animate-spin text-[var(--factory-accent)]" />
+              <p className="mt-3 text-sm font-medium">正在同步今天的工作</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                需要决定的工作排在前面，其次才是自动执行和巡检。
+                输入区已经可以使用，不需要等待列表加载完成。
               </p>
-            </div>
-            <Badge variant="outline">{planItems.length} 项</Badge>
-          </header>
-          <div className="px-5">
-            {planItems.length ? (
-              planItems.map((item) => (
-                <PlanRow
-                  key={item.id}
-                  item={item}
-                  onOpen={() => navigate(`/app/tasks/${item.work_item_id}`)}
-                />
-              ))
-            ) : (
-              <div className="py-14 text-center">
-                <ShieldCheck className="mx-auto h-8 w-8 text-[var(--factory-success)]" />
-                <p className="mt-3 text-sm font-medium">今天还没有待办计划</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Agent 发现需要你决定或持续关注的工作后会出现在这里。
-                </p>
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="border border-border bg-[var(--factory-panel)]">
-          <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-            <div>
-              <h2 className="section-title">最近工作流</h2>
+            </section>
+          ) : allEmpty ? (
+            <section className="border-y border-border py-12 text-center">
+              <ShieldCheck className="mx-auto h-8 w-8 text-[var(--factory-success)]" />
+              <p className="mt-3 text-sm font-medium">今天暂时没有待处理工作</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                执行、失败和需要确认的状态与 App 保持一致。
+                可以直接交给小 Veya 一项任务，或稍后查看 Agent 的处理结果。
               </p>
+            </section>
+          ) : (
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+              <section className="border border-border bg-[var(--factory-panel)]">
+                <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+                  <div>
+                    <h2 className="section-title">今天的计划</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      需要你决定的工作排在自动执行和巡检之前。
+                    </p>
+                  </div>
+                  <Badge variant="outline">{planItems.length} 项</Badge>
+                </header>
+                {planUnavailable ? (
+                  <UnavailableBlock
+                    title="今日计划暂时无法同步"
+                    onRetry={() => void plan.refetch()}
+                  />
+                ) : (
+                  <div className="px-5">
+                    {planItems.length ? (
+                      planItems.map((item) => (
+                        <PlanRow
+                          key={item.id}
+                          item={item}
+                          onOpen={() =>
+                            navigate(`/app/tasks/${item.work_item_id}`)
+                          }
+                        />
+                      ))
+                    ) : (
+                      <div className="py-10 text-center text-xs text-muted-foreground">
+                        暂无需要你决定的计划
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+
+              <section className="border border-border bg-[var(--factory-panel)]">
+                <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+                  <div>
+                    <h2 className="section-title">最近工作流</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      执行、失败和等待确认的状态会与 App 保持一致。
+                    </p>
+                  </div>
+                  <Badge variant="outline">{timelineItems.length} 项</Badge>
+                </header>
+                {timelineUnavailable ? (
+                  <UnavailableBlock
+                    title="工作流暂时无法同步"
+                    onRetry={() => void timeline.refetch()}
+                  />
+                ) : (
+                  <div className="px-5">
+                    {timelineItems.length ? (
+                      timelineItems
+                        .slice(0, 12)
+                        .map((item) => (
+                          <TimelineRow
+                            key={item.id}
+                            item={item}
+                            onOpen={() => navigate(`/app/tasks/${item.id}`)}
+                          />
+                        ))
+                    ) : (
+                      <div className="py-10 text-center text-xs text-muted-foreground">
+                        今天还没有工作记录
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
             </div>
-            <Badge variant="outline">{timelineItems.length} 项</Badge>
-          </header>
-          <div className="px-5">
-            {timelineItems.length ? (
-              timelineItems.slice(0, 12).map((item) => (
-                <TimelineRow
-                  key={item.id}
-                  item={item}
-                  onOpen={() => navigate(`/app/tasks/${item.id}`)}
-                />
-              ))
-            ) : (
-              <div className="py-14 text-center">
-                <Clock3 className="mx-auto h-8 w-8 text-muted-foreground" />
-                <p className="mt-3 text-sm font-medium">今天还没有工作记录</p>
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
+          )}
     </div>
   )
 }

@@ -24,10 +24,26 @@ describe('navigation architecture', () => {
     expect(paths).not.toContain('/app/content')
     expect(paths).toContain('/app/marketing-agent')
     expect(paths).toContain('/app/tutorial')
+    expect(paths).not.toContain('/app/activity')
+    expect(paths).not.toContain('/app/shopify')
+    expect(
+      NAVIGATION_GROUPS.find((group) => group.id === 'operate')?.items.map(
+        (item) => item.path,
+      ),
+    ).toEqual([
+      '/app/today',
+      '/app/products',
+      '/app/catalog',
+      '/app/dashboard',
+    ])
+    expect(
+      NAVIGATION_GROUPS.find((group) => group.id === 'operations')?.items.map(
+        (item) => item.path,
+      ),
+    ).toEqual(['/app/operations', '/app/stores'])
     expect(paths).toEqual(
       expect.arrayContaining([
         '/app/today',
-        '/app/activity',
         '/app/notification-settings',
         '/app/stores',
       ]),

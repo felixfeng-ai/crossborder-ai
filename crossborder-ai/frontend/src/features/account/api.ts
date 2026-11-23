@@ -1,5 +1,4 @@
 import apiClient from '@/api/client'
-import { MOBILE_API_BASE } from '@/features/workspace-context/workspace-api'
 import type { User } from '@/types'
 
 export interface AgentControlResponse {
@@ -48,8 +47,8 @@ export async function getAgentControl(
   workspaceId: string,
 ): Promise<AgentControlResponse> {
   const response = await apiClient.get<AgentControlResponse>(
-    `/workspaces/${workspaceId}/agent-control`,
-    { baseURL: MOBILE_API_BASE },
+    `/api/mobile/v1/workspaces/${workspaceId}/agent-control`,
+    { baseURL: '' },
   )
   return response.data
 }
@@ -59,9 +58,9 @@ export async function setAgentPaused(
   paused: boolean,
 ): Promise<AgentControlResponse> {
   const response = await apiClient.patch<AgentControlResponse>(
-    `/workspaces/${workspaceId}/agent-control`,
+    `/api/mobile/v1/workspaces/${workspaceId}/agent-control`,
     { paused },
-    { baseURL: MOBILE_API_BASE },
+    { baseURL: '' },
   )
   return response.data
 }

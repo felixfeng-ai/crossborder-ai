@@ -1,5 +1,4 @@
 import apiClient from '@/api/client'
-import { MOBILE_API_BASE } from '@/features/workspace-context/workspace-api'
 
 import type { StoreProviderId } from './stores'
 
@@ -14,8 +13,8 @@ export async function getCommerceStores(
   workspaceId: string,
 ): Promise<CommerceStore[]> {
   const response = await apiClient.get<CommerceStore[]>(
-    `/workspaces/${workspaceId}/commerce-stores`,
-    { baseURL: MOBILE_API_BASE },
+    `/api/mobile/v1/workspaces/${workspaceId}/commerce-stores`,
+    { baseURL: '' },
   )
   return response.data
 }

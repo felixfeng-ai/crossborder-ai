@@ -1,5 +1,4 @@
 import apiClient from '@/api/client'
-import { MOBILE_API_BASE } from '@/features/workspace-context/workspace-api'
 
 import type {
   CommandResponse,
@@ -13,10 +12,6 @@ import type {
 } from './types'
 import type { AgentTurnPayload } from './composer'
 
-function mobilePath(path: string): string {
-  return path
-}
-
 export function currentTimeZone(): string {
   return (
     Intl.DateTimeFormat().resolvedOptions().timeZone ||
@@ -28,9 +23,9 @@ export async function getDailyPlan(
   workspaceId: string,
 ): Promise<DailyPlanResponse> {
   const response = await apiClient.get<DailyPlanResponse>(
-    mobilePath(`/workspaces/${workspaceId}/daily-plan`),
+    `/api/mobile/v1/workspaces/${workspaceId}/daily-plan`,
     {
-      baseURL: MOBILE_API_BASE,
+      baseURL: '',
       params: { timezone: currentTimeZone() },
     },
   )
@@ -41,9 +36,9 @@ export async function getTimeline(
   workspaceId: string,
 ): Promise<TimelineResponse> {
   const response = await apiClient.get<TimelineResponse>(
-    mobilePath(`/workspaces/${workspaceId}/timeline`),
+    `/api/mobile/v1/workspaces/${workspaceId}/timeline`,
     {
-      baseURL: MOBILE_API_BASE,
+      baseURL: '',
       params: { timezone: currentTimeZone() },
     },
   )
@@ -55,8 +50,8 @@ export async function getWorkItem(
   workItemId: string,
 ): Promise<WorkItemDetail> {
   const response = await apiClient.get<WorkItemDetail>(
-    mobilePath(`/workspaces/${workspaceId}/work-items/${workItemId}`),
-    { baseURL: MOBILE_API_BASE },
+    `/api/mobile/v1/workspaces/${workspaceId}/work-items/${workItemId}`,
+    { baseURL: '' },
   )
   return response.data
 }
@@ -68,10 +63,10 @@ export async function submitWorkItemCommand(
 ): Promise<CommandResponse> {
   const { idempotency_key: idempotencyKey, ...payload } = command
   const response = await apiClient.post<CommandResponse>(
-    mobilePath(`/workspaces/${workspaceId}/work-items/${workItemId}/commands`),
+    `/api/mobile/v1/workspaces/${workspaceId}/work-items/${workItemId}/commands`,
     payload,
     {
-      baseURL: MOBILE_API_BASE,
+      baseURL: '',
       headers: { 'Idempotency-Key': idempotencyKey },
     },
   )
@@ -85,9 +80,9 @@ export async function uploadAgentImage(
   const form = new FormData()
   form.append('file', file)
   const response = await apiClient.post<ImageAsset>(
-    `/workspaces/${workspaceId}/assets/images`,
+    `/api/mobile/v1/workspaces/${workspaceId}/assets/images`,
     form,
-    { baseURL: MOBILE_API_BASE },
+    { baseURL: '' },
   )
   return response.data
 }
@@ -105,8 +100,8 @@ export async function transcribeAgentAudio(
     asset_id: string
     transcript: string
     language: string
-  }>(`/workspaces/${workspaceId}/audio/transcriptions`, form, {
-    baseURL: MOBILE_API_BASE,
+  }>(`/api/mobile/v1/workspaces/${workspaceId}/audio/transcriptions`, form, {
+    baseURL: '',
     headers: { 'Idempotency-Key': idempotencyKey },
   })
   return response.data
@@ -118,10 +113,10 @@ export async function submitAgentTurn(
   idempotencyKey: string,
 ): Promise<AgentTurnResponse> {
   const response = await apiClient.post<AgentTurnResponse>(
-    `/workspaces/${workspaceId}/agent-turns`,
+    `/api/mobile/v1/workspaces/${workspaceId}/agent-turns`,
     payload,
     {
-      baseURL: MOBILE_API_BASE,
+      baseURL: '',
       headers: { 'Idempotency-Key': idempotencyKey },
     },
   )
@@ -133,8 +128,8 @@ export async function getAgentTurn(
   turnId: string,
 ): Promise<AgentTurnDetail> {
   const response = await apiClient.get<AgentTurnDetail>(
-    `/workspaces/${workspaceId}/agent-turns/${turnId}`,
-    { baseURL: MOBILE_API_BASE },
+    `/api/mobile/v1/workspaces/${workspaceId}/agent-turns/${turnId}`,
+    { baseURL: '' },
   )
   return response.data
 }

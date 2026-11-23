@@ -7,6 +7,7 @@ from app.main import app
 
 
 FRONTEND_SRC = Path(__file__).resolve().parents[2] / "frontend" / "src"
+API_PREFIXES = ("/api/v1", "/api/mobile/v1")
 
 
 _CALL_RE = re.compile(
@@ -22,7 +23,8 @@ def _normalize_path(path: str) -> str:
     # SDK 生成的查询参数拼接在路径末尾时直接去掉，例如 /upgrades${params}。
     path = re.sub(r"/\$\{[^}]+\}", "/{param}", path)
     path = re.sub(r"\$\{[^}]+\}", "", path)
-    if not path.startswith("/api/v1"):
+    # Web 同时使用桌面 API 和跨端 Agent 运行面，两者都必须与 OpenAPI 契约一致。
+    if not path.startswith(API_PREFIXES):
         path = f"/api/v1/{path.lstrip('/')}"
     # 参数名可能不同，只比较路径结构和参数位置。
     return re.sub(r"\{[^}]+\}", "{}", path.rstrip("/") or "/")

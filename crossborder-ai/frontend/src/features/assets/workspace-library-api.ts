@@ -1,5 +1,4 @@
 import apiClient from '@/api/client'
-import { MOBILE_API_BASE } from '@/features/workspace-context/workspace-api'
 
 import type { ImageCategory } from './asset-management'
 
@@ -21,8 +20,8 @@ export async function getWorkspaceImageAssets(
   workspaceId: string,
 ): Promise<WorkspaceImageAsset[]> {
   const response = await apiClient.get<WorkspaceImageAsset[]>(
-    `/workspaces/${workspaceId}/assets/images`,
-    { baseURL: MOBILE_API_BASE },
+    `/api/mobile/v1/workspaces/${workspaceId}/assets/images`,
+    { baseURL: '' },
   )
   return response.data
 }
@@ -33,9 +32,9 @@ export async function updateWorkspaceImageCategory(
   category: ImageCategory,
 ): Promise<WorkspaceImageAsset> {
   const response = await apiClient.patch<WorkspaceImageAsset>(
-    `/workspaces/${workspaceId}/assets/images/${assetId}/category`,
+    `/api/mobile/v1/workspaces/${workspaceId}/assets/images/${assetId}/category`,
     { category },
-    { baseURL: MOBILE_API_BASE },
+    { baseURL: '' },
   )
   return response.data
 }
@@ -48,9 +47,9 @@ export async function replaceWorkspaceImage(
   const form = new FormData()
   form.append('file', file)
   const response = await apiClient.post<WorkspaceImageAsset>(
-    `/workspaces/${workspaceId}/assets/images/${assetId}/replace`,
+    `/api/mobile/v1/workspaces/${workspaceId}/assets/images/${assetId}/replace`,
     form,
-    { baseURL: MOBILE_API_BASE },
+    { baseURL: '' },
   )
   return response.data
 }
@@ -60,7 +59,7 @@ export async function deleteWorkspaceImage(
   assetId: string,
 ): Promise<void> {
   await apiClient.delete(
-    `/workspaces/${workspaceId}/assets/images/${assetId}`,
-    { baseURL: MOBILE_API_BASE },
+    `/api/mobile/v1/workspaces/${workspaceId}/assets/images/${assetId}`,
+    { baseURL: '' },
   )
 }

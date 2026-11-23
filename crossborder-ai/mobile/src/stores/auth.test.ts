@@ -76,6 +76,26 @@ describe("mobile auth session store", () => {
     expect(useAuthStore.getState().refreshToken).toBe("refresh-2");
   });
 
+  it("accepts legacy access-only login responses", async () => {
+    await useAuthStore.getState().setSession({
+      access_token: "legacy-access",
+      token_type: "bearer",
+    });
+
+    expect(secure.setSecureItem).toHaveBeenCalledWith(
+      "veyaship.mobile.access_token",
+      "legacy-access",
+    );
+    expect(secure.deleteSecureItem).toHaveBeenCalledWith(
+      "veyaship.mobile.refresh_token",
+    );
+    expect(useAuthStore.getState()).toMatchObject({
+      token: "legacy-access",
+      refreshToken: null,
+      hydrated: true,
+    });
+  });
+
   it("revokes the backend session and clears both secure values", async () => {
     await useAuthStore.getState().setSession(firstTokens);
     vi.clearAllMocks();

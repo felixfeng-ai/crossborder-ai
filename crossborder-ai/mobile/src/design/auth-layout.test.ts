@@ -30,6 +30,7 @@ describe("sign-in design contract", () => {
     expect(SIGN_IN_LAYOUT.buttonHeight).toBe(52);
     expect(SIGN_IN_LAYOUT.buttonToLegal).toBe(22);
     expect(SIGN_IN_LAYOUT.legalToCreateAccount).toBe(28);
+    expect(SIGN_IN_LAYOUT.keyboardScrollY).toBe(104);
     expect(SIGN_IN_LAYOUT.buttonHeight).toBeGreaterThanOrEqual(44);
   });
 
@@ -41,6 +42,7 @@ describe("sign-in design contract", () => {
       placeholder: "#68707C",
       border: "#DDE2E6",
       focusedBorder: "#111213",
+      cursor: "#111213",
       button: "#111315",
     });
     expect(SIGN_IN_TYPE).toMatchObject({

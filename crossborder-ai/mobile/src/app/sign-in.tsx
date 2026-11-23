@@ -96,11 +96,14 @@ export default function SignInScreen() {
   }, []);
 
   useEffect(() => {
-    if (!keyboardVisible) return;
+    if (!keyboardVisible || Platform.OS !== "android") return;
 
-    // 键盘出现后把底部主操作滚入可视区，避免输入时按钮被键盘遮挡。
-    scrollRef.current?.scrollToEnd({ animated: true });
-  }, [keyboardVisible]);
+    // 只移动到字段和主按钮可见的位置，避免把顶部品牌区滚到屏幕外。
+    scrollRef.current?.scrollTo({
+      y: mode === "login" ? SIGN_IN_LAYOUT.keyboardScrollY : 0,
+      animated: true,
+    });
+  }, [keyboardVisible, mode]);
 
   useEffect(
     () => () => {
@@ -182,8 +185,9 @@ export default function SignInScreen() {
     setPending(true);
     setError("");
 
+    let result: Awaited<ReturnType<typeof login>>;
     try {
-      const result =
+      result =
         mode === "login"
           ? await login(email.trim(), password)
           : await register(
@@ -191,14 +195,21 @@ export default function SignInScreen() {
               username.trim(),
               password,
             );
-      await setSession(result);
-      router.replace("/");
     } catch (reason) {
       setError(
         reason instanceof ApiError
           ? reason.message
           : "无法连接服务，请检查网络后重试",
       );
+      setPending(false);
+      return;
+    }
+
+    try {
+      await setSession(result);
+      router.replace("/");
+    } catch {
+      setError("登录成功，但无法安全保存登录状态，请重启应用后重试");
     } finally {
       setPending(false);
     }
@@ -254,6 +265,7 @@ export default function SignInScreen() {
                       autoCapitalize="none"
                       autoComplete="username"
                       autoCorrect={false}
+                      cursorColor={SIGN_IN_COLORS.cursor}
                       maxLength={12}
                       onBlur={queueUsernameCheck}
                       onChangeText={(value) => {
@@ -266,6 +278,7 @@ export default function SignInScreen() {
                       placeholder="小Veya 怎么称呼你"
                       placeholderTextColor={SIGN_IN_COLORS.placeholder}
                       returnKeyType="next"
+                      selectionColor={SIGN_IN_COLORS.cursor}
                       style={[
                         styles.input,
                         webInputStyle,
@@ -295,6 +308,7 @@ export default function SignInScreen() {
                   autoCapitalize="none"
                   autoComplete="email"
                   autoCorrect={false}
+                  cursorColor={SIGN_IN_COLORS.cursor}
                   keyboardType="email-address"
                   onChangeText={(value) => {
                     setEmail(value);
@@ -303,6 +317,7 @@ export default function SignInScreen() {
                   placeholder="name@company.com"
                   placeholderTextColor={SIGN_IN_COLORS.placeholder}
                   returnKeyType="next"
+                  selectionColor={SIGN_IN_COLORS.cursor}
                   style={[
                     styles.input,
                     webInputStyle,
@@ -330,6 +345,7 @@ export default function SignInScreen() {
                     mode === "login" ? "current-password" : "new-password"
                   }
                   autoCorrect={false}
+                  cursorColor={SIGN_IN_COLORS.cursor}
                   onChangeText={(value) => {
                     setPassword(value);
                     if (error) setError("");
@@ -338,6 +354,7 @@ export default function SignInScreen() {
                   placeholder="输入密码"
                   placeholderTextColor={SIGN_IN_COLORS.placeholder}
                   returnKeyType="go"
+                  selectionColor={SIGN_IN_COLORS.cursor}
                   secureTextEntry={!passwordVisible}
                   style={[
                     styles.input,

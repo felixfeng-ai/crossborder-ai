@@ -42,13 +42,19 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
   setSession: async (tokens) => {
-    await Promise.all([
+    const writes: Promise<unknown>[] = [
       setSecureItem(ACCESS_TOKEN_KEY, tokens.access_token),
-      setSecureItem(REFRESH_TOKEN_KEY, tokens.refresh_token),
-    ]);
+    ];
+    if (tokens.refresh_token) {
+      writes.push(setSecureItem(REFRESH_TOKEN_KEY, tokens.refresh_token));
+    } else {
+      // 旧版登录接口只返回 access token，清理历史 refresh token 防止误续期。
+      writes.push(deleteSecureItem(REFRESH_TOKEN_KEY));
+    }
+    await Promise.all(writes);
     set({
       token: tokens.access_token,
-      refreshToken: tokens.refresh_token,
+      refreshToken: tokens.refresh_token ?? null,
       hydrated: true,
     });
   },

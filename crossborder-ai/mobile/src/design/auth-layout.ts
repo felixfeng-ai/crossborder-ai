@@ -5,6 +5,7 @@ export const SIGN_IN_COLORS = {
   placeholder: "#68707C",
   border: "#DDE2E6",
   focusedBorder: "#111213",
+  cursor: "#111213",
   white: "#FFFFFF",
   logo: "#0B0C0E",
   createAccountMuted: "#66717C",
@@ -40,6 +41,8 @@ export const SIGN_IN_LAYOUT = {
   controlRadius: 14,
   buttonToLegal: 22,
   legalToCreateAccount: 28,
+  // Android 键盘弹起时只上移必要距离，保留 Logo 和字段语境。
+  keyboardScrollY: 104,
   fieldHorizontalPadding: 18,
   fieldIconSize: 18,
 } as const;

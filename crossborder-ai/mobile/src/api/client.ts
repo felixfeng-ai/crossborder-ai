@@ -39,10 +39,11 @@ export const API_BASE_URL = resolveBaseUrl();
 
 export type AuthTokens = {
   access_token: string;
-  refresh_token: string;
+  // 兼容尚未升级到会话轮换接口的旧生产服务。
+  refresh_token?: string | null;
   token_type: string;
-  expires_in: number;
-  session_id: string;
+  expires_in?: number;
+  session_id?: string;
 };
 
 export class ApiError extends Error {

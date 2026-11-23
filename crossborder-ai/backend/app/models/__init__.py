@@ -26,6 +26,7 @@ from app.models.publication import Publication
 from app.models.platform_connection import PlatformConnection
 from app.models.product_variant import ProductVariant
 from app.models.image_asset import ImageAsset
+from app.models.audio_asset import AudioAsset
 from app.models.monitor_setting import MonitorSetting
 from app.models.variant_snapshot import VariantSnapshot
 from app.models.operation_alert import OperationAlert
@@ -45,6 +46,9 @@ from app.models.data_retention import DataRetentionRun
 from app.models.shopify_compliance_event import ShopifyComplianceEvent
 from app.models.credit_transaction import CreditTransaction
 from app.models.credit_wallet import CreditWallet
+from app.models.billing_reconciliation_case import BillingReconciliationCase
+from app.models.workspace_credit_wallet import WorkspaceCreditWallet
+from app.models.workspace_subscription import WorkspaceSubscription
 from app.models.subscription import UserSubscription
 from app.models.feature_usage import FeatureUsageCounter
 from app.models.credit_purchase import CreditPurchase
@@ -63,6 +67,39 @@ from app.models.traffic_event import TrafficEvent
 from app.models.feedback import FeedbackComment, FeedbackTicket
 from app.models.admin_audit_log import AdminAuditLog
 from app.models.plan_version import CreditPackVersion, PlanVersion
+from app.models.workspace import (
+    Workspace,
+    WorkspaceAuditLog,
+    WorkspaceInvitation,
+    WorkspaceMember,
+)
+from app.models.agent_work import (
+    AgentTurn,
+    AgentTurnInput,
+    WorkItem,
+    WorkItemCommand,
+    WorkItemEvent,
+)
+from app.models.agent_policy import ActionApproval, AgentAutonomyPolicy
+from app.models.action_run import ActionRun
+from app.models.customer_channel import (
+    CustomerAttachment,
+    CustomerChannel,
+    CustomerMessage,
+    CustomerOrderLink,
+    CustomerThread,
+    ReplyDraft,
+)
+from app.models.daily_plan import AgentDay, DailyPlanItem
+from app.models.notification import (
+    MobileDevice,
+    NotificationDelivery,
+    NotificationOutbox,
+    NotificationPreference,
+)
+from app.models.agent_signal import AgentSignal, IntegrationCursor
+from app.models.integration_event import IntegrationEvent, IntegrationLease
+from app.models.user_session import UserSession
 
 __all__ = [
     "User",
@@ -90,6 +127,7 @@ __all__ = [
     "PlatformConnection",
     "ProductVariant",
     "ImageAsset",
+    "AudioAsset",
     "MonitorSetting",
     "VariantSnapshot",
     "OperationAlert",
@@ -106,6 +144,9 @@ __all__ = [
     "ShopifyComplianceEvent",
     "CreditTransaction",
     "CreditWallet",
+    "BillingReconciliationCase",
+    "WorkspaceCreditWallet",
+    "WorkspaceSubscription",
     "UserSubscription",
     "FeatureUsageCounter",
     "CreditPurchase",
@@ -124,4 +165,33 @@ __all__ = [
     "AdminAuditLog",
     "PlanVersion",
     "CreditPackVersion",
+    "Workspace",
+    "WorkspaceMember",
+    "WorkspaceInvitation",
+    "WorkspaceAuditLog",
+    "AgentTurn",
+    "AgentTurnInput",
+    "WorkItem",
+    "WorkItemCommand",
+    "WorkItemEvent",
+    "AgentAutonomyPolicy",
+    "ActionApproval",
+    "ActionRun",
+    "CustomerChannel",
+    "CustomerAttachment",
+    "CustomerOrderLink",
+    "CustomerThread",
+    "CustomerMessage",
+    "ReplyDraft",
+    "AgentDay",
+    "DailyPlanItem",
+    "MobileDevice",
+    "NotificationPreference",
+    "NotificationOutbox",
+    "NotificationDelivery",
+    "AgentSignal",
+    "IntegrationCursor",
+    "IntegrationEvent",
+    "IntegrationLease",
+    "UserSession",
 ]

@@ -11,7 +11,9 @@ from app.core.config import settings
 from app.models.image_generation_task import ImageGenerationTask
 from app.models.marketing_image_suite import MarketingImageSuite
 from app.models.user import User
+from app.models.workspace_credit_wallet import WorkspaceCreditWallet
 from app.services import provider_config
+from app.services.workspaces import ensure_personal_workspace
 
 
 def _png_bytes(color=(155, 92, 42)) -> bytes:
@@ -33,6 +35,14 @@ async def _prepare_user(db_session, *, credits: int = 100) -> User:
         await db_session.execute(select(User).where(User.email == "test@example.com"))
     ).scalar_one()
     user.plan = "professional"
+    personal = await ensure_personal_workspace(db_session, user)
+    workspace_wallet = await db_session.get(
+        WorkspaceCreditWallet,
+        personal.id,
+    )
+    assert workspace_wallet is not None
+    workspace_wallet.plan_credits = credits
+    workspace_wallet.purchased_credits = 0
     user.credits = credits
     await db_session.flush()
     return user

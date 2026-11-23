@@ -10,9 +10,10 @@ from app.models.listing_draft import ListingDraft
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.services.amazon_sp_api import AmazonSpApiService
-
-
-AMAZON_LISTINGS_BASE_URL = "https://sellingpartnerapi-na.amazon.com"
+from app.services.amazon_orders import (
+    amazon_api_base_url,
+    resolve_amazon_region,
+)
 
 
 class AmazonListingPublishError(Exception):
@@ -149,8 +150,11 @@ class AmazonListingPublishService:
         preview: bool = False,
     ) -> dict:
         access_token = await AmazonSpApiService().refresh_access_token(refresh_token)
+        base_url = amazon_api_base_url(
+            resolve_amazon_region(marketplace_id)
+        )
         url = (
-            f"{AMAZON_LISTINGS_BASE_URL}/listings/2021-08-01/items/"
+            f"{base_url}/listings/2021-08-01/items/"
             f"{quote(seller_id, safe='')}/{quote(sku, safe='')}"
         )
         params = {"marketplaceIds": marketplace_id}
@@ -197,6 +201,153 @@ class AmazonListingPublishService:
                 detail = str(body.get("message") or body.get("errors") or "")
             raise AmazonListingPublishError(
                 f"Amazon Listing 提交失败：{detail[:300] or response.text[:300]}",
+                status_code=502,
+                issues=issues if isinstance(issues, list) else [],
+            )
+        if not isinstance(body, dict):
+            raise AmazonListingPublishError("Amazon 返回了无法解析的响应")
+        return body
+
+    async def get_listing(
+        self,
+        *,
+        refresh_token: str,
+        seller_id: str,
+        marketplace_id: str,
+        sku: str,
+        included_data: str = "summaries,issues",
+    ) -> dict | None:
+        """按 seller、SKU 和 Marketplace 回读 Listing。"""
+
+        access_token = await AmazonSpApiService().refresh_access_token(
+            refresh_token
+        )
+        base_url = amazon_api_base_url(
+            resolve_amazon_region(marketplace_id)
+        )
+        url = (
+            f"{base_url}/listings/2021-08-01/items/"
+            f"{quote(seller_id, safe='')}/{quote(sku, safe='')}"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                response = await client.get(
+                    url,
+                    params={
+                        "marketplaceIds": marketplace_id,
+                        "includedData": included_data,
+                    },
+                    headers={
+                        "x-amz-access-token": access_token,
+                        "Accept": "application/json",
+                    },
+                )
+        except Exception as exc:
+            raise AmazonListingPublishError(
+                "Amazon Listing 回读失败，请稍后重试"
+            ) from exc
+        if response.status_code == 404:
+            return None
+        if response.status_code in (401, 403):
+            raise AmazonListingPublishError(
+                "Amazon 应用缺少 Listings Items 权限或授权已失效",
+                status_code=403,
+            )
+        if response.status_code == 429:
+            raise AmazonListingPublishError(
+                "Amazon API 请求过于频繁，请稍后重试",
+                status_code=429,
+            )
+        if response.status_code >= 400:
+            raise AmazonListingPublishError(
+                f"Amazon Listing 回读失败：{response.text[:300]}"
+            )
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise AmazonListingPublishError(
+                "Amazon Listing 回读内容无法解析"
+            ) from exc
+        return body if isinstance(body, dict) else None
+
+    async def patch_listing(
+        self,
+        *,
+        refresh_token: str,
+        seller_id: str,
+        marketplace_id: str,
+        sku: str,
+        product_type: str,
+        patches: list[dict],
+        preview: bool = False,
+    ) -> dict:
+        """使用 PATCH 局部更新 Amazon Listing，不覆盖其他商品属性。"""
+
+        if not product_type.strip():
+            raise AmazonListingPublishError(
+                "Amazon product type 不能为空",
+                status_code=400,
+            )
+        if not patches:
+            raise AmazonListingPublishError(
+                "Amazon Listing PATCH 不能为空",
+                status_code=400,
+            )
+        access_token = await AmazonSpApiService().refresh_access_token(
+            refresh_token
+        )
+        base_url = amazon_api_base_url(
+            resolve_amazon_region(marketplace_id)
+        )
+        url = (
+            f"{base_url}/listings/2021-08-01/items/"
+            f"{quote(seller_id, safe='')}/{quote(sku, safe='')}"
+        )
+        params = {
+            "marketplaceIds": marketplace_id,
+            "includedData": "issues",
+        }
+        if preview:
+            params["mode"] = "VALIDATION_PREVIEW"
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                response = await client.patch(
+                    url,
+                    params=params,
+                    json={
+                        "productType": product_type.strip().upper(),
+                        "patches": patches,
+                    },
+                    headers={
+                        "x-amz-access-token": access_token,
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                )
+        except Exception as exc:
+            raise AmazonListingPublishError(
+                "Amazon Listing PATCH 请求失败，请稍后重试"
+            ) from exc
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+        issues = body.get("issues") if isinstance(body, dict) else None
+        if response.status_code in {401, 403}:
+            raise AmazonListingPublishError(
+                "Amazon 应用缺少 Listings Items 权限或授权已失效",
+                status_code=403,
+                issues=issues if isinstance(issues, list) else [],
+            )
+        if response.status_code == 429:
+            raise AmazonListingPublishError(
+                "Amazon API 请求过于频繁，请稍后重试",
+                status_code=429,
+                issues=issues if isinstance(issues, list) else [],
+            )
+        if response.status_code >= 400:
+            raise AmazonListingPublishError(
+                f"Amazon Listing PATCH 失败：{response.text[:300]}",
                 status_code=502,
                 issues=issues if isinstance(issues, list) else [],
             )

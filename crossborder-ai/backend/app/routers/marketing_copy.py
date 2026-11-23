@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access_control import check_feature_access
 from app.core.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.marketing_copy import MarketingCopyAsset
 from app.models.user import User
 from app.routers.marketing_campaigns import get_owned_campaign
@@ -21,6 +21,7 @@ from app.services.marketing_copy_service import (
     evaluate_marketing_copy_compliance,
     generate_marketing_copy_batch,
 )
+from app.services.workspace_scope import workspace_access_filter
 
 
 router = APIRouter(prefix="/marketing-campaigns", tags=["营销 Agent"])
@@ -93,6 +94,7 @@ async def _owned_copy(
     campaign_id: uuid.UUID,
     copy_id: uuid.UUID,
     user_id,
+    context: WorkspaceContext,
 ) -> MarketingCopyAsset | None:
     return (
         await db.execute(
@@ -100,6 +102,7 @@ async def _owned_copy(
                 MarketingCopyAsset.id == copy_id,
                 MarketingCopyAsset.campaign_id == campaign_id,
                 MarketingCopyAsset.user_id == user_id,
+                workspace_access_filter(MarketingCopyAsset, context),
             )
         )
     ).scalar_one_or_none()
@@ -111,14 +114,21 @@ async def list_marketing_copy(
     batch_id: str | None = None,
     platform: str | None = None,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    campaign = await get_owned_campaign(
+        db,
+        current_user.id,
+        campaign_id,
+        context,
+    )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
     query = select(MarketingCopyAsset).where(
         MarketingCopyAsset.user_id == current_user.id,
         MarketingCopyAsset.campaign_id == campaign.id,
+        workspace_access_filter(MarketingCopyAsset, context),
     )
     if batch_id:
         try:
@@ -147,11 +157,17 @@ async def generate_marketing_copy(
     campaign_id: str,
     payload: GenerateMarketingCopyRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     if not check_feature_access(current_user, "agent"):
         raise HTTPException(status_code=403, detail="营销文案仅限 Standard 及以上套餐使用")
-    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    campaign = await get_owned_campaign(
+        db,
+        current_user.id,
+        campaign_id,
+        context,
+    )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
     try:
@@ -163,6 +179,7 @@ async def generate_marketing_copy(
             language=payload.language.strip(),
             instructions=payload.instructions.strip(),
             source="marketing_board",
+            workspace_id=campaign.workspace_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -179,16 +196,28 @@ async def update_marketing_copy(
     copy_id: str,
     payload: UpdateMarketingCopyRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    campaign = await get_owned_campaign(
+        db,
+        current_user.id,
+        campaign_id,
+        context,
+    )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
     try:
         parsed_id = uuid.UUID(copy_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="文案不存在")
-    asset = await _owned_copy(db, campaign.id, parsed_id, current_user.id)
+    asset = await _owned_copy(
+        db,
+        campaign.id,
+        parsed_id,
+        current_user.id,
+        context,
+    )
     if asset is None:
         raise HTTPException(status_code=404, detail="文案不存在")
 
@@ -228,17 +257,29 @@ async def resume_marketing_copy(
     campaign_id: str,
     copy_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """人工恢复被自动暂停的 A/B 版本，不改变文案与合规状态。"""
-    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    campaign = await get_owned_campaign(
+        db,
+        current_user.id,
+        campaign_id,
+        context,
+    )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
     try:
         parsed_id = uuid.UUID(copy_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="文案不存在")
-    asset = await _owned_copy(db, campaign.id, parsed_id, current_user.id)
+    asset = await _owned_copy(
+        db,
+        campaign.id,
+        parsed_id,
+        current_user.id,
+        context,
+    )
     if asset is None:
         raise HTTPException(status_code=404, detail="文案不存在")
     asset.performance_status = "active"
@@ -253,16 +294,28 @@ async def delete_marketing_copy(
     campaign_id: str,
     copy_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    campaign = await get_owned_campaign(
+        db,
+        current_user.id,
+        campaign_id,
+        context,
+    )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
     try:
         parsed_id = uuid.UUID(copy_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="文案不存在")
-    asset = await _owned_copy(db, campaign.id, parsed_id, current_user.id)
+    asset = await _owned_copy(
+        db,
+        campaign.id,
+        parsed_id,
+        current_user.id,
+        context,
+    )
     if asset is None:
         raise HTTPException(status_code=404, detail="文案不存在")
     await db.delete(asset)

@@ -17,6 +17,7 @@ from app.models.image_asset import ImageAsset
 from app.models.marketing_video import MarketingVideoProject, MarketingVideoShot
 from app.models.user import User
 from app.models.video_generation_task import VideoGenerationTask
+from app.models.workspace_credit_wallet import WorkspaceCreditWallet
 from app.services import provider_config
 from app.services.marketing_video_agent import (
     build_fallback_marketing_plan,
@@ -30,6 +31,7 @@ from app.services.marketing_video_executor import (
     cancel_marketing_project,
     sync_marketing_video_projects,
 )
+from app.services.workspaces import ensure_personal_workspace
 
 
 def _image_bytes() -> bytes:
@@ -45,6 +47,14 @@ async def _professional_user(db_session) -> User:
         )
     ).scalar_one()
     user.plan = "professional"
+    personal = await ensure_personal_workspace(db_session, user)
+    workspace_wallet = await db_session.get(
+        WorkspaceCreditWallet,
+        personal.id,
+    )
+    assert workspace_wallet is not None
+    workspace_wallet.plan_credits = 200
+    workspace_wallet.purchased_credits = 0
     user.credits = 200
     await db_session.flush()
     return user
@@ -492,6 +502,11 @@ async def test_render_rejects_insufficient_credits_without_provider_call(
         },
         headers=auth_headers,
     )
+    personal = await ensure_personal_workspace(db_session, user)
+    workspace_wallet = await db_session.get(WorkspaceCreditWallet, personal.id)
+    assert workspace_wallet is not None
+    workspace_wallet.plan_credits = 0
+    workspace_wallet.purchased_credits = 0
     user.credits = 0
     await db_session.flush()
     called = False
@@ -695,7 +710,10 @@ async def test_marketing_project_only_exposes_existing_video_file(
     assert available.status_code == 200
     assert available.json()["video_available"] is True
     assert available.json()["final_video_url"].endswith("/file")
-    assert available.json()["thumbnail_url"].endswith("/thumbnail")
+    assert available.json()["thumbnail_url"].split("?", 1)[0].endswith(
+        "/thumbnail"
+    )
+    assert "?token=" in available.json()["thumbnail_url"]
 
     file_response = await client.get(
         f"/api/v1/marketing-videos/projects/{project.id}/file",
@@ -746,6 +764,14 @@ async def test_sync_marks_project_failed_when_any_shot_fails(
 ):
     user = await _professional_user(db_session)
     user.credits = 100
+    personal = await ensure_personal_workspace(db_session, user)
+    workspace_wallet = await db_session.get(
+        WorkspaceCreditWallet,
+        personal.id,
+    )
+    assert workspace_wallet is not None
+    workspace_wallet.plan_credits = 100
+    workspace_wallet.purchased_credits = 0
     monkeypatch.setattr(settings, "VIDEO_STORAGE_DIR", str(tmp_path / "videos"))
     project = MarketingVideoProject(
         user_id=user.id,

@@ -19,6 +19,13 @@ from app.services.ai.agent_orchestrator import (
     _render_report_markdown,
 )
 from app.services.ai.deepseek import DeepSeekService
+from app.services.amazon_market_data import (
+    AmazonMarketDataNotConfigured,
+    AmazonMarketDecisionService,
+    AmazonProductSample,
+    ProductDatabaseResult,
+)
+from app.services.ai import agent_orchestrator as orchestrator_module
 
 VALID_JSON = (
     '{"market": {"monthly_search_volume": 126000, "active_listings": 48300, '
@@ -37,6 +44,61 @@ VALID_JSON = (
 def make_orchestrator() -> AgentOrchestrator:
     """构造最小编排器（两个工具方法只依赖 llm，不依赖 user/db）"""
     return AgentOrchestrator(user=None, db=None)
+
+
+class _StructuredMarketProvider:
+    """给报告结构测试提供固定样本；数字来自 Provider 而不是模型。"""
+
+    async def query_product_database(
+        self,
+        keyword: str,
+        *,
+        page_size: int = 100,
+        max_pages: int = 2,
+    ) -> ProductDatabaseResult:
+        items = [
+            AmazonProductSample(
+                asin=f"B000000{index:03d}",
+                title=f"Bluetooth earbuds {index}",
+                brand=f"Brand {index % 2}",
+                price=29.99 + index,
+                reviews=200 + index,
+                rating=4.5,
+                monthly_units=600 + index * 10,
+                monthly_revenue=None,
+                bsr=1000,
+                sellers=3,
+                listing_quality_score=82,
+                referral_fee_rate=0.15,
+                fulfillment_fee_usd=4.5,
+                date_first_available=None,
+                url=f"https://www.amazon.com/dp/B000000{index:03d}",
+            )
+            for index in range(12)
+        ]
+        return ProductDatabaseResult(
+            items=items,
+            total_results=200,
+            observed_at=__import__("datetime").datetime(
+                2026,
+                11,
+                23,
+                tzinfo=__import__("datetime").timezone.utc,
+            ),
+            pages_read=1,
+        )
+
+    async def historical_search_volume(
+        self,
+        keyword: str,
+        *,
+        days: int = 35,
+    ) -> int:
+        return 70000
+
+
+async def _no_provider_refresh(_db):
+    return None
 
 
 # ── 纯函数测试 ────────────────────────────────────────────────
@@ -187,43 +249,74 @@ async def test_agent_cannot_generate_from_other_users_product(db_session):
 
 @pytest.mark.asyncio
 async def test_select_products_structured_ok(monkeypatch):
-    """合法 JSON → structured 有值、report 为模板 Markdown"""
-    async def fake_generate(self, system_prompt, user_prompt, **kwargs):
-        return VALID_JSON
-    monkeypatch.setattr(DeepSeekService, "generate", fake_generate)
+    """真实 Provider 样本 → structured 有值、report 为模板 Markdown。"""
+    service = AmazonMarketDecisionService(_StructuredMarketProvider())
+    monkeypatch.setattr(
+        orchestrator_module.provider_config,
+        "refresh",
+        _no_provider_refresh,
+    )
+    monkeypatch.setattr(
+        orchestrator_module,
+        "build_runtime_amazon_market_service",
+        lambda **_kwargs: service,
+    )
 
-    result = await make_orchestrator()._do_select_products({"keyword": "蓝牙耳机"})
+    result = await make_orchestrator()._do_select_products(
+        {"keyword": "蓝牙耳机"}
+    )
 
     assert result["status"] == "success"
     data = result["data"]
     assert data["keyword"] == "蓝牙耳机"
     assert data["structured"] is not None
-    assert data["structured"]["market"]["monthly_search_volume"] == 126000
-    assert len(data["structured"]["products"]) == 1
+    assert data["structured"]["market"]["monthly_search_volume"] > 0
+    assert data["structured"]["segments"]
+    assert len(data["structured"]["products"]) > 0
     assert data["report"].startswith("## 「蓝牙耳机」市场分析")
 
 
 @pytest.mark.asyncio
-async def test_select_products_fallback_on_bad_json(monkeypatch):
-    """乱文本 → structured=None、report 为原始文本，不抛异常"""
-    async def fake_generate(self, system_prompt, user_prompt, **kwargs):
-        return "不好意思，这个品类数据暂时无法分析"
-    monkeypatch.setattr(DeepSeekService, "generate", fake_generate)
+async def test_select_products_fails_without_market_provider(monkeypatch):
+    """没有 Provider 时明确失败，不能让模型生成市场数字。"""
+    async def no_refresh(_db):
+        return None
+
+    def unconfigured(**_kwargs):
+        raise AmazonMarketDataNotConfigured("Amazon 市场数据源未配置")
+
+    monkeypatch.setattr(
+        orchestrator_module.provider_config,
+        "refresh",
+        no_refresh,
+    )
+    monkeypatch.setattr(
+        orchestrator_module,
+        "build_runtime_amazon_market_service",
+        unconfigured,
+    )
 
     result = await make_orchestrator()._do_select_products({"keyword": "蓝牙耳机"})
 
-    assert result["status"] == "success"
-    assert result["data"]["structured"] is None
-    assert result["data"]["report"] == "不好意思，这个品类数据暂时无法分析"
-    assert "降级" in result["summary"]
+    assert result["status"] == "failed"
+    assert "未配置" in result["error"]
+    assert "structured" not in result
 
 
 @pytest.mark.asyncio
 async def test_analyze_category_structured_ok(monkeypatch):
-    """品类分析同样产出 structured，且补上 data.keyword"""
-    async def fake_generate(self, system_prompt, user_prompt, **kwargs):
-        return VALID_JSON
-    monkeypatch.setattr(DeepSeekService, "generate", fake_generate)
+    """品类分析同样产出真实样本 structured。"""
+    service = AmazonMarketDecisionService(_StructuredMarketProvider())
+    monkeypatch.setattr(
+        orchestrator_module.provider_config,
+        "refresh",
+        _no_provider_refresh,
+    )
+    monkeypatch.setattr(
+        orchestrator_module,
+        "build_runtime_amazon_market_service",
+        lambda **_kwargs: service,
+    )
 
     result = await make_orchestrator()._do_analyze_category({"keyword": "蓝牙耳机"})
 
@@ -234,14 +327,30 @@ async def test_analyze_category_structured_ok(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_analyze_category_fallback(monkeypatch):
-    """品类分析乱文本 → 降级为原始文本，不抛异常"""
-    async def fake_generate(self, system_prompt, user_prompt, **kwargs):
-        return "【非 JSON】蓝牙耳机：搜索量大，竞争激烈……"
-    monkeypatch.setattr(DeepSeekService, "generate", fake_generate)
+async def test_analyze_category_does_not_fallback_to_llm(monkeypatch):
+    """Provider 失败时不把 LLM 文本当市场报告。"""
+    async def no_refresh(_db):
+        return None
+
+    def unconfigured(**_kwargs):
+        raise AmazonMarketDataNotConfigured("Amazon 市场数据源未配置")
+
+    async def forbid_llm(*_args, **_kwargs):
+        raise AssertionError("不得调用模型补造市场报告")
+
+    monkeypatch.setattr(
+        orchestrator_module.provider_config,
+        "refresh",
+        no_refresh,
+    )
+    monkeypatch.setattr(
+        orchestrator_module,
+        "build_runtime_amazon_market_service",
+        unconfigured,
+    )
+    monkeypatch.setattr(DeepSeekService, "generate", forbid_llm)
 
     result = await make_orchestrator()._do_analyze_category({"keyword": "蓝牙耳机"})
 
-    assert result["status"] == "success"
-    assert result["data"]["structured"] is None
-    assert "【非 JSON】蓝牙耳机" in result["data"]["report"]
+    assert result["status"] == "failed"
+    assert "未配置" in result["error"]

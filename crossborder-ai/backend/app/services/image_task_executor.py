@@ -111,6 +111,7 @@ async def run_image_generation(
                     local_assets = await materialize_image_bytes(
                         db,
                         user_id=task.user_id,
+                        workspace_id=task.workspace_id,
                         task_id=tid,
                         prompt=prompt,
                         images=result.local_outputs,
@@ -135,6 +136,7 @@ async def run_image_generation(
                         await materialize_image_task_assets(
                             db,
                             user_id=task.user_id,
+                            workspace_id=task.workspace_id,
                             task_id=tid,
                             prompt=prompt,
                             image_urls=result.urls,
@@ -348,7 +350,13 @@ async def _charge_completed_image_task(db: AsyncSession, task_id: UUID) -> None:
             .with_for_update()
         )
     ).scalar_one_or_none()
-    if user is None or user.credits < task.credits_cost:
+    if user is None:
+        task.error = "图片已生成，但用户不存在"
+        await db.commit()
+        return
+    from app.services.personal_billing import get_personal_billing_balance
+
+    if await get_personal_billing_balance(db, user) < task.credits_cost:
         task.error = "图片已生成，但积分不足，请联系管理员"
         await db.commit()
         return

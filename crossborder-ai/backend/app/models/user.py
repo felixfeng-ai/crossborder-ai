@@ -6,9 +6,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, func, select, update
+from sqlalchemy import DateTime, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,6 +47,14 @@ class User(Base):
         String(100), nullable=True, index=True
         # nullable=True → 注册时可以不填用户名，以后补
     )
+    avatar_storage_key: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    avatar_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     # ── 密码 ──────────────────────────────────────────────────
     # 存的是 bcrypt 哈希值，不是明文密码
@@ -62,6 +69,15 @@ class User(Base):
     )
     # plan（套餐）控制可用功能范围，free / standard / professional
     plan: Mapped[str] = mapped_column(String(50), default="free")
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+    deletion_reason: Mapped[str | None] = mapped_column(
+        String(80),
+        nullable=True,
+    )
 
     # ── 时间戳 ──────────────────────────────────────────────
     # server_default=func.now() 由数据库自动填当前时间，不是 Python 填的
@@ -79,6 +95,8 @@ class User(Base):
         db: AsyncSession,
         amount: int,
         *,
+        workspace_id: uuid.UUID | None = None,
+        actor_user_id: uuid.UUID | None = None,
         feature: str = "unknown",
         reference_type: str | None = None,
         reference_id: str | None = None,
@@ -102,47 +120,40 @@ class User(Base):
         """
         async with db.begin_nested():
             from app.models.credit_transaction import CreditTransaction
-            from app.models.credit_wallet import CreditWallet
+            from app.services.personal_billing import (
+                get_or_create_personal_wallet,
+                get_personal_workspace,
+                sync_legacy_wallet_mirror,
+                workspace_wallet_balance,
+            )
 
-            wallet = (
-                await db.execute(
-                    select(CreditWallet)
-                    .where(CreditWallet.user_id == self.id)
-                    .with_for_update()
+            # 个人工作区钱包是唯一权威源，旧字段只做兼容镜像。
+            personal_workspace = await get_personal_workspace(
+                db,
+                self,
+                workspace_id=workspace_id,
+            )
+
+            # 个人工作区存在未结案账务差异时，所有消费入口统一止付。
+            if personal_workspace is not None:
+                from app.services.workspace_billing_reconciliation import (
+                    assert_personal_billing_spending_allowed,
                 )
-            ).scalar_one_or_none()
-            if wallet is None:
-                try:
-                    async with db.begin_nested():
-                        wallet = CreditWallet(
-                            user_id=self.id,
-                            plan_credits=max(0, int(self.credits or 0)),
-                            purchased_credits=0,
-                        )
-                        db.add(wallet)
-                        await db.flush()
-                except IntegrityError:
-                    wallet = (
-                        await db.execute(
-                            select(CreditWallet)
-                            .where(CreditWallet.user_id == self.id)
-                            .with_for_update()
-                        )
-                    ).scalar_one()
-            else:
-                wallet_total = int(wallet.plan_credits or 0) + int(wallet.purchased_credits or 0)
-                mirrored_total = int(self.credits or 0)
-                if mirrored_total > wallet_total:
-                    # 兼容旧代码直接改 User.credits：额外部分视为购买积分。
-                    wallet.purchased_credits += mirrored_total - wallet_total
-                elif mirrored_total < wallet_total:
-                    # 旧字段被人工下调时，钱包跟随，避免余额镜像继续漂移。
-                    reduce = wallet_total - mirrored_total
-                    from_plan = min(int(wallet.plan_credits or 0), reduce)
-                    wallet.plan_credits -= from_plan
-                    wallet.purchased_credits -= reduce - from_plan
 
-            available = int(wallet.plan_credits or 0) + int(wallet.purchased_credits or 0)
+                await assert_personal_billing_spending_allowed(
+                    db,
+                    workspace_id=personal_workspace.id,
+                )
+
+            if personal_workspace is None:
+                raise ValueError("个人工作区不存在")
+            wallet = await get_or_create_personal_wallet(
+                db,
+                user=self,
+                workspace=personal_workspace,
+                lock=True,
+            )
+            available = workspace_wallet_balance(wallet)
             if available < amount:
                 raise InsufficientCreditsError(
                     f"积分不足，需要 {amount}，当前 {available}"
@@ -152,7 +163,12 @@ class User(Base):
             purchased_spend = amount - plan_spend
             wallet.plan_credits -= plan_spend
             wallet.purchased_credits -= purchased_spend
-            self.credits = available - amount
+            balance_after = workspace_wallet_balance(wallet)
+            await sync_legacy_wallet_mirror(
+                db,
+                user=self,
+                wallet=wallet,
+            )
             wallet_type = (
                 "plan"
                 if purchased_spend == 0
@@ -164,8 +180,10 @@ class User(Base):
             db.add(
                 CreditTransaction(
                     user_id=self.id,
+                    workspace_id=personal_workspace.id,
+                    actor_user_id=actor_user_id or self.id,
                     delta=-amount,
-                    balance_after=self.credits,
+                    balance_after=balance_after,
                     feature=feature,
                     wallet_type=wallet_type,
                     reference_type=reference_type,
@@ -173,7 +191,20 @@ class User(Base):
                     description=description or f"扣减 {amount} 积分",
                 )
             )
-            return self.credits
+            return balance_after
 
     def __repr__(self) -> str:
         return f"<User {self.id}: {self.email} ({self.plan}, credits={self.credits})>"
+
+    @property
+    def avatar_url(self) -> str | None:
+        """头像通过鉴权接口读取，版本参数只负责绕过浏览器缓存。"""
+        if not self.avatar_storage_key:
+            return None
+        version = (
+            int(self.avatar_updated_at.timestamp())
+            if self.avatar_updated_at
+            else 0
+        )
+        # 用户 ID 进入缓存键，切换账号时不会复用上一个账号的头像。
+        return f"/api/v1/users/me/avatar?u={self.id}&v={version}"

@@ -20,7 +20,18 @@ class StoreCheckLog(Base):
     __tablename__ = "store_check_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     total: Mapped[int] = mapped_column(Integer, default=0)          # 商品总数
     healthy: Mapped[int] = mapped_column(Integer, default=0)        # 正常商品数
     issue_count: Mapped[int] = mapped_column(Integer, default=0)    # 有问题商品数

@@ -46,6 +46,7 @@ PROVIDER_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     "shopify": ("api_key", "api_secret", "redirect_uri"),
     "amazon": ("app_id", "client_id", "client_secret", "redirect_uri"),
+    "jungle_scout": ("key_name", "api_key", "marketplace"),
     "temu": ("app_key", "app_secret", "redirect_uri", "region"),
     "minimax": (
         "api_key",
@@ -91,6 +92,9 @@ def _env_fallback(provider: str, field: str) -> str:
         ("amazon", "client_id"): settings.AMAZON_CLIENT_ID or "",
         ("amazon", "client_secret"): settings.AMAZON_CLIENT_SECRET or "",
         ("amazon", "redirect_uri"): settings.AMAZON_REDIRECT_URI or "",
+        ("jungle_scout", "key_name"): settings.JUNGLE_SCOUT_KEY_NAME or "",
+        ("jungle_scout", "api_key"): settings.JUNGLE_SCOUT_API_KEY or "",
+        ("jungle_scout", "marketplace"): settings.JUNGLE_SCOUT_MARKETPLACE,
         ("temu", "app_key"): settings.TEMU_APP_KEY or "",
         ("temu", "app_secret"): settings.TEMU_APP_SECRET or "",
         ("temu", "redirect_uri"): settings.TEMU_REDIRECT_URI or "",
@@ -234,9 +238,15 @@ def provider_status(provider: str) -> dict[str, Any]:
     required = {
         "justone": "token",
         "temu": "app_key",
+        # Jungle Scout 同时需要 Key Name 和 API Key，先以 API Key 判定状态，
+        # 请求层仍会同时校验两个字段。
+        "jungle_scout": "api_key",
     }.get(provider, "api_key")
+    configured = bool(get(provider, required))
+    if provider == "jungle_scout":
+        configured = configured and bool(get(provider, "key_name"))
     return {
-        "configured": bool(get(provider, required)),
+        "configured": configured,
         "required_field": required,
         "fields": fields,
     }

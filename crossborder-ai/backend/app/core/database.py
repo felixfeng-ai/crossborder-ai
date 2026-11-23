@@ -16,7 +16,8 @@
 import ssl
 from pathlib import Path
 
-from sqlalchemy import event
+from alembic.script import ScriptDirectory
+from sqlalchemy import event, inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -139,6 +140,10 @@ class Base(DeclarativeBase):
     pass
 
 
+class SchemaMigrationError(RuntimeError):
+    """生产数据库 revision 与应用代码不一致。"""
+
+
 # ── 5. 获取数据库会话（依赖注入核心） ─────────────────────────
 # 【全栈学习者重点理解】
 #
@@ -183,14 +188,74 @@ async def get_db() -> AsyncSession:
             await session.close()  # 归还会话到连接池
 
 
-# ── 6. 自动建表（仅开发模式） ─────────────────────────────────
+# ── 6. 数据库 schema 启动门禁 ─────────────────────────────────
 # init_db 在项目启动时调用（main.py 的 lifespan）
 # 它会读取所有继承 Base 的模型，自动创建对应的数据库表
-async def init_db():
-    """启动时自动创建所有数据库表。
+def get_expected_migration_head(
+    migrations_dir: Path | None = None,
+) -> str:
+    """读取当前代码要求的唯一 Alembic head。"""
+
+    directory = migrations_dir or (
+        Path(__file__).resolve().parents[2] / "migrations"
+    )
+    try:
+        head = ScriptDirectory(str(directory)).get_current_head()
+    except Exception as exc:
+        raise SchemaMigrationError(
+            f"无法读取 Alembic head：{directory}"
+        ) from exc
+    if not head:
+        raise SchemaMigrationError("Alembic migrations 没有可用 head")
+    return head
+
+
+async def verify_database_schema(
+    *,
+    db_engine=None,
+    migrations_dir: Path | None = None,
+) -> str:
+    """生产启动只校验 revision，不创建或修改任何表。"""
+
+    target_engine = db_engine or engine
+    expected = get_expected_migration_head(migrations_dir)
+    async with target_engine.connect() as conn:
+        has_version_table = await conn.run_sync(
+            lambda sync_conn: inspect(sync_conn).has_table(
+                "alembic_version"
+            )
+        )
+        if not has_version_table:
+            raise SchemaMigrationError(
+                "生产数据库缺少 alembic_version，请先执行 "
+                f"alembic upgrade head（目标 {expected}）"
+            )
+        revisions = list(
+            (
+                await conn.execute(
+                    text("SELECT version_num FROM alembic_version")
+                )
+            ).scalars()
+        )
+    if len(revisions) != 1:
+        raise SchemaMigrationError(
+            "alembic_version 必须恰好包含一条记录，"
+            f"当前 {len(revisions)} 条"
+        )
+    current = revisions[0]
+    if current != expected:
+        raise SchemaMigrationError(
+            "数据库 schema revision 过期："
+            f"当前 {current}，目标 {expected}，请先执行 alembic upgrade head"
+        )
+    return current
+
+
+async def init_db(*, db_engine=None, migrations_dir: Path | None = None) -> str:
+    """开发自动建表；生产只做 Alembic revision 门禁。
 
     开发环境（SQLite）：每次启动自动同步表结构
-    生产环境（PostgreSQL）：请用 Alembic 迁移工具管理表结构
+    生产环境（PostgreSQL）：只验证迁移已到当前 head，绝不自动建表
 
     为什么生产不用自动建表？
     - 生产环境不能轻易删表，数据宝贵
@@ -201,6 +266,13 @@ async def init_db():
         alembic revision --autogenerate -m "描述"
         alembic upgrade head
     """
-    async with engine.begin() as conn:
-        # run_sync 把异步操作转成同步，因为 create_all 是同步的
-        await conn.run_sync(Base.metadata.create_all)
+    target_engine = db_engine or engine
+    if settings.USE_SQLITE:
+        async with target_engine.begin() as conn:
+            # 仅 SQLite 开发模式允许 create_all。
+            await conn.run_sync(Base.metadata.create_all)
+        return "sqlite-development"
+    return await verify_database_schema(
+        db_engine=target_engine,
+        migrations_dir=migrations_dir,
+    )

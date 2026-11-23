@@ -13,6 +13,8 @@ from app.models.credit_transaction import CreditTransaction
 from app.models.feature_usage import FeatureUsageCounter
 from app.models.user import User
 from app.models.video_generation_task import VideoGenerationTask
+from app.models.workspace_credit_wallet import WorkspaceCreditWallet
+from app.services.workspaces import ensure_personal_workspace
 
 
 async def _register_with_credits(client, db_session, *, credits: int = 5):
@@ -34,6 +36,14 @@ async def _register_with_credits(client, db_session, *, credits: int = 5):
         user = (
             await db_session.execute(select(User).order_by(User.created_at.desc()))
         ).scalars().first()
+    personal = await ensure_personal_workspace(db_session, user)
+    workspace_wallet = await db_session.get(
+        WorkspaceCreditWallet,
+        personal.id,
+    )
+    assert workspace_wallet is not None
+    workspace_wallet.plan_credits = credits
+    workspace_wallet.purchased_credits = 0
     user.credits = credits
     await db_session.flush()
     return {"Authorization": f"Bearer {response.json()['access_token']}"}, user

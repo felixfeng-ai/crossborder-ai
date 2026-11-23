@@ -4,19 +4,24 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.user import User
 from app.models.product import Product
 from app.services.ai.persona_kit import build_persona_kit, fetch_persona
 from app.services.listing_service import (
     auto_fix_listing_compliance,
-    get_owned_listing,
+    get_workspace_listing,
     run_listing_compliance,
     serialize_listing,
     update_listing_content,
+)
+from app.services.product_workspace_scope import (
+    ensure_product_writer,
+    product_workspace_scope,
 )
 from app.services.ai.compliance import suggest_replacements
 from app.services.ip_risk import screen_product_text
@@ -37,9 +42,15 @@ async def _owned_listing_or_404(
     db: AsyncSession,
     listing_id: str,
     current_user: User,
+    context: WorkspaceContext,
 ):
-    """读取当前用户 Listing；他人或不存在统一返回 404，避免泄露资源存在性。"""
-    listing = await get_owned_listing(db, listing_id, current_user.id)
+    """按工作区读取 Listing；越权或不存在统一返回 404。"""
+    listing = await get_workspace_listing(
+        db,
+        listing_id,
+        context,
+        current_user,
+    )
     if listing is None:
         raise HTTPException(status_code=404, detail="Listing 不存在")
     return listing
@@ -49,10 +60,16 @@ async def _owned_listing_or_404(
 async def get_listing(
     listing_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """获取当前用户拥有的 Listing 详情。"""
-    listing = await _owned_listing_or_404(db, listing_id, current_user)
+    listing = await _owned_listing_or_404(
+        db,
+        listing_id,
+        current_user,
+        context,
+    )
     return serialize_listing(listing)
 
 
@@ -61,10 +78,17 @@ async def update_listing(
     listing_id: str,
     payload: ListingUpdateRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """编辑 Listing 内容并自动让旧合规报告失效。"""
-    listing = await _owned_listing_or_404(db, listing_id, current_user)
+    ensure_product_writer(context)
+    listing = await _owned_listing_or_404(
+        db,
+        listing_id,
+        current_user,
+        context,
+    )
     if payload.title is not None and not payload.title.strip():
         raise HTTPException(status_code=400, detail="Listing 标题不能为空")
 
@@ -86,20 +110,38 @@ async def update_listing(
 async def recheck_listing_compliance(
     listing_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """重新执行当前 Listing 版本的合规检查。"""
-    listing = await _owned_listing_or_404(db, listing_id, current_user)
-    persona = await fetch_persona(db, current_user.id)
+    ensure_product_writer(context)
+    listing = await _owned_listing_or_404(
+        db,
+        listing_id,
+        current_user,
+        context,
+    )
+    persona = await fetch_persona(
+        db,
+        current_user.id,
+        context.workspace.id,
+        include_legacy_workspace=not context.explicit,
+    )
     persona_kit = build_persona_kit(persona) if persona else None
     await run_listing_compliance(
         db,
         listing,
         user_banned_words=(persona_kit or {}).get("banned_words") or [],
     )
-    product = await db.get(Product, listing.product_id)
+    product = (
+        await db.execute(
+            select(Product)
+            .where(Product.id == listing.product_id)
+            .where(product_workspace_scope(context, current_user))
+        )
+    ).scalar_one_or_none()
     ip_risk = None
-    if product is not None and product.user_id == current_user.id:
+    if product is not None:
         ip_risk = await screen_product_text(
             db,
             user=current_user,
@@ -124,20 +166,38 @@ async def recheck_listing_compliance(
 async def auto_fix_listing(
     listing_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """自动替换已知违规词并复检；无法映射的词保留给人工修改。"""
-    listing = await _owned_listing_or_404(db, listing_id, current_user)
-    persona = await fetch_persona(db, current_user.id)
+    ensure_product_writer(context)
+    listing = await _owned_listing_or_404(
+        db,
+        listing_id,
+        current_user,
+        context,
+    )
+    persona = await fetch_persona(
+        db,
+        current_user.id,
+        context.workspace.id,
+        include_legacy_workspace=not context.explicit,
+    )
     persona_kit = build_persona_kit(persona) if persona else None
     fixed_count, suggestions = await auto_fix_listing_compliance(
         db,
         listing,
         user_banned_words=(persona_kit or {}).get("banned_words") or [],
     )
-    product = await db.get(Product, listing.product_id)
+    product = (
+        await db.execute(
+            select(Product)
+            .where(Product.id == listing.product_id)
+            .where(product_workspace_scope(context, current_user))
+        )
+    ).scalar_one_or_none()
     ip_risk = None
-    if product is not None and product.user_id == current_user.id:
+    if product is not None:
         ip_risk = await screen_product_text(
             db,
             user=current_user,

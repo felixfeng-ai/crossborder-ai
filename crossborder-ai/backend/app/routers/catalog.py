@@ -12,7 +12,7 @@ from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.listing_draft import ListingDraft
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
@@ -21,6 +21,12 @@ from app.routers.product_variants import _serialize_variant
 from app.services.platform_rules import (
     list_platform_rules,
     validate_listing_for_platform,
+)
+from app.services.product_workspace_scope import (
+    ensure_product_writer,
+    listing_draft_workspace_scope,
+    product_workspace_scope,
+    variant_workspace_scope,
 )
 
 
@@ -90,13 +96,15 @@ async def list_catalog_variants(
     low_stock: bool = False,
     limit: int = Query(200, ge=1, le=500),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """跨商品查询当前用户 SKU。"""
     query = (
         select(ProductVariant, Product.title)
         .join(Product, Product.id == ProductVariant.product_id)
-        .where(ProductVariant.user_id == current_user.id)
+        .where(variant_workspace_scope(context, current_user))
+        .where(product_workspace_scope(context, current_user))
     )
     if search:
         keyword = f"%{search.strip()}%"
@@ -140,6 +148,7 @@ async def generate_variant_matrix(
     product_id: str,
     payload: VariantMatrixRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """按属性笛卡尔组合生成缺失 SKU，重复执行保持幂等。"""
@@ -147,12 +156,12 @@ async def generate_variant_matrix(
         pid = UUID(product_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="无效的商品 ID")
+    ensure_product_writer(context)
     product = (
         await db.execute(
-            select(Product).where(
-                Product.id == pid,
-                Product.user_id == current_user.id,
-            )
+            select(Product)
+            .where(Product.id == pid)
+            .where(product_workspace_scope(context, current_user))
         )
     ).scalar_one_or_none()
     if product is None:
@@ -176,9 +185,9 @@ async def generate_variant_matrix(
     existing = (
         await db.execute(
             select(ProductVariant).where(
-                ProductVariant.user_id == current_user.id,
                 ProductVariant.product_id == product.id,
             )
+            .where(variant_workspace_scope(context, current_user))
         )
     ).scalars().all()
     existing_attributes = {
@@ -189,7 +198,9 @@ async def generate_variant_matrix(
         row.sku
         for row in (
             await db.execute(
-                select(ProductVariant).where(ProductVariant.user_id == current_user.id)
+                select(ProductVariant).where(
+                    variant_workspace_scope(context, current_user)
+                )
             )
         ).scalars().all()
     }
@@ -215,6 +226,8 @@ async def generate_variant_matrix(
         next_index += 1
         variant = ProductVariant(
             user_id=current_user.id,
+            workspace_id=context.workspace.id,
+            created_by_user_id=current_user.id,
             product_id=product.id,
             sku=candidate,
             name=" / ".join(combination),
@@ -246,9 +259,11 @@ async def generate_variant_matrix(
 async def bulk_update_variants(
     payload: BulkVariantUpdateRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """原子批量修改本人 SKU，混入他人变体时整批回滚。"""
+    ensure_product_writer(context)
     if len(set(payload.variant_ids)) != len(payload.variant_ids):
         raise HTTPException(status_code=422, detail="批量请求不能包含重复变体")
     result = await db.execute(
@@ -256,8 +271,9 @@ async def bulk_update_variants(
         .join(Product, Product.id == ProductVariant.product_id)
         .where(
             ProductVariant.id.in_(payload.variant_ids),
-            ProductVariant.user_id == current_user.id,
         )
+        .where(variant_workspace_scope(context, current_user))
+        .where(product_workspace_scope(context, current_user))
     )
     rows = result.all()
     if len(rows) != len(payload.variant_ids):
@@ -298,13 +314,15 @@ async def list_catalog_listings(
     search: Optional[str] = Query(None, max_length=100),
     limit: int = Query(200, ge=1, le=500),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """跨商品查询 Listing 并附带平台字段就绪结果。"""
     query = (
         select(ListingDraft, Product.title)
         .join(Product, Product.id == ListingDraft.product_id)
-        .where(ListingDraft.user_id == current_user.id)
+        .where(listing_draft_workspace_scope(context, current_user))
+        .where(product_workspace_scope(context, current_user))
     )
     if platform:
         query = query.where(ListingDraft.platform == platform)

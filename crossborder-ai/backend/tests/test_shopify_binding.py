@@ -403,10 +403,10 @@ async def test_unbind_owner_check(client, monkeypatch, db_session):
     await db_session.commit()
     cid = str(ch.id)
 
-    # 用户 B 删除 A 的渠道 → 403（owner 校验）
+    # 跨账号与跨工作区统一隐藏资源存在性，避免越权探测。
     resp_b = await client.delete(f"/api/v1/shopify/channels/{cid}", headers=headers_b)
-    assert resp_b.status_code == 403
-    assert "无权操作" in resp_b.json()["detail"]
+    assert resp_b.status_code == 404
+    assert "不存在" in resp_b.json()["detail"]
 
     # 用户 A 删除自己的渠道 → ok，且行已删
     resp_a = await client.delete(f"/api/v1/shopify/channels/{cid}", headers=headers_a)

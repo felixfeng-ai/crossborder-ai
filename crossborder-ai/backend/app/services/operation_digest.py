@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.operation_alert import OperationAlert
@@ -92,17 +92,25 @@ async def get_operation_digest(
     db: AsyncSession,
     *,
     user_id,
+    workspace_id=None,
+    include_legacy_workspace: bool = False,
     limit: int = 5,
 ) -> dict[str, Any]:
     """读取当前开放预警，不触发新的运营扫描。"""
     from app.services.operations_monitor import serialize_alert
 
+    query = select(OperationAlert).where(
+        OperationAlert.user_id == user_id,
+        OperationAlert.status == "open",
+    )
+    if workspace_id is not None:
+        scope = OperationAlert.workspace_id == workspace_id
+        if include_legacy_workspace:
+            scope = or_(scope, OperationAlert.workspace_id.is_(None))
+        query = query.where(scope)
     rows = (
         await db.execute(
-            select(OperationAlert).where(
-                OperationAlert.user_id == user_id,
-                OperationAlert.status == "open",
-            )
+            query
         )
     ).scalars().all()
     return build_operation_digest(

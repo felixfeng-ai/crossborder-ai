@@ -1,5 +1,6 @@
 """可审计的数据保留清理任务。"""
 
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -9,11 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.agent_task import AgentTask
+from app.models.audio_asset import AudioAsset
 from app.models.content import ContentGeneration, ContentStatus
 from app.models.data_retention import DataRetentionRun
 from app.models.image_generation_task import ImageGenerationTask
 from app.models.store_check_log import StoreCheckLog
 from app.models.traffic_event import TrafficEvent
+from app.services.audio_storage import get_audio_storage
 
 
 def _terminal_cleanup_targets() -> list[tuple[str, Any, tuple[Any, ...]]]:
@@ -89,6 +92,51 @@ async def _delete_condition_in_batches(
     return deleted
 
 
+async def _delete_expired_audio_assets(
+    db: AsyncSession,
+    *,
+    current_time: datetime,
+    batch_size: int,
+    simulate: bool,
+) -> int:
+    """先删私有文件再删数据库记录，避免留下无主音频。"""
+
+    condition = AudioAsset.expires_at <= current_time
+    if simulate:
+        return int(
+            (
+                await db.execute(
+                    select(func.count())
+                    .select_from(AudioAsset)
+                    .where(condition)
+                )
+            ).scalar_one()
+            or 0
+        )
+
+    storage = await asyncio.to_thread(get_audio_storage)
+    deleted = 0
+    while True:
+        rows = (
+            await db.execute(
+                select(AudioAsset.id, AudioAsset.storage_key)
+                .where(condition)
+                .limit(batch_size)
+            )
+        ).all()
+        if not rows:
+            break
+        ids = [row.id for row in rows]
+        for row in rows:
+            await storage.delete(row.storage_key)
+        await db.execute(delete(AudioAsset).where(AudioAsset.id.in_(ids)))
+        await db.commit()
+        deleted += len(ids)
+        if len(ids) < batch_size:
+            break
+    return deleted
+
+
 async def run_retention_cleanup(
     db: AsyncSession,
     *,
@@ -148,6 +196,13 @@ async def run_retention_cleanup(
                 counts[name] = await _delete_in_batches(
                     db, model, statuses, cutoff, batch
                 )
+
+        counts["audio_assets"] = await _delete_expired_audio_assets(
+            db,
+            current_time=current_time,
+            batch_size=batch,
+            simulate=simulate,
+        )
 
         store_check_cutoff = current_time - timedelta(days=check_days)
         store_check_condition = StoreCheckLog.created_at < store_check_cutoff

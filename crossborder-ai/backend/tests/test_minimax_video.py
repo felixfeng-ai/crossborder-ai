@@ -27,6 +27,11 @@ from app.services.minimax_video import (
     submit_minimax_video,
     video_sha256,
 )
+from app.services.personal_billing import (
+    get_or_create_personal_wallet,
+    get_personal_workspace,
+    sync_legacy_wallet_mirror,
+)
 from app.services.video_task_executor import poll_video_tasks
 
 
@@ -43,9 +48,25 @@ async def _professional_user(db_session) -> User:
         )
     ).scalar_one()
     user.plan = "professional"
-    user.credits = 200
-    await db_session.flush()
+    await _set_user_credits(db_session, user, 200)
     return user
+
+
+async def _set_user_credits(db_session, user: User, credits: int) -> None:
+    """测试必须同时更新工作区权威钱包和旧字段镜像。"""
+
+    workspace = await get_personal_workspace(db_session, user)
+    assert workspace is not None
+    wallet = await get_or_create_personal_wallet(
+        db_session,
+        user=user,
+        workspace=workspace,
+        lock=True,
+    )
+    wallet.plan_credits = credits
+    wallet.purchased_credits = 0
+    await sync_legacy_wallet_mirror(db_session, user=user, wallet=wallet)
+    await db_session.flush()
 
 
 async def _seed_asset(db_session, tmp_path, monkeypatch) -> ImageAsset:
@@ -401,8 +422,7 @@ async def test_single_video_uses_quality_tier_and_structured_prompt(
 ):
     asset = await _seed_asset(db_session, tmp_path, monkeypatch)
     user = await _professional_user(db_session)
-    user.credits = 500
-    await db_session.flush()
+    await _set_user_credits(db_session, user, 500)
     monkeypatch.setattr(settings, "MINIMAX_API_KEY", "video-key")
     provider_config.clear_cache()
     submitted = {}
@@ -456,8 +476,7 @@ async def test_insufficient_credits_does_not_submit_provider(
 ):
     asset = await _seed_asset(db_session, tmp_path, monkeypatch)
     user = await _professional_user(db_session)
-    user.credits = 0
-    await db_session.flush()
+    await _set_user_credits(db_session, user, 0)
     monkeypatch.setattr(settings, "MINIMAX_API_KEY", "video-key")
     provider_config.clear_cache()
     called = False
@@ -525,7 +544,7 @@ async def test_single_video_exposes_cached_thumbnail(
     history = await client.get("/api/v1/videos/history", headers=auth_headers)
     assert history.status_code == 200
     item = next(item for item in history.json() if item["id"] == str(task.id))
-    assert item["thumbnail_url"].endswith("/thumbnail")
+    assert item["thumbnail_url"].split("?", 1)[0].endswith("/thumbnail")
 
     def fake_thumbnail(path):
         cover = path.with_suffix(".cover.jpg")
@@ -626,8 +645,7 @@ async def test_invalid_template_and_foreign_source_are_rejected(
         await db_session.execute(select(User).where(User.email == other_email))
     ).scalar_one()
     other_user.plan = "professional"
-    other_user.credits = 200
-    await db_session.flush()
+    await _set_user_credits(db_session, other_user, 200)
     foreign_asset = await client.post(
         "/api/v1/videos/generate",
         json={**payload, "template_id": "clean_product"},

@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access_control import check_feature_access
@@ -51,28 +51,47 @@ async def create_image_edit_task(
     aspect_ratio: str,
     scale: int,
     idempotency_key: str | None,
+    workspace_id: uuid.UUID | None = None,
+    include_legacy_workspace: bool = False,
 ) -> ImageGenerationTask:
     """验证源图、蒙版和 Provider 后创建持久编辑任务。"""
     if not check_feature_access(user, "ai_image"):
         raise PermissionError("图片生成功能仅限专业版套餐使用")
     if idempotency_key:
+        scoped_query = select(ImageGenerationTask).where(
+            ImageGenerationTask.user_id == user.id,
+            ImageGenerationTask.idempotency_key == idempotency_key,
+        )
+        if workspace_id is not None:
+            scoped_query = scoped_query.where(
+                ImageGenerationTask.workspace_id == workspace_id
+            )
         existing = (
             await db.execute(
-                select(ImageGenerationTask).where(
-                    ImageGenerationTask.user_id == user.id,
-                    ImageGenerationTask.idempotency_key == idempotency_key,
-                )
+                scoped_query
             )
         ).scalar_one_or_none()
         if existing is not None:
             return existing
 
-    source = await _get_owned_asset(db, user.id, source_asset_id)
+    source = await _get_owned_asset(
+        db,
+        user.id,
+        source_asset_id,
+        workspace_id=workspace_id,
+        include_legacy=include_legacy_workspace,
+    )
     if source is None:
         raise ValueError("源素材不存在")
     mask = None
     if mask_asset_id:
-        mask = await _get_owned_asset(db, user.id, mask_asset_id)
+        mask = await _get_owned_asset(
+            db,
+            user.id,
+            mask_asset_id,
+            workspace_id=workspace_id,
+            include_legacy=include_legacy_workspace,
+        )
         if mask is None:
             raise ValueError("蒙版素材不存在")
     if operation in _MASK_REQUIRED and mask is None:
@@ -84,7 +103,9 @@ async def create_image_edit_task(
         raise ValueError("图片编辑服务暂未配置，请管理员检查 Replicate 编辑模型")
 
     credits_cost = image_generation_credits(operation, "standard", 1)
-    if user.credits < credits_cost:
+    from app.services.personal_billing import get_personal_billing_balance
+
+    if await get_personal_billing_balance(db, user) < credits_cost:
         raise ValueError(f"积分不足，本次图片编辑需要 {credits_cost} 积分")
 
     safe_scale = 2 if scale not in {2, 4} else scale
@@ -99,6 +120,7 @@ async def create_image_edit_task(
     resolved_prompt = prompt.strip() or _DEFAULT_PROMPTS[operation]
     task = ImageGenerationTask(
         user_id=user.id,
+        workspace_id=workspace_id,
         prompt=resolved_prompt,
         mode=operation,
         quality_tier=None,
@@ -143,17 +165,28 @@ async def _get_owned_asset(
     db: AsyncSession,
     user_id,
     raw_asset_id: str,
+    *,
+    workspace_id: uuid.UUID | None = None,
+    include_legacy: bool = False,
 ) -> ImageAsset | None:
     try:
         asset_id = uuid.UUID(str(raw_asset_id))
     except (TypeError, ValueError):
         return None
+    scope = None
+    if workspace_id is not None:
+        scope = ImageAsset.workspace_id == workspace_id
+        if include_legacy:
+            scope = or_(scope, ImageAsset.workspace_id.is_(None))
+    query = select(ImageAsset).where(
+        ImageAsset.id == asset_id,
+        ImageAsset.user_id == user_id,
+    )
+    if scope is not None:
+        query = query.where(scope)
     return (
         await db.execute(
-            select(ImageAsset).where(
-                ImageAsset.id == asset_id,
-                ImageAsset.user_id == user_id,
-            )
+            query
         )
     ).scalar_one_or_none()
 

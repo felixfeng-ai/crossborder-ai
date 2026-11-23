@@ -22,6 +22,9 @@ from app.core.observability import (
     setup_logging,
 )
 from app.models.user import InsufficientCreditsError
+from app.services.workspace_billing_reconciliation import (
+    BillingSpendingBlockedError,
+)
 from app.routers import auth, users, products, content, images, videos, marketing_videos, marketing_campaigns, marketing_copy, marketing_distribution, billing, shopify, batch, radar, ledger, analytics, agent, listings, platforms, product_variants, catalog, operations, voc, ip_risk, platform_policies
 from app.routers import (
     telemetry,
@@ -32,6 +35,7 @@ from app.routers import (
     admin_audit,
 )
 from app.routers import settings as settings_router
+from app.routers import mobile as mobile_router
 
 # ── 日志配置（可观测性：所有日志自动携带 request_id）──────────
 setup_logging()
@@ -96,14 +100,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not settings.JWT_SECRET_KEY:
         print("[VeyaShip] WARNING: JWT_SECRET_KEY 未设置！请在 .env 中配置")
 
-    await init_db()
+    schema_version = await init_db()
     from app.services import provider_config
     from app.core import access_control
     from app.core.database import async_session_factory
     async with async_session_factory() as db:
         await provider_config.refresh(db)
         await access_control.refresh(db)
-    print(f"[VeyaShip] Database ready ({'SQLite' if settings.USE_SQLITE else 'PostgreSQL'})")
+    print(
+        "[VeyaShip] Database ready "
+        f"({'SQLite' if settings.USE_SQLITE else 'PostgreSQL'}, "
+        f"schema={schema_version})"
+    )
 
     # 启动定时任务
     from app.services.scheduler import SchedulerService
@@ -138,6 +146,25 @@ async def insufficient_credits_handler(request: Request, exc: InsufficientCredit
     logger.info("Insufficient credits on %s %s: %s", request.method, request.url.path, exc)
     return JSONResponse(
         status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(BillingSpendingBlockedError)
+async def billing_spending_blocked_handler(
+    request: Request,
+    exc: BillingSpendingBlockedError,
+) -> JSONResponse:
+    """账务差异未结案时返回 423，客户端应提示等待人工修复。"""
+
+    logger.warning(
+        "Billing spending blocked on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_423_LOCKED,
         content={"detail": str(exc)},
     )
 
@@ -228,6 +255,7 @@ app.include_router(feedback.router, prefix=API_PREFIX)
 app.include_router(admin_feedback.router, prefix=API_PREFIX)
 app.include_router(admin_plans.router, prefix=API_PREFIX)
 app.include_router(admin_audit.router, prefix=API_PREFIX)
+app.include_router(mobile_router.router)
 
 
 # --- Health Check ---

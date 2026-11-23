@@ -22,6 +22,11 @@ from app.services.professional_storyboard import (
     provider_render_duration,
 )
 from app.services.marketing_video_executor import trim_video_segment
+from app.services.personal_billing import (
+    get_or_create_personal_wallet,
+    get_personal_workspace,
+    sync_legacy_wallet_mirror,
+)
 
 
 SCRIPT = """专业分镜脚本
@@ -69,9 +74,25 @@ async def _professional_user(db_session) -> User:
         await db_session.execute(select(User).where(User.email == "test@example.com"))
     ).scalar_one()
     user.plan = "professional"
-    user.credits = 1000
-    await db_session.flush()
+    await _set_user_credits(db_session, user, 1000)
     return user
+
+
+async def _set_user_credits(db_session, user: User, credits: int) -> None:
+    """测试数据必须写入工作区权威钱包，旧字段由镜像同步。"""
+
+    workspace = await get_personal_workspace(db_session, user)
+    assert workspace is not None
+    wallet = await get_or_create_personal_wallet(
+        db_session,
+        user=user,
+        workspace=workspace,
+        lock=True,
+    )
+    wallet.plan_credits = credits
+    wallet.purchased_credits = 0
+    await sync_legacy_wallet_mirror(db_session, user=user, wallet=wallet)
+    await db_session.flush()
 
 
 async def _seed_asset(db_session, tmp_path, monkeypatch) -> ImageAsset:
@@ -468,8 +489,7 @@ async def test_storyboard_project_uses_quality_tier_and_official_prompt(
     primary = await _seed_asset(db_session, tmp_path, monkeypatch)
     detail = await _seed_asset(db_session, tmp_path, monkeypatch)
     user = await _professional_user(db_session)
-    user.credits = 600
-    await db_session.flush()
+    await _set_user_credits(db_session, user, 600)
     monkeypatch.setattr(settings, "MINIMAX_API_KEY", "video-key")
     provider_config.clear_cache()
 

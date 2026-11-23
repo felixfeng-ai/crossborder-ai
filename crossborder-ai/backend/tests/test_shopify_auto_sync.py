@@ -13,6 +13,7 @@ from app.services.shopify_operations_sync import (
     ShopifyOperationsSyncError,
     sync_all_shopify_operations,
 )
+from app.services.workspaces import ensure_personal_workspace
 
 
 @pytest.mark.asyncio
@@ -127,8 +128,10 @@ async def test_sync_all_skips_shopify_when_user_turned_off(
     )
     db_session.add(user)
     await db_session.flush()
+    workspace = await ensure_personal_workspace(db_session, user)
     channel = ShopifyChannel(
         user_id=user.id,
+        workspace_id=workspace.id,
         shop_name="auto-sync-off",
         shop_domain="auto-sync-off.myshopify.com",
         access_token=encrypt_value("shpat_off"),
@@ -137,6 +140,7 @@ async def test_sync_all_skips_shopify_when_user_turned_off(
     db_session.add(channel)
     db_session.add(
         AutomationPreference(
+            workspace_id=workspace.id,
             user_id=user.id,
             shopify_auto_sync=False,
         )

@@ -82,7 +82,8 @@ class Settings(BaseSettings):
     # --- JWT ---
     JWT_SECRET_KEY: str = ""                    # 必须通过 .env 设置
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     # --- Data protection ---
     # 敏感字段优先使用独立密钥；旧 JWT 密钥保留为只读回退，避免存量密文失效。
@@ -102,6 +103,11 @@ class Settings(BaseSettings):
     DATA_RETENTION_TELEMETRY_DAYS: int = 30
     DATA_RETENTION_BATCH_SIZE: int = 500
     DATA_RETENTION_DRY_RUN: bool = False
+    WORKSPACE_ARCHIVE_RETENTION_DAYS: int = 30
+    # 首个账期观察默认关闭；生产切换完成后由发布配置显式开启。
+    BILLING_OBSERVATION_ENABLED: bool = False
+    BILLING_OBSERVATION_DIR: str = "./storage/billing-observations"
+    BILLING_OBSERVATION_BATCH_SIZE: int = 500
 
     # --- CORS ---
     BACKEND_CORS_ORIGINS: List[str] = [
@@ -165,9 +171,33 @@ class Settings(BaseSettings):
     # --- Aliyun DashScope (通义万相) ---
     ALIYUN_DASHSCOPE_API_KEY: Optional[str] = None
     ALIYUN_IMAGE_MODEL: str = "wan2.2-t2i-plus"
+    ALIYUN_ASR_BASE_URL: str = (
+        "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    )
+    ALIYUN_ASR_MODEL: str = "qwen3-asr-flash"
+    ALIYUN_ASR_TIMEOUT_SECONDS: float = 60.0
     # 商品图片工作台的本地素材目录；上传后统一转码并去除原始元数据。
     IMAGE_STORAGE_DIR: str = "./storage/images"
     MAX_IMAGE_UPLOAD_BYTES: int = 12 * 1024 * 1024
+    # 用户头像只保存 512px WebP，作为账号资料而非工作区素材。
+    AVATAR_STORAGE_DIR: str = "./storage/avatars"
+    # 移动端语音先落私有临时目录，转写成功后只保留短期审计素材。
+    AUDIO_STORAGE_BACKEND: str = "local"
+    AUDIO_STORAGE_DIR: str = "./storage/audio"
+    AUDIO_OBJECT_PREFIX: str = "private/audio"
+    MAX_AUDIO_UPLOAD_BYTES: int = 25 * 1024 * 1024
+    AUDIO_RETENTION_HOURS: int = 24
+    S3_BUCKET: str = ""
+    S3_REGION: str = ""
+    S3_ENDPOINT_URL: str = ""
+    S3_ACCESS_KEY_ID: str = ""
+    S3_SECRET_ACCESS_KEY: str = ""
+    S3_USE_PATH_STYLE: bool = False
+    S3_SERVER_SIDE_ENCRYPTION: str = "AES256"
+    # 公共图片只写显式发布对象，通过 CDN 或公共 Bucket 返回稳定 HTTPS URL。
+    PUBLIC_MEDIA_BASE_URL: str = ""
+    PUBLIC_MEDIA_S3_BUCKET: str = ""
+    PUBLIC_MEDIA_PREFIX: str = "public/images"
     # IP 图片初筛复用百炼 Key，模型和地址由平台配置，不暴露给卖家。
     IP_VISION_MODEL: str = "qwen3-vl-plus"
     IP_VISION_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -209,12 +239,27 @@ class Settings(BaseSettings):
     SHOPIFY_API_SECRET: Optional[str] = None
     SHOPIFY_REDIRECT_URI: Optional[str] = None
     SHOPIFY_API_VERSION: str = "2026-10"
+    # 自动动作的硬性退款护栏，与具体路由解耦，便于统一配置。
+    MAX_REFUND_AMOUNT: float = 100.0
+    MAX_DAILY_REFUND_TOTAL: float = 300.0
 
     # --- Amazon SP-API ---
     AMAZON_APP_ID: Optional[str] = None
     AMAZON_CLIENT_ID: Optional[str] = None
     AMAZON_CLIENT_SECRET: Optional[str] = None
     AMAZON_REDIRECT_URI: Optional[str] = None
+
+    # --- Amazon 市场数据（Jungle Scout）---
+    # 仅用于竞品、搜索量和销量第三方估算；卖家店铺授权仍走 SP-API。
+    JUNGLE_SCOUT_KEY_NAME: Optional[str] = None
+    JUNGLE_SCOUT_API_KEY: Optional[str] = None
+    JUNGLE_SCOUT_MARKETPLACE: str = "us"
+
+    # --- Temu Partner Platform ---
+    TEMU_APP_KEY: Optional[str] = None
+    TEMU_APP_SECRET: Optional[str] = None
+    TEMU_REDIRECT_URI: Optional[str] = None
+    TEMU_DEFAULT_REGION: str = "global"
 
     # --- Creem.io ---
     CREEM_API_KEY: Optional[str] = None

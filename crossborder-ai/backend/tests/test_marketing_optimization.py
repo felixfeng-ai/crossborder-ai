@@ -13,6 +13,7 @@ from app.models.automation_preference import AutomationPreference
 from app.models.product import Product
 from app.models.user import User
 from app.services.marketing_optimization import evaluate_variant_performance
+from app.services.workspaces import ensure_personal_workspace
 
 
 def _copy(variant: str) -> MarketingCopyAsset:
@@ -139,6 +140,7 @@ async def test_metric_import_auto_evaluates_and_returns_actions(
         )
     ).scalar_one()
     user.plan = "professional"
+    workspace = await ensure_personal_workspace(db_session, user)
     product = Product(
         user_id=user.id,
         url=f"https://detail.1688.com/offer/{uuid.uuid4().hex}.html",
@@ -257,6 +259,7 @@ async def test_metric_import_respects_disabled_ab_auto_pause(
         )
     ).scalar_one()
     user.plan = "professional"
+    workspace = await ensure_personal_workspace(db_session, user)
     product = Product(
         user_id=user.id,
         url=f"https://detail.1688.com/offer/{uuid.uuid4().hex}.html",
@@ -302,6 +305,7 @@ async def test_metric_import_respects_disabled_ab_auto_pause(
     db_session.add_all([variant_a, variant_b])
     db_session.add(
         AutomationPreference(
+            workspace_id=workspace.id,
             user_id=user.id,
             ab_auto_pause=False,
         )

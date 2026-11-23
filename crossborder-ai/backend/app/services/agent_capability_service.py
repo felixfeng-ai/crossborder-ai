@@ -39,6 +39,7 @@ from app.services.marketing_video_agent import (
     PLATFORM_OPTIONS,
     generate_marketing_plan,
 )
+from app.services.media_tokens import sign_media_path
 from app.services.minimax_video import (
     VIDEO_TEMPLATES,
 )
@@ -58,20 +59,24 @@ async def get_owned_image_asset(
     db: AsyncSession,
     user_id,
     asset_id: str,
+    *,
+    workspace_id: UUID | None = None,
 ) -> Optional[ImageAsset]:
-    """按用户读取图片素材，跨账号一律按不存在处理。"""
+    """按用户和工作区读取图片素材，跨账号或跨工作区均视为不存在。"""
     try:
         parsed_id = UUID(str(asset_id))
     except (ValueError, TypeError):
         return None
-    return (
-        await db.execute(
-            select(ImageAsset).where(
-                ImageAsset.id == parsed_id,
-                ImageAsset.user_id == user_id,
-            )
-        )
-    ).scalar_one_or_none()
+    query = select(ImageAsset).where(
+        ImageAsset.id == parsed_id,
+        ImageAsset.user_id == user_id,
+    )
+    if workspace_id is not None:
+        query = query.where(ImageAsset.workspace_id == workspace_id)
+    else:
+        # 无工作区上下文时只兼容历史空归属素材，避免误读团队资源。
+        query = query.where(ImageAsset.workspace_id.is_(None))
+    return (await db.execute(query)).scalar_one_or_none()
 
 
 def _parse_image_urls(raw: str | None) -> list[str]:
@@ -89,71 +94,105 @@ async def list_user_materials(
     db: AsyncSession,
     user: User,
     *,
+    workspace_id: UUID | None = None,
     limit: int = 20,
 ) -> dict:
-    """查询当前用户最近素材，并返回可用于 Agent 摘要的总量。"""
+    """查询当前工作区最近素材，并返回可用于 Agent 摘要的总量。"""
     safe_limit = max(1, min(int(limit or 20), 50))
+
+    def scoped(query, model):
+        if workspace_id is not None:
+            return query.where(model.workspace_id == workspace_id)
+        return query.where(model.workspace_id.is_(None))
 
     asset_total = (
         await db.execute(
-            select(func.count()).select_from(ImageAsset).where(
-                ImageAsset.user_id == user.id
+            scoped(
+                select(func.count())
+                .select_from(ImageAsset)
+                .where(ImageAsset.user_id == user.id),
+                ImageAsset,
             )
         )
     ).scalar_one()
     image_task_total = (
         await db.execute(
-            select(func.count()).select_from(ImageGenerationTask).where(
-                ImageGenerationTask.user_id == user.id,
-                ImageGenerationTask.status == "completed",
+            scoped(
+                select(func.count())
+                .select_from(ImageGenerationTask)
+                .where(
+                    ImageGenerationTask.user_id == user.id,
+                    ImageGenerationTask.status == "completed",
+                ),
+                ImageGenerationTask,
             )
         )
     ).scalar_one()
-    materialized_task_ids = select(ImageAsset.generation_task_id).where(
-        ImageAsset.user_id == user.id,
-        ImageAsset.kind == "generated",
-        ImageAsset.generation_task_id.is_not(None),
+    materialized_task_ids = scoped(
+        select(ImageAsset.generation_task_id).where(
+            ImageAsset.user_id == user.id,
+            ImageAsset.kind == "generated",
+            ImageAsset.generation_task_id.is_not(None),
+        ),
+        ImageAsset,
     )
     legacy_image_task_total = (
         await db.execute(
-            select(func.count()).select_from(ImageGenerationTask).where(
-                ImageGenerationTask.user_id == user.id,
-                ImageGenerationTask.status == "completed",
-                ImageGenerationTask.id.not_in(materialized_task_ids),
+            scoped(
+                select(func.count())
+                .select_from(ImageGenerationTask)
+                .where(
+                    ImageGenerationTask.user_id == user.id,
+                    ImageGenerationTask.status == "completed",
+                    ImageGenerationTask.id.not_in(materialized_task_ids),
+                ),
+                ImageGenerationTask,
             )
         )
     ).scalar_one()
     product_video_total = (
         await db.execute(
-            select(func.count()).select_from(VideoGenerationTask).where(
-                VideoGenerationTask.user_id == user.id,
-                VideoGenerationTask.status == "succeeded",
+            scoped(
+                select(func.count())
+                .select_from(VideoGenerationTask)
+                .where(
+                    VideoGenerationTask.user_id == user.id,
+                    VideoGenerationTask.status == "succeeded",
+                ),
+                VideoGenerationTask,
             )
         )
     ).scalar_one()
     marketing_total = (
         await db.execute(
-            select(func.count()).select_from(MarketingVideoProject).where(
-                MarketingVideoProject.user_id == user.id
+            scoped(
+                select(func.count())
+                .select_from(MarketingVideoProject)
+                .where(MarketingVideoProject.user_id == user.id),
+                MarketingVideoProject,
             )
         )
     ).scalar_one()
 
     assets = (
         await db.execute(
-            select(ImageAsset)
-            .where(ImageAsset.user_id == user.id)
+            scoped(
+                select(ImageAsset).where(ImageAsset.user_id == user.id),
+                ImageAsset,
+            )
             .order_by(desc(ImageAsset.created_at), desc(ImageAsset.id))
             .limit(safe_limit)
         )
     ).scalars().all()
     image_tasks = (
         await db.execute(
-            select(ImageGenerationTask)
-            .where(
-                ImageGenerationTask.user_id == user.id,
-                ImageGenerationTask.status == "completed",
-                ImageGenerationTask.id.not_in(materialized_task_ids),
+            scoped(
+                select(ImageGenerationTask).where(
+                    ImageGenerationTask.user_id == user.id,
+                    ImageGenerationTask.status == "completed",
+                    ImageGenerationTask.id.not_in(materialized_task_ids),
+                ),
+                ImageGenerationTask,
             )
             .order_by(
                 desc(ImageGenerationTask.created_at),
@@ -164,10 +203,12 @@ async def list_user_materials(
     ).scalars().all()
     videos = (
         await db.execute(
-            select(VideoGenerationTask)
-            .where(
-                VideoGenerationTask.user_id == user.id,
-                VideoGenerationTask.status == "succeeded",
+            scoped(
+                select(VideoGenerationTask).where(
+                    VideoGenerationTask.user_id == user.id,
+                    VideoGenerationTask.status == "succeeded",
+                ),
+                VideoGenerationTask,
             )
             .order_by(
                 desc(VideoGenerationTask.created_at),
@@ -178,8 +219,12 @@ async def list_user_materials(
     ).scalars().all()
     marketing_projects = (
         await db.execute(
-            select(MarketingVideoProject)
-            .where(MarketingVideoProject.user_id == user.id)
+            scoped(
+                select(MarketingVideoProject).where(
+                    MarketingVideoProject.user_id == user.id
+                ),
+                MarketingVideoProject,
+            )
             .order_by(
                 desc(MarketingVideoProject.created_at),
                 desc(MarketingVideoProject.id),
@@ -196,7 +241,13 @@ async def list_user_materials(
                 "kind": "image",
                 "source": asset.kind,
                 "name": asset.name,
-                "url": f"{settings.API_V1_PREFIX}/images/assets/{asset.id}/file",
+                "url": sign_media_path(
+                    f"{settings.API_V1_PREFIX}/images/assets/{asset.id}/file",
+                    resource_type="image_asset",
+                    resource_id=asset.id,
+                    user_id=asset.user_id,
+                    workspace_id=asset.workspace_id,
+                ),
                 "created_at": str(asset.created_at),
             }
         )
@@ -251,6 +302,7 @@ async def schedule_product_image_task(
     db: AsyncSession,
     user: User,
     *,
+    workspace_id: UUID | None = None,
     prompt: str,
     num_outputs: int = 1,
     campaign_id: str | None = None,
@@ -280,6 +332,7 @@ async def schedule_product_image_task(
         db,
         user.id,
         reference_asset_ids or [],
+        workspace_id=workspace_id,
         required=mode == "product_scene",
     )
     provider_name = _resolve_agent_image_provider(
@@ -292,7 +345,9 @@ async def schedule_product_image_task(
         resolved_quality,
         num_outputs,
     )
-    if user.credits < credits_cost:
+    from app.services.personal_billing import get_personal_billing_balance
+
+    if await get_personal_billing_balance(db, user) < credits_cost:
         raise ValueError(f"积分不足，本次图片生成需要 {credits_cost} 积分")
 
     enhanced_prompt, effective_negative_prompt = prepare_agent_image_prompt(
@@ -306,7 +361,7 @@ async def schedule_product_image_task(
         else mode != "free_creation"
     )
     if should_use_persona:
-        persona = await fetch_persona(db, user.id)
+        persona = await fetch_persona(db, user.id, workspace_id)
         if persona:
             kit = build_persona_kit(persona)
             enhanced_prompt = strip_banned_words(
@@ -325,6 +380,11 @@ async def schedule_product_image_task(
                 select(ImageGenerationTask).where(
                     ImageGenerationTask.user_id == user.id,
                     ImageGenerationTask.idempotency_key == idempotency_key,
+                    (
+                        ImageGenerationTask.workspace_id == workspace_id
+                        if workspace_id is not None
+                        else ImageGenerationTask.workspace_id.is_(None)
+                    ),
                 )
             )
         ).scalar_one_or_none()
@@ -333,6 +393,7 @@ async def schedule_product_image_task(
 
     task = ImageGenerationTask(
         user_id=user.id,
+        workspace_id=workspace_id,
         campaign_id=UUID(str(campaign_id)) if campaign_id else None,
         prompt=enhanced_prompt,
         num_outputs=max(1, min(int(num_outputs or 1), 4)),
@@ -381,6 +442,7 @@ async def _resolve_agent_image_references(
     user_id,
     raw_ids: list[str],
     *,
+    workspace_id: UUID | None,
     required: bool,
 ) -> list[ImageAsset]:
     """按顺序校验 Agent 传入的参考图，全部必须属于当前用户。"""
@@ -391,7 +453,12 @@ async def _resolve_agent_image_references(
         raise ValueError("商品场景最多支持 4 张参考图")
     assets: list[ImageAsset] = []
     for asset_id in ids:
-        asset = await get_owned_image_asset(db, user_id, asset_id)
+        asset = await get_owned_image_asset(
+            db,
+            user_id,
+            asset_id,
+            workspace_id=workspace_id,
+        )
         if asset is None:
             raise ValueError("参考素材不存在")
         assets.append(asset)
@@ -422,6 +489,7 @@ async def create_product_video_task(
     db: AsyncSession,
     user: User,
     *,
+    workspace_id: UUID | None = None,
     source_asset_id: str,
     prompt: str = "",
     template_id: str = "clean_product",
@@ -446,7 +514,12 @@ async def create_product_video_task(
     )
     if template is None:
         raise ValueError("视频模板不存在")
-    asset = await get_owned_image_asset(db, user.id, source_asset_id)
+    asset = await get_owned_image_asset(
+        db,
+        user.id,
+        source_asset_id,
+        workspace_id=workspace_id,
+    )
     if asset is None:
         raise ValueError("商品首帧不存在")
 
@@ -469,7 +542,12 @@ async def create_product_video_task(
     ).scalar_one()
     reserved = max(0, int(reserve_credits or 0))
     required_credits = credits_cost + reserved
-    if locked_user.credits < required_credits:
+    from app.services.personal_billing import get_personal_billing_balance
+
+    if (
+        await get_personal_billing_balance(db, locked_user)
+        < required_credits
+    ):
         reserve_hint = f"并为 Agent 任务预留 {reserved} 积分" if reserved else ""
         raise ValueError(
             f"积分不足，本次视频生成需要 {credits_cost} 积分{reserve_hint}"
@@ -484,6 +562,7 @@ async def create_product_video_task(
     )
     task = VideoGenerationTask(
         user_id=user.id,
+        workspace_id=workspace_id,
         campaign_id=UUID(str(campaign_id)) if campaign_id else None,
         source_asset_id=UUID(str(source_asset_id)),
         template_id=template_id,
@@ -536,6 +615,7 @@ async def create_marketing_plan_project(
     db: AsyncSession,
     user: User,
     *,
+    workspace_id: UUID | None = None,
     source_asset_id: str,
     product_name: str,
     idea: str,
@@ -559,10 +639,15 @@ async def create_marketing_plan_project(
         raise ValueError("目标平台不支持")
     if not any(item["id"] == template_id for item in MARKETING_TEMPLATES):
         raise ValueError("营销视频模板不存在")
-    if await get_owned_image_asset(db, user.id, source_asset_id) is None:
+    if await get_owned_image_asset(
+        db,
+        user.id,
+        source_asset_id,
+        workspace_id=workspace_id,
+    ) is None:
         raise ValueError("商品首帧不存在")
 
-    persona = await fetch_persona(db, user.id)
+    persona = await fetch_persona(db, user.id, workspace_id)
     brand_context = (
         format_persona_block(build_persona_kit(persona))
         if persona
@@ -597,6 +682,7 @@ async def create_marketing_plan_project(
     )
     project = MarketingVideoProject(
         user_id=user.id,
+        workspace_id=workspace_id,
         campaign_id=UUID(str(campaign_id)) if campaign_id else None,
         source_asset_id=UUID(str(source_asset_id)),
         title=plan["title"],

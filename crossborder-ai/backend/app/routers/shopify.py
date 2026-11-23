@@ -32,7 +32,7 @@ from app.core.rate_limit import RateLimit
 from app.core.access_control import check_feature_access
 from app.core.crypto import decrypt_value, encrypt_value, mask_secret
 from app.core.security import create_access_token, decode_token_safe
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.product import Product
 from app.models.shopify_channel import ShopifyChannel
 from app.models.shopify_compliance_event import ShopifyComplianceEvent
@@ -40,7 +40,11 @@ from app.models.publication import Publication
 from app.models.user import User
 from app.services.listing_service import (
     get_current_compliance_report,
-    get_owned_listing,
+    get_workspace_listing,
+)
+from app.services.product_workspace_scope import (
+    ensure_product_writer,
+    product_workspace_scope,
 )
 from app.services import provider_config
 from app.services.publication_service import (
@@ -56,11 +60,68 @@ from app.services.shopify_operations_sync import (
     ShopifyOperationsSyncError,
     sync_shopify_operations,
 )
+from app.services.workspaces import ensure_personal_workspace
+from app.services.workspace_scope import workspace_access_filter
+from app.services.integration_events import (
+    record_integration_event,
+    verify_shopify_hmac,
+)
 from app.services.ip_risk import (
     ensure_ip_report_for_publish,
     ip_publish_block_reason,
 )
 router = APIRouter(prefix="/shopify", tags=["Shopify"])
+
+
+@router.post("/webhooks/orders")
+async def shopify_orders_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """接收 Shopify 订单 Webhook，验签后只落原始事件，不在请求内执行业务。"""
+
+    body = await request.body()
+    if not verify_shopify_hmac(
+        secret=settings.SHOPIFY_API_SECRET,
+        body=body,
+        signature=request.headers.get("X-Shopify-Hmac-Sha256"),
+    ):
+        raise HTTPException(status_code=401, detail="Webhook 签名无效")
+    shop_domain = (request.headers.get("X-Shopify-Shop-Domain") or "").strip()
+    event_id = (request.headers.get("X-Shopify-Webhook-Id") or "").strip()
+    topic = (request.headers.get("X-Shopify-Topic") or "orders/updated").strip()
+    if not shop_domain or not event_id:
+        raise HTTPException(status_code=400, detail="Webhook 缺少必要标识")
+    channel = (
+        await db.execute(
+            select(ShopifyChannel).where(
+                ShopifyChannel.shop_domain == shop_domain,
+                ShopifyChannel.is_active.is_(True),
+                ShopifyChannel.workspace_id.is_not(None),
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if channel is None:
+        # 未绑定工作区的店铺不暴露业务状态，也不制造错误任务。
+        return {"status": "ignored"}
+    try:
+        payload = json.loads(body.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="Webhook JSON 无效") from exc
+    resource_id = str(payload.get("id") or "")
+    event, created = await record_integration_event(
+        db,
+        workspace_id=channel.workspace_id,
+        channel_id=str(channel.id),
+        provider="shopify",
+        external_event_id=event_id,
+        event_type=topic,
+        external_resource_id=resource_id or None,
+        payload=payload,
+        fingerprint=f"shopify:{channel.id}:{event_id}",
+        signature_verified=True,
+    )
+    return {"status": "received" if created else "duplicate", "event_id": str(event.id)}
 
 # ── 违禁词正则（F8 合规审查）─────────────────────────────────
 BANNED_PATTERNS = [
@@ -634,6 +695,7 @@ async def shopify_oauth_callback(
 
     # ⑥ upsert 落库：唯一键 (user_id, 裸店铺名)，access_token 加密存储
     enc_token = encrypt_value(access_token)
+    personal_workspace = await ensure_personal_workspace(db, user)
     sel = await db.execute(
         select(ShopifyChannel).where(
             ShopifyChannel.user_id == user.id,
@@ -645,9 +707,11 @@ async def shopify_oauth_callback(
         existing.access_token = enc_token
         existing.shop_domain = domain
         existing.is_active = True
+        existing.workspace_id = personal_workspace.id
     else:
         db.add(ShopifyChannel(
             user_id=user.id,
+            workspace_id=personal_workspace.id,
             shop_name=bare,
             shop_domain=domain,
             access_token=enc_token,
@@ -662,6 +726,7 @@ async def shopify_oauth_callback(
 @router.get("/channels")
 async def list_channels(
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """查看当前用户绑定的全部 Shopify 店铺。
@@ -670,7 +735,10 @@ async def list_channels(
     安全：access_token 永不下发明文，仅回显掩码 token_masked（crypto.mask_secret）。
     """
     result = await db.execute(
-        select(ShopifyChannel).where(ShopifyChannel.user_id == current_user.id)
+        select(ShopifyChannel).where(
+            ShopifyChannel.user_id == current_user.id,
+            workspace_access_filter(ShopifyChannel, context),
+        )
     )
     channels = result.scalars().all()
     return [
@@ -692,6 +760,7 @@ async def list_channels(
 async def unbind_channel(
     channel_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """解绑（删除）一个 Shopify 渠道。
@@ -703,12 +772,16 @@ async def unbind_channel(
         cid = UUID(channel_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="无效的渠道 ID")
-    result = await db.execute(select(ShopifyChannel).where(ShopifyChannel.id == cid))
+    result = await db.execute(
+        select(ShopifyChannel).where(
+            ShopifyChannel.id == cid,
+            ShopifyChannel.user_id == current_user.id,
+            workspace_access_filter(ShopifyChannel, context),
+        )
+    )
     channel = result.scalar_one_or_none()
     if channel is None:
         raise HTTPException(status_code=404, detail="Shopify 渠道不存在")
-    if channel.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="无权操作该渠道")
     await db.delete(channel)
     await db.flush()
     return {"ok": True}
@@ -745,6 +818,7 @@ async def push_product(
     payload: PushProductRequest,
     request: Request,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
     idempotency_key: str = Header(default="", alias="Idempotency-Key"),
 ):
@@ -759,6 +833,7 @@ async def push_product(
     """
     from uuid import UUID
 
+    ensure_product_writer(context)
     # 套餐检查
     if not check_feature_access(current_user, "shopify_publish"):
         raise HTTPException(status_code=403, detail="Shopify 发布功能仅限 Standard 及以上套餐使用")
@@ -780,7 +855,12 @@ async def push_product(
 
     listing = None
     if payload.listing_id:
-        listing = await get_owned_listing(db, payload.listing_id, current_user.id)
+        listing = await get_workspace_listing(
+            db,
+            payload.listing_id,
+            context,
+            current_user,
+        )
         if listing is None:
             raise HTTPException(status_code=404, detail="Listing 不存在")
         if listing.compliance_status == "unknown" or listing.status == "draft":
@@ -826,10 +906,9 @@ async def push_product(
 
     # 归属过滤：只允许推送自己的商品，他人商品等同不存在
     result = await db.execute(
-        select(Product).where(
-            Product.id == pid,
-            Product.user_id == current_user.id,
-        )
+        select(Product)
+        .where(Product.id == pid)
+        .where(product_workspace_scope(context, current_user))
     )
     product = result.scalar_one_or_none()
     if not product:
@@ -837,6 +916,10 @@ async def push_product(
 
     # 查 Shopify 渠道
     channel = await get_channel(payload.channel_id, current_user.id, db)
+    if channel.workspace_id not in (None, context.workspace.id):
+        raise HTTPException(status_code=404, detail="Shopify 渠道不存在")
+    if channel.workspace_id is None and context.workspace.type != "personal":
+        raise HTTPException(status_code=404, detail="Shopify 渠道不存在")
 
     ip_report = await ensure_ip_report_for_publish(
         db,

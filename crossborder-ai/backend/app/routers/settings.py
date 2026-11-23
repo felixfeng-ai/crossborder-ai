@@ -9,12 +9,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto import decrypt_value, encrypt_value, mask_secret
 from app.core.database import get_db
-from app.dependencies import get_current_user, require_admin
+from app.dependencies import (
+    WorkspaceContext,
+    get_current_user,
+    get_web_workspace,
+    require_admin,
+)
 from app.models.persona import Persona
 from app.models.system_config import SystemConfig
 from app.models.user import User
 from app.services.admin_audit import record_admin_action
 from app.services import provider_config
+from app.services.workspace_scope import workspace_access_filter
 from app.services.automation_settings import (
     load_automation_settings,
     update_automation_settings,
@@ -36,26 +42,37 @@ class AutomationSettingsRequest(BaseModel):
 @router.get("/automation")
 async def get_automation_settings(
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    """返回当前用户业务自动化开关和最近执行状态。"""
-    return await load_automation_settings(db, current_user)
+    """返回当前工作区业务自动化开关和最近执行状态。"""
+    return await load_automation_settings(
+        db,
+        current_user,
+        workspace_id=context.workspace.id,
+    )
 
 
 @router.put("/automation")
 async def save_automation_settings(
     payload: AutomationSettingsRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    """保存当前用户业务自动化开关。"""
+    """保存当前工作区业务自动化开关。"""
     updates = {
         key: value
         for key, value in payload.model_dump().items()
         if value is not None
     }
     try:
-        return await update_automation_settings(db, current_user, updates)
+        return await update_automation_settings(
+            db,
+            current_user,
+            updates,
+            workspace_id=context.workspace.id,
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -241,10 +258,16 @@ class PersonaResponse(BaseModel):
 @router.get("/persona", response_model=PersonaResponse)
 async def get_persona(
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """获取当前用户的品牌调性配置"""
-    result = await db.execute(select(Persona).where(Persona.user_id == current_user.id))
+    result = await db.execute(
+        select(Persona).where(
+            Persona.user_id == current_user.id,
+            workspace_access_filter(Persona, context),
+        )
+    )
     p = result.scalar_one_or_none()
     if not p:
         return PersonaResponse()
@@ -265,13 +288,22 @@ async def get_persona(
 async def update_persona(
     payload: PersonaRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """保存品牌调性配置"""
-    result = await db.execute(select(Persona).where(Persona.user_id == current_user.id))
+    result = await db.execute(
+        select(Persona).where(
+            Persona.user_id == current_user.id,
+            workspace_access_filter(Persona, context),
+        )
+    )
     persona = result.scalar_one_or_none()
     if not persona:
-        persona = Persona(user_id=current_user.id)
+        persona = Persona(
+            user_id=current_user.id,
+            workspace_id=context.workspace.id,
+        )
         db.add(persona)
     persona.brand_name = payload.brand_name
     persona.tagline = payload.tagline

@@ -231,11 +231,15 @@ async def test_campaign_assets_include_bound_media(
     assert image_item["urls"] == ["https://example.com/hero.png"]
     assert image_item["thumbnail_url"] == "https://example.com/hero.png"
     video_item = next(item for item in body["items"] if item["kind"] == "video")
-    assert video_item["thumbnail_url"].endswith("/thumbnail")
+    assert video_item["thumbnail_url"].split("?", 1)[0].endswith(
+        "/thumbnail"
+    )
     project_item = next(
         item for item in body["items"] if item["kind"] == "marketing_video"
     )
-    assert project_item["thumbnail_url"].endswith("/thumbnail")
+    assert project_item["thumbnail_url"].split("?", 1)[0].endswith(
+        "/thumbnail"
+    )
 
 
 @pytest.mark.asyncio

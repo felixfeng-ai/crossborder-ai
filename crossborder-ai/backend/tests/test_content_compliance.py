@@ -14,6 +14,7 @@ from httpx import AsyncClient
 
 from app.services.ai import compliance
 from app.services.ai.deepseek import DeepSeekService
+from tests.ai_mock_helpers import mock_listing_ai
 
 
 async def _create_product(client: AsyncClient, auth_headers: dict, idx: int = 1) -> str:
@@ -43,11 +44,11 @@ async def _set_persona(client: AsyncClient, auth_headers: dict, banned_words: li
 
 def _mock_generate(monkeypatch, canned: str):
     """把 DeepSeekService.generate 替换为固定返回，避开真实 API 与重试等待"""
-
-    async def fake_generate(self, system_prompt: str, user_prompt: str, **kwargs) -> str:
-        return canned
-
-    monkeypatch.setattr(DeepSeekService, "generate", fake_generate)
+    mock_listing_ai(
+        monkeypatch,
+        canned,
+        bullets=[canned, f"{canned} 2", f"{canned} 3", f"{canned} 4", f"{canned} 5"],
+    )
 
 
 async def _generate(

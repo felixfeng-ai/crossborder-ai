@@ -13,6 +13,7 @@ from app.models.shopify_channel import ShopifyChannel
 from app.models.user import User
 from app.routers import shopify as shopify_module
 from app.services.ai.deepseek import DeepSeekService
+from tests.ai_mock_helpers import mock_listing_ai
 
 
 async def _register(client: AsyncClient, email: str) -> dict:
@@ -35,10 +36,10 @@ async def _create_listing(
     headers: dict,
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[str, str]:
-    async def fake_generate(self, system_prompt: str, user_prompt: str, **kwargs) -> str:
-        return "Premium wireless earbuds with long battery life."
-
-    monkeypatch.setattr(DeepSeekService, "generate", fake_generate)
+    mock_listing_ai(
+        monkeypatch,
+        "Premium wireless earbuds with long battery life.",
+    )
     product = await client.post(
         "/api/v1/products/manual",
         json={
@@ -144,5 +145,5 @@ async def test_platform_capabilities_are_explicit(client: AsyncClient):
     assert platforms["shopify"]["publish_supported"] is True
     assert platforms["amazon"]["auth_supported"] is True
     assert platforms["amazon"]["publish_supported"] is True
-    assert platforms["temu"]["publish_supported"] is False
+    assert platforms["temu"]["publish_supported"] is True
     assert platforms["shein"]["publish_supported"] is False

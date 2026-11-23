@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.models.user import User
 from app.services.ai.deepseek import DeepSeekService
+from tests.ai_mock_helpers import mock_listing_ai
 
 
 async def _register(client: AsyncClient, email: str) -> dict:
@@ -30,10 +31,10 @@ async def _create_generated_listing(
     headers: dict,
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[str, str]:
-    async def fake_generate(self, system_prompt: str, user_prompt: str, **kwargs) -> str:
-        return "Premium wireless earbuds with long battery life."
-
-    monkeypatch.setattr(DeepSeekService, "generate", fake_generate)
+    mock_listing_ai(
+        monkeypatch,
+        "Premium wireless earbuds with long battery life.",
+    )
     product_resp = await client.post(
         "/api/v1/products/manual",
         json={

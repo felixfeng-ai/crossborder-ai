@@ -140,6 +140,58 @@ async def test_amazon_submit_uses_validation_preview_and_writes_headers(
 
 
 @pytest.mark.asyncio
+async def test_amazon_submit_uses_eu_endpoint_for_eu_marketplace(
+    monkeypatch,
+):
+    captured = {}
+
+    async def fake_refresh(self, refresh_token):
+        return "Atza|access"
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def put(self, url, *, params, json, headers):
+            captured["url"] = url
+            return httpx.Response(
+                200,
+                request=httpx.Request("PUT", url),
+                json={
+                    "status": "VALIDATION_PREVIEW",
+                    "submissionId": "preview-eu",
+                    "issues": [],
+                },
+            )
+
+    monkeypatch.setattr(
+        amazon_listing_module.AmazonSpApiService,
+        "refresh_access_token",
+        fake_refresh,
+    )
+    monkeypatch.setattr(amazon_listing_module.httpx, "AsyncClient", FakeClient)
+
+    await AmazonListingPublishService().submit_listing(
+        refresh_token="Atzr|test",
+        seller_id="A1SELLER",
+        marketplace_id="A1PA6795UKMFR9",
+        sku="AMZ-EU-01",
+        payload={"productType": "HOME_FRAGRANCE", "attributes": {}},
+        preview=True,
+    )
+
+    assert captured["url"].startswith(
+        "https://sellingpartnerapi-eu.amazon.com/"
+    )
+
+
+@pytest.mark.asyncio
 async def test_amazon_submit_maps_permission_error(monkeypatch):
     async def fake_refresh(self, refresh_token):
         return "Atza|access"

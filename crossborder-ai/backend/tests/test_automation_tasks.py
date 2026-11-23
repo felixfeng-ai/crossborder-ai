@@ -17,6 +17,7 @@ from app.services.automation_tasks import (
     run_scheduled_operations_monitors,
     run_scheduled_store_checks,
 )
+from app.services.workspaces import ensure_personal_workspace
 
 
 async def _user_with_product(db_session, label: str, *, plan="professional"):
@@ -28,8 +29,11 @@ async def _user_with_product(db_session, label: str, *, plan="professional"):
     )
     db_session.add(user)
     await db_session.flush()
+    workspace = await ensure_personal_workspace(db_session, user)
     product = Product(
         user_id=user.id,
+        workspace_id=workspace.id,
+        created_by_user_id=user.id,
         url=f"https://detail.1688.com/offer/{uuid.uuid4().hex}.html",
         title=f"{label} product",
     )
@@ -38,6 +42,8 @@ async def _user_with_product(db_session, label: str, *, plan="professional"):
     db_session.add(
         ProductVariant(
             user_id=user.id,
+            workspace_id=workspace.id,
+            created_by_user_id=user.id,
             product_id=product.id,
             sku=f"{label.upper()}-SKU",
             price=20,
@@ -48,6 +54,11 @@ async def _user_with_product(db_session, label: str, *, plan="professional"):
     )
     await db_session.commit()
     return user.id
+
+
+async def _workspace_for_user(db_session, user_id):
+    user = await db_session.get(User, user_id)
+    return await ensure_personal_workspace(db_session, user)
 
 
 def test_effective_automation_requires_paid_plan():
@@ -74,8 +85,13 @@ async def test_scheduled_store_checks_skip_disabled_and_record_state(
 ):
     enabled_user_id = await _user_with_product(db_session, "store-enabled")
     disabled_user_id = await _user_with_product(db_session, "store-disabled")
+    disabled_workspace = await _workspace_for_user(
+        db_session,
+        disabled_user_id,
+    )
     db_session.add(
         AutomationPreference(
+            workspace_id=disabled_workspace.id,
             user_id=disabled_user_id,
             daily_store_check=False,
         )
@@ -83,7 +99,7 @@ async def test_scheduled_store_checks_skip_disabled_and_record_state(
     await db_session.commit()
     called: list[uuid.UUID] = []
 
-    async def fake_run_store_check(db, user):
+    async def fake_run_store_check(db, user, **kwargs):
         called.append(user.id)
         return {"status": "ok"}
 
@@ -114,8 +130,13 @@ async def test_scheduled_operations_monitor_skips_disabled(
 ):
     enabled_user_id = await _user_with_product(db_session, "monitor-enabled")
     disabled_user_id = await _user_with_product(db_session, "monitor-disabled")
+    disabled_workspace = await _workspace_for_user(
+        db_session,
+        disabled_user_id,
+    )
     db_session.add(
         AutomationPreference(
+            workspace_id=disabled_workspace.id,
             user_id=disabled_user_id,
             daily_operations_monitor=False,
         )
@@ -123,7 +144,7 @@ async def test_scheduled_operations_monitor_skips_disabled(
     await db_session.commit()
     called: list[uuid.UUID] = []
 
-    async def fake_run_monitor_scan(db, user):
+    async def fake_run_monitor_scan(db, user, **kwargs):
         called.append(user.id)
         return {"sku_count": 1}
 

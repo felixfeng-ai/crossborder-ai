@@ -12,7 +12,7 @@
 import json
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.persona import Persona
@@ -129,7 +129,21 @@ def strip_banned_words(text: str, banned_words: list[str]) -> str:
     return result
 
 
-async def fetch_persona(db: AsyncSession, user_id) -> Optional[Persona]:
-    """按用户读取 Persona 记录（无则 None）。统一读入口，避免各路由重复 SELECT 漂移。"""
-    result = await db.execute(select(Persona).where(Persona.user_id == user_id))
+async def fetch_persona(
+    db: AsyncSession,
+    user_id,
+    workspace_id=None,
+    *,
+    include_legacy_workspace: bool = False,
+) -> Optional[Persona]:
+    """按工作区读取 Persona；未指定工作区时保留旧用户级调用兼容。"""
+    query = select(Persona).where(Persona.user_id == user_id)
+    if workspace_id is not None:
+        scope = Persona.workspace_id == workspace_id
+        if include_legacy_workspace:
+            scope = or_(scope, Persona.workspace_id.is_(None))
+        query = query.where(scope)
+    result = await db.execute(
+        query.order_by(Persona.created_at, Persona.id).limit(1)
+    )
     return result.scalar_one_or_none()

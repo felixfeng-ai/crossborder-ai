@@ -19,7 +19,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.access_control import check_feature_access
 from app.core.config import settings
 from app.core.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.image_asset import ImageAsset
 from app.models.marketing_video import MarketingVideoProject, MarketingVideoShot
 from app.models.user import InsufficientCreditsError, User
@@ -35,6 +35,7 @@ from app.services.marketing_video_executor import (
     start_marketing_project,
 )
 from app.services.marketing_subtitles import build_marketing_srt
+from app.services.media_tokens import media_token_matches, sign_media_path
 from app.services.minimax_tts import (
     MiniMaxTTSNotConfigured,
     MiniMaxTTSError,
@@ -60,6 +61,7 @@ from app.services.video_provider import (
     get_video_provider,
 )
 from app.services.video_thumbnail import ensure_video_thumbnail
+from app.services.workspace_scope import workspace_access_filter
 
 
 router = APIRouter(prefix="/marketing-videos", tags=["AI 营销视频"])
@@ -189,6 +191,7 @@ async def _asset_owned(
     db: AsyncSession,
     source_asset_id: str,
     user_id,
+    context: WorkspaceContext,
 ) -> ImageAsset:
     try:
         asset_id = uuid.UUID(source_asset_id)
@@ -199,6 +202,7 @@ async def _asset_owned(
             select(ImageAsset).where(
                 ImageAsset.id == asset_id,
                 ImageAsset.user_id == user_id,
+                workspace_access_filter(ImageAsset, context),
             )
         )
     ).scalar_one_or_none()
@@ -212,6 +216,7 @@ async def _normalize_reference_assets(
     primary_asset_id: str,
     references: list[ProductReferenceAssetInput],
     user_id,
+    context: WorkspaceContext,
 ) -> list[dict]:
     """校验主图与参考图归属、数量和用途，并生成稳定的发送顺序。"""
     try:
@@ -238,6 +243,7 @@ async def _normalize_reference_assets(
                 select(ImageAsset).where(
                     ImageAsset.id.in_(reference_ids),
                     ImageAsset.user_id == user_id,
+                    workspace_access_filter(ImageAsset, context),
                 )
             )
         ).scalars().all()
@@ -266,6 +272,7 @@ async def _owned_project(
     db: AsyncSession,
     project_id: str,
     user_id,
+    context: WorkspaceContext,
 ) -> MarketingVideoProject:
     try:
         parsed_id = uuid.UUID(project_id)
@@ -276,6 +283,7 @@ async def _owned_project(
             select(MarketingVideoProject).where(
                 MarketingVideoProject.id == parsed_id,
                 MarketingVideoProject.user_id == user_id,
+                workspace_access_filter(MarketingVideoProject, context),
             )
         )
     ).scalar_one_or_none()
@@ -483,8 +491,14 @@ async def _serialize_project(
             else None
         ),
         thumbnail_url=(
-            f"{settings.API_V1_PREFIX}/marketing-videos/projects/"
-            f"{project.id}/thumbnail"
+            sign_media_path(
+                f"{settings.API_V1_PREFIX}/marketing-videos/projects/"
+                f"{project.id}/thumbnail",
+                resource_type="marketing_video_thumbnail",
+                resource_id=project.id,
+                user_id=project.user_id,
+                workspace_id=project.workspace_id,
+            )
             if video_available
             else None
         ),
@@ -541,6 +555,7 @@ async def create_professional_storyboard_project(
     payload: CreateStoryboardProjectRequest,
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """原样保存用户分镜并创建可逐镜头渲染的专业项目。"""
@@ -562,12 +577,18 @@ async def create_professional_storyboard_project(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    await _asset_owned(db, payload.source_asset_id, current_user.id)
+    await _asset_owned(
+        db,
+        payload.source_asset_id,
+        current_user.id,
+        context,
+    )
     reference_assets = await _normalize_reference_assets(
         db,
         payload.source_asset_id,
         payload.reference_assets,
         current_user.id,
+        context,
     )
     await db.execute(
         select(User).where(User.id == current_user.id).with_for_update()
@@ -579,6 +600,10 @@ async def create_professional_storyboard_project(
                 select(MarketingVideoProject).where(
                     MarketingVideoProject.user_id == current_user.id,
                     MarketingVideoProject.idempotency_key == key,
+                    workspace_access_filter(
+                        MarketingVideoProject,
+                        context,
+                    ),
                 )
             )
         ).scalar_one_or_none()
@@ -608,6 +633,7 @@ async def create_professional_storyboard_project(
     }
     project = MarketingVideoProject(
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
         source_asset_id=uuid.UUID(payload.source_asset_id),
         reference_assets_json=json.dumps(reference_assets, ensure_ascii=False),
         title=title[:255],
@@ -677,6 +703,7 @@ async def create_marketing_project(
     payload: CreateMarketingProjectRequest,
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """生成营销方案与分镜，不调用视频供应商。"""
@@ -699,12 +726,18 @@ async def create_marketing_project(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    await _asset_owned(db, payload.source_asset_id, current_user.id)
+    await _asset_owned(
+        db,
+        payload.source_asset_id,
+        current_user.id,
+        context,
+    )
     reference_assets = await _normalize_reference_assets(
         db,
         payload.source_asset_id,
         payload.reference_assets,
         current_user.id,
+        context,
     )
     (
         await db.execute(
@@ -718,13 +751,22 @@ async def create_marketing_project(
                 select(MarketingVideoProject).where(
                     MarketingVideoProject.user_id == current_user.id,
                     MarketingVideoProject.idempotency_key == key,
+                    workspace_access_filter(
+                        MarketingVideoProject,
+                        context,
+                    ),
                 )
             )
         ).scalar_one_or_none()
         if existing is not None:
             return await _serialize_project(db, existing)
 
-    persona = await fetch_persona(db, current_user.id)
+    persona = await fetch_persona(
+        db,
+        current_user.id,
+        context.workspace.id,
+        include_legacy_workspace=not context.explicit,
+    )
     brand_context = format_persona_block(build_persona_kit(persona)) if persona else None
     plan = await generate_marketing_plan(
         idea=payload.idea,
@@ -743,6 +785,7 @@ async def create_marketing_project(
 
     project = MarketingVideoProject(
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
         source_asset_id=uuid.UUID(payload.source_asset_id),
         reference_assets_json=json.dumps(reference_assets, ensure_ascii=False),
         title=plan["title"],
@@ -813,12 +856,16 @@ async def create_marketing_project(
 async def list_marketing_projects(
     limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     projects = (
         await db.execute(
             select(MarketingVideoProject)
-            .where(MarketingVideoProject.user_id == current_user.id)
+            .where(
+                MarketingVideoProject.user_id == current_user.id,
+                workspace_access_filter(MarketingVideoProject, context),
+            )
             .order_by(
                 desc(MarketingVideoProject.created_at),
                 desc(MarketingVideoProject.id),
@@ -833,9 +880,15 @@ async def list_marketing_projects(
 async def get_marketing_project(
     project_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await _owned_project(db, project_id, current_user.id)
+    project = await _owned_project(
+        db,
+        project_id,
+        current_user.id,
+        context,
+    )
     return await _serialize_project(db, project)
 
 
@@ -847,9 +900,15 @@ async def get_marketing_project(
 async def render_marketing_project(
     project_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await _owned_project(db, project_id, current_user.id)
+    project = await _owned_project(
+        db,
+        project_id,
+        current_user.id,
+        context,
+    )
     try:
         await start_marketing_project(db, project, current_user)
     except InsufficientCreditsError:
@@ -863,9 +922,15 @@ async def render_marketing_project(
 async def cancel_project(
     project_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await _owned_project(db, project_id, current_user.id)
+    project = await _owned_project(
+        db,
+        project_id,
+        current_user.id,
+        context,
+    )
     if not await cancel_marketing_project(db, project):
         raise HTTPException(status_code=409, detail="当前营销视频项目无法取消")
     return await _serialize_project(db, project)
@@ -875,10 +940,16 @@ async def cancel_project(
 async def delete_marketing_project(
     project_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """删除终态营销项目，并清理项目镜头与本地视频文件。"""
-    project = await _owned_project(db, project_id, current_user.id)
+    project = await _owned_project(
+        db,
+        project_id,
+        current_user.id,
+        context,
+    )
     if project.status == "rendering":
         raise HTTPException(status_code=409, detail="营销视频仍在生成，暂时不能删除")
     shots = await _project_shots(db, project)
@@ -888,6 +959,7 @@ async def delete_marketing_project(
             select(VideoGenerationTask).where(
                 VideoGenerationTask.id.in_(task_ids),
                 VideoGenerationTask.user_id == current_user.id,
+                workspace_access_filter(VideoGenerationTask, context),
             )
         )
     ).scalars().all() if task_ids else []
@@ -917,9 +989,15 @@ async def delete_marketing_project(
 async def get_marketing_project_file(
     project_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await _owned_project(db, project_id, current_user.id)
+    project = await _owned_project(
+        db,
+        project_id,
+        current_user.id,
+        context,
+    )
     if project.status != "succeeded" or not project.final_storage_key:
         raise HTTPException(status_code=404, detail="营销成片不存在")
     path = _project_file_path(project.final_storage_key)
@@ -938,9 +1016,10 @@ async def get_marketing_project_file(
 @router.get("/projects/{project_id}/thumbnail")
 async def get_marketing_project_thumbnail(
     project_id: str,
+    token: Optional[str] = Query(None, description="短时媒体访问令牌"),
     db: AsyncSession = Depends(get_db),
 ):
-    """公开不可猜测 UUID 的封面缓存，历史成片按需提取。"""
+    """校验短时签名后提供营销成片封面，历史成片按需提取。"""
     try:
         parsed_id = uuid.UUID(project_id)
     except ValueError:
@@ -955,6 +1034,14 @@ async def get_marketing_project_thumbnail(
     ).scalar_one_or_none()
     if project is None or not project.final_storage_key:
         raise HTTPException(status_code=404, detail="视频封面不存在")
+    if not media_token_matches(
+        token,
+        resource_type="marketing_video_thumbnail",
+        resource_id=project.id,
+        user_id=project.user_id,
+        workspace_id=project.workspace_id,
+    ):
+        raise HTTPException(status_code=401, detail="视频封面令牌无效或已过期")
     video_path = _project_file_path(project.final_storage_key)
     try:
         cover_path = await run_in_threadpool(ensure_video_thumbnail, video_path)
@@ -986,10 +1073,16 @@ async def _project_shots(
 async def download_marketing_subtitles(
     project_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """按项目分镜实时生成 SRT，避免字幕与用户修改后的方案脱节。"""
-    project = await _owned_project(db, project_id, current_user.id)
+    project = await _owned_project(
+        db,
+        project_id,
+        current_user.id,
+        context,
+    )
     brief = _parse_brief(project)
     if project.mode == "script" or brief.get("no_subtitles"):
         raise HTTPException(
@@ -1025,10 +1118,16 @@ async def download_marketing_subtitles(
 async def generate_marketing_voiceover(
     project_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """为项目脚本生成配音；供应商失败时不扣积分。"""
-    project = await _owned_project(db, project_id, current_user.id)
+    project = await _owned_project(
+        db,
+        project_id,
+        current_user.id,
+        context,
+    )
     brief = _parse_brief(project)
     if project.mode == "script" or brief.get("no_dialogue"):
         raise HTTPException(

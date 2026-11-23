@@ -15,6 +15,12 @@ from app.models.user import User
 from app.services.dashboard_service import build_dashboard_data
 from app.services.plan_service import consume_feature_allowance
 from app.services.store_check_service import STORE_CHECK_SCOPES, run_store_check as execute_store_check
+from app.services import provider_config
+from app.services.amazon_market_data import (
+    AmazonMarketDataNotConfigured,
+    AmazonMarketQueryError,
+    build_runtime_amazon_market_service,
+)
 
 router = APIRouter(prefix="/analytics", tags=["数据统计"])
 
@@ -35,17 +41,33 @@ async def analyze_category(
     _ratelimit=Depends(RateLimit("ai_generate")),
     db: AsyncSession = Depends(get_db),
 ):
-    """AI 品类分析：输入品类名，返回市场分析报告
+    """Amazon US 品类分析：只返回 Provider 可追溯数据。"""
+    await provider_config.refresh(db)
+    try:
+        structured = await build_runtime_amazon_market_service().analyze_category(
+            keyword
+        )
+    except AmazonMarketDataNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except AmazonMarketQueryError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    用于 Agent 的"蓝牙耳机能不能做"类指令。
-    """
-    from app.services.ai.deepseek import DeepSeekService
-    llm = DeepSeekService()
-
-    report = await llm.generate(
-        "你是一个跨境电商数据分析师。输出结构化市场分析报告，数据具体合理。Markdown格式。",
-        f"分析品类「{keyword}」Amazon US市场：1.市场概览（搜索量、商品数、均价）2.价格分布 3.竞争格局 4.用户痛点Top3 5.1688到Amazon利润模型 6.选品建议和评分。数据用具体数字。",
-        max_tokens=4000,
+    recommendation = structured.get("recommendation") or {}
+    market = structured.get("market") or {}
+    quality = structured.get("data_quality") or {}
+    provider_name = quality.get("provider") or "unknown"
+    source_note = (
+        "JustOneAPI Amazon 前台事实，购买量为展示范围"
+        if provider_name == "justone_api"
+        else "Jungle Scout 第三方估算，不是 Amazon 官方销量"
+    )
+    report = (
+        f"## 「{keyword}」Amazon US 市场分析\n\n"
+        f"- 结论：{recommendation.get('verdict', '数据不足')}\n"
+        f"- 优先方向：{recommendation.get('top_pick', '待补充')}\n"
+        f"- 样本量：{market.get('sample_size', 0)}\n"
+        f"- 数据完整度：{market.get('data_completeness_pct', 0)}%\n"
+        f"- 数据来源：{source_note}\n"
     )
     usage = await consume_feature_allowance(
         db,
@@ -55,7 +77,9 @@ async def analyze_category(
     return {
         "category": keyword,
         "report": report,
+        "structured": structured,
         "market": "Amazon US",
+        "provider": provider_name,
         "usage": usage,
     }
 

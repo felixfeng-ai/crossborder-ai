@@ -12,38 +12,62 @@ from app.services.automation_settings import (
 )
 from app.services.operations_monitor import run_monitor_scan
 from app.services.store_check_service import run_store_check
+from app.services.workspaces import ensure_personal_workspace
 
 
-async def _paid_users_with_rows(
+async def _paid_work_scopes(
     db: AsyncSession,
     row_query,
-) -> list[User]:
-    user_ids = (await db.execute(row_query)).scalars().all()
-    users = []
-    for user_id in user_ids:
+) -> list[tuple[User, object]]:
+    rows = (await db.execute(row_query)).all()
+    scopes: list[tuple[User, object]] = []
+    seen: set[tuple[object, object]] = set()
+    for workspace_id, user_id in rows:
         user = await db.get(User, user_id)
         if user and user.plan in {"standard", "professional"}:
-            users.append(user)
-    return users
+            resolved_workspace = (
+                workspace_id
+                or (await ensure_personal_workspace(db, user)).id
+            )
+            key = (resolved_workspace, user.id)
+            if key not in seen:
+                seen.add(key)
+                scopes.append((user, resolved_workspace))
+    return scopes
 
 
 async def run_scheduled_store_checks(db: AsyncSession) -> dict:
     """执行开启自动化的用户整店巡检，并记录真实执行状态。"""
-    users = await _paid_users_with_rows(
+    scopes = await _paid_work_scopes(
         db,
-        select(Product.user_id).distinct(),
+        select(Product.workspace_id, Product.user_id).distinct(),
     )
-    result = {"scanned": len(users), "succeeded": 0, "failed": 0, "skipped": 0}
-    for user in users:
-        if not await automation_enabled_for_user(db, user, "store_check"):
+    result = {
+        "scanned": len(scopes),
+        "succeeded": 0,
+        "failed": 0,
+        "skipped": 0,
+    }
+    for user, workspace_id in scopes:
+        if not await automation_enabled_for_user(
+            db,
+            user,
+            "store_check",
+            workspace_id=workspace_id,
+        ):
             result["skipped"] += 1
             continue
         try:
             async with db.begin_nested():
-                await run_store_check(db, user)
+                await run_store_check(
+                    db,
+                    user,
+                    workspace_id=workspace_id,
+                )
             await record_task_state(
                 db,
                 user_id=user.id,
+                workspace_id=workspace_id,
                 task="store_check",
                 status="success",
             )
@@ -52,6 +76,7 @@ async def run_scheduled_store_checks(db: AsyncSession) -> dict:
             await record_task_state(
                 db,
                 user_id=user.id,
+                workspace_id=workspace_id,
                 task="store_check",
                 status="failed",
                 error=str(exc),
@@ -62,25 +87,39 @@ async def run_scheduled_store_checks(db: AsyncSession) -> dict:
 
 async def run_scheduled_operations_monitors(db: AsyncSession) -> dict:
     """执行开启自动化的用户运营监控，并记录执行状态。"""
-    users = await _paid_users_with_rows(
+    scopes = await _paid_work_scopes(
         db,
-        select(ProductVariant.user_id).distinct(),
+        select(
+            ProductVariant.workspace_id,
+            ProductVariant.user_id,
+        ).distinct(),
     )
-    result = {"scanned": len(users), "succeeded": 0, "failed": 0, "skipped": 0}
-    for user in users:
+    result = {
+        "scanned": len(scopes),
+        "succeeded": 0,
+        "failed": 0,
+        "skipped": 0,
+    }
+    for user, workspace_id in scopes:
         if not await automation_enabled_for_user(
             db,
             user,
             "operations_monitor",
+            workspace_id=workspace_id,
         ):
             result["skipped"] += 1
             continue
         try:
             async with db.begin_nested():
-                await run_monitor_scan(db, user)
+                await run_monitor_scan(
+                    db,
+                    user,
+                    workspace_id=workspace_id,
+                )
             await record_task_state(
                 db,
                 user_id=user.id,
+                workspace_id=workspace_id,
                 task="operations_monitor",
                 status="success",
             )
@@ -89,6 +128,7 @@ async def run_scheduled_operations_monitors(db: AsyncSession) -> dict:
             await record_task_state(
                 db,
                 user_id=user.id,
+                workspace_id=workspace_id,
                 task="operations_monitor",
                 status="failed",
                 error=str(exc),

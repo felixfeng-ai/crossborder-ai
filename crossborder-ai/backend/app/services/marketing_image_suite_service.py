@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access_control import check_feature_access
@@ -127,6 +127,8 @@ async def create_marketing_image_suite(
     quality_tier: str,
     note: str,
     idempotency_key: str | None,
+    workspace_id: uuid.UUID | None = None,
+    include_legacy_workspace: bool = False,
 ) -> MarketingImageSuite:
     """创建套图主记录和平台任务；任何校验失败都不留下半套任务。"""
     if not check_feature_access(user, "ai_image"):
@@ -135,12 +137,17 @@ async def create_marketing_image_suite(
         raise ValueError("未知的图片质量档位")
 
     if idempotency_key:
+        suite_query = select(MarketingImageSuite).where(
+            MarketingImageSuite.user_id == user.id,
+            MarketingImageSuite.idempotency_key == idempotency_key,
+        )
+        if workspace_id is not None:
+            suite_query = suite_query.where(
+                MarketingImageSuite.workspace_id == workspace_id
+            )
         existing = (
             await db.execute(
-                select(MarketingImageSuite).where(
-                    MarketingImageSuite.user_id == user.id,
-                    MarketingImageSuite.idempotency_key == idempotency_key,
-                )
+                suite_query
             )
         ).scalar_one_or_none()
         if existing is not None:
@@ -150,12 +157,21 @@ async def create_marketing_image_suite(
         campaign_uuid = uuid.UUID(str(campaign_id))
     except (TypeError, ValueError):
         raise ValueError("营销活动不存在")
+    campaign_query = select(MarketingCampaign).where(
+        MarketingCampaign.id == campaign_uuid,
+        MarketingCampaign.user_id == user.id,
+    )
+    if workspace_id is not None:
+        campaign_scope = MarketingCampaign.workspace_id == workspace_id
+        if include_legacy_workspace:
+            campaign_scope = or_(
+                campaign_scope,
+                MarketingCampaign.workspace_id.is_(None),
+            )
+        campaign_query = campaign_query.where(campaign_scope)
     campaign = (
         await db.execute(
-            select(MarketingCampaign).where(
-                MarketingCampaign.id == campaign_uuid,
-                MarketingCampaign.user_id == user.id,
-            )
+            campaign_query
         )
     ).scalar_one_or_none()
     if campaign is None:
@@ -175,12 +191,21 @@ async def create_marketing_image_suite(
             parsed_reference_ids.append(uuid.UUID(raw_id))
         except ValueError:
             raise ValueError("参考素材不存在")
+    reference_query = select(ImageAsset).where(
+        ImageAsset.id.in_(parsed_reference_ids),
+        ImageAsset.user_id == user.id,
+    )
+    if workspace_id is not None:
+        reference_scope = ImageAsset.workspace_id == workspace_id
+        if include_legacy_workspace:
+            reference_scope = or_(
+                reference_scope,
+                ImageAsset.workspace_id.is_(None),
+            )
+        reference_query = reference_query.where(reference_scope)
     references = (
         await db.execute(
-            select(ImageAsset).where(
-                ImageAsset.id.in_(parsed_reference_ids),
-                ImageAsset.user_id == user.id,
-            )
+            reference_query
         )
     ).scalars().all()
     if len(references) != len(parsed_reference_ids):
@@ -195,13 +220,16 @@ async def create_marketing_image_suite(
         quality_tier,
         len(platforms),
     )
-    if user.credits < total_credits:
+    from app.services.personal_billing import get_personal_billing_balance
+
+    if await get_personal_billing_balance(db, user) < total_credits:
         raise ValueError(
             f"积分不足，本次营销套图需要 {total_credits} 积分"
         )
 
     suite = MarketingImageSuite(
         user_id=user.id,
+        workspace_id=workspace_id,
         campaign_id=campaign.id,
         title=title.strip(),
         direction=direction.strip() or "conversion",
@@ -227,6 +255,7 @@ async def create_marketing_image_suite(
         )
         task = ImageGenerationTask(
             user_id=user.id,
+            workspace_id=workspace_id,
             campaign_id=campaign.id,
             prompt=build_marketing_suite_prompt(
                 title=title,

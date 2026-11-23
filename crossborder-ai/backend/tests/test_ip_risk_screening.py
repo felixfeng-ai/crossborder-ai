@@ -13,6 +13,7 @@ from app.models.persona import Persona
 from app.models.product import Product
 from app.models.user import User
 from app.services.ai.deepseek import DeepSeekService
+from tests.ai_mock_helpers import mock_listing_ai
 from app.services.ip_risk import (
     ensure_ip_report_for_publish,
     ip_publish_block_reason,
@@ -340,10 +341,10 @@ async def test_listing_generation_runs_ip_screening(
     db_session.add(product)
     await db_session.commit()
 
-    async def fake_generate(self, system_prompt, user_prompt, **kwargs):
-        return "Nike-style shoes. FDA approved. Official Nike partner."
-
-    monkeypatch.setattr(DeepSeekService, "generate", fake_generate)
+    mock_listing_ai(
+        monkeypatch,
+        "Nike-style shoes. FDA approved. Official Nike partner.",
+    )
     response = await client.post(
         "/api/v1/content/generate",
         json={

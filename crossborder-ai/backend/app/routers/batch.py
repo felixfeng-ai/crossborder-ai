@@ -22,13 +22,14 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.rate_limit import RateLimit
 from app.core.access_control import check_feature_access
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.batch_job import BatchJob
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.services.listing_service import persist_generated_listing
 from app.services import provider_config
+from app.services.workspace_scope import workspace_access_filter
 from pydantic import BaseModel
 
 logger = logging.getLogger("veyaship")
@@ -42,6 +43,7 @@ REQUIRED_HEADERS = ["title"]
 async def upload_csv(
     file: UploadFile = File(..., description="CSV 文件，含标题头：title, url, price, description"),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     _ratelimit=Depends(RateLimit("batch")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -90,6 +92,7 @@ async def upload_csv(
         row_count += 1
         job = BatchJob(
             user_id=current_user.id,
+            workspace_id=context.workspace.id,
             source_type="csv",
             source_filename=file.filename,
             row_index=row_count,
@@ -133,10 +136,14 @@ async def list_jobs(
     page_size: int = Query(20, ge=1, le=100),
     status_filter: Optional[str] = Query(None, description="过滤状态"),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """查看批量任务列表"""
-    query = select(BatchJob).where(BatchJob.user_id == current_user.id)
+    query = select(BatchJob).where(
+        BatchJob.user_id == current_user.id,
+        workspace_access_filter(BatchJob, context),
+    )
     if status_filter:
         query = query.where(BatchJob.status == status_filter)
     query = query.order_by(BatchJob.created_at.desc())
@@ -173,6 +180,7 @@ async def _create_product_from_job(
     db: AsyncSession,
     user: User,
     job: BatchJob,
+    workspace_id,
 ) -> Product:
     """把 CSV 任务转换为商品，并创建可选的首个 SKU。"""
     product_id = uuid4()
@@ -183,6 +191,8 @@ async def _create_product_from_job(
     product = Product(
         id=product_id,
         user_id=user.id,
+        workspace_id=workspace_id,
+        created_by_user_id=user.id,
         title=job.title or "",
         url=job.url or f"own://{product_id}",
         origin_type=job.origin_type or ("1688" if job.url else "own"),
@@ -200,6 +210,8 @@ async def _create_product_from_job(
         db.add(
             ProductVariant(
                 user_id=user.id,
+                workspace_id=workspace_id,
+                created_by_user_id=user.id,
                 product_id=product.id,
                 sku=job.sku or f"OWN-{str(product.id)[:8].upper()}",
                 name=product.title,
@@ -216,6 +228,7 @@ async def _create_product_from_job(
 async def process_job(
     job_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """处理单条批量任务：将 CSV 行转为商品
@@ -229,7 +242,11 @@ async def process_job(
         raise HTTPException(status_code=400, detail="无效的任务 ID")
 
     result = await db.execute(
-        select(BatchJob).where(BatchJob.id == uid, BatchJob.user_id == current_user.id)
+        select(BatchJob).where(
+            BatchJob.id == uid,
+            BatchJob.user_id == current_user.id,
+            workspace_access_filter(BatchJob, context),
+        )
     )
     job = result.scalar_one_or_none()
     if not job:
@@ -239,7 +256,12 @@ async def process_job(
 
     # 处理：创建商品
     try:
-        product = await _create_product_from_job(db, current_user, job)
+        product = await _create_product_from_job(
+            db,
+            current_user,
+            job,
+            job.workspace_id or context.workspace.id,
+        )
         job.product_id = product.id
         job.status = "processed"
         job.processed_at = datetime.now(timezone.utc)
@@ -257,6 +279,7 @@ async def process_job(
 @router.post("/cron/process-batch")
 async def cron_process_batch(
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """批量处理所有 pending 状态的任务
@@ -267,6 +290,7 @@ async def cron_process_batch(
         select(BatchJob).where(
             BatchJob.user_id == current_user.id,
             BatchJob.status == "pending",
+            workspace_access_filter(BatchJob, context),
         ).limit(10)
     )
     jobs = result.scalars().all()
@@ -274,7 +298,12 @@ async def cron_process_batch(
     results = []
     for job in jobs:
         try:
-            product = await _create_product_from_job(db, current_user, job)
+            product = await _create_product_from_job(
+                db,
+                current_user,
+                job,
+                job.workspace_id or context.workspace.id,
+            )
             job.product_id = product.id
             job.status = "processed"
             job.processed_at = datetime.now(timezone.utc)
@@ -294,6 +323,7 @@ async def batch_process_with_ai(
     platform: str = "amazon",
     language: str = "en",
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """批量 AI 处理：对 pending 状态的批量任务执行 AI 生成
@@ -309,7 +339,11 @@ async def batch_process_with_ai(
 
     result = await db.execute(
         select(BatchJob)
-        .where(BatchJob.user_id == current_user.id, BatchJob.status == "pending")
+        .where(
+            BatchJob.user_id == current_user.id,
+            BatchJob.status == "pending",
+            workspace_access_filter(BatchJob, context),
+        )
         .limit(20)
     )
     jobs = result.scalars().all()
@@ -327,7 +361,12 @@ async def batch_process_with_ai(
     )
 
     llm = DeepSeekService()
-    persona = await fetch_persona(db, current_user.id)
+    persona = await fetch_persona(
+        db,
+        current_user.id,
+        context.workspace.id,
+        include_legacy_workspace=not context.explicit,
+    )
     persona_kit = build_persona_kit(persona) if persona else None
     persona_block = format_persona_block(persona_kit) if persona_kit else ""
     banned_words = merge_banned_words(
@@ -345,7 +384,12 @@ async def batch_process_with_ai(
             continue
         try:
             async with db.begin_nested():
-                product = await _create_product_from_job(db, current_user, job)
+                product = await _create_product_from_job(
+                    db,
+                    current_user,
+                    job,
+                    job.workspace_id or context.workspace.id,
+                )
 
                 title = await llm.generate(
                     f"You are a professional {platform} listing copywriter.",

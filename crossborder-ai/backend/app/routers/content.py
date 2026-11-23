@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.rate_limit import RateLimit
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.product import Product
 from app.models.user import User
 from app.services.ai.deepseek import DeepSeekService
@@ -45,6 +45,14 @@ from app.services.listing_service import (
     generate_listing_bullets,
     generate_listing_description,
     generate_listing_title,
+)
+from app.services.product_workspace_scope import (
+    ensure_product_writer,
+    product_workspace_scope,
+)
+from app.services.workspace_billing import (
+    deduct_workspace_credits,
+    get_workspace_credit_balance,
 )
 from pydantic import BaseModel, Field
 
@@ -99,6 +107,7 @@ async def generate_listing(
     request: Request,
     # RateLimit("ai_generate") 限制 AI 生成频率：10 次/分钟
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     _ratelimit=Depends(RateLimit("ai_generate")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -137,7 +146,12 @@ async def generate_listing(
     # ════════════════════════════════════════════════════════════
     # 每次 AI 生成消耗 1 积分
     # credit 字段在 User 模型上，通过 deduct_credits 方法原子扣减
-    if current_user.credits < 1:
+    credit_balance = (
+        await get_workspace_credit_balance(db, context.workspace)
+        if context.workspace.type == "team"
+        else current_user.credits
+    )
+    if credit_balance < 1:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail="积分不足，每次 AI 生成消耗 1 积分",
@@ -157,11 +171,11 @@ async def generate_listing(
         )
 
     # 归属过滤：只允许基于自己的商品生成文案，他人商品等同不存在
+    ensure_product_writer(context)
     result = await db.execute(
-        select(Product).where(
-            Product.id == product_id,
-            Product.user_id == current_user.id,
-        )
+        select(Product)
+        .where(Product.id == product_id)
+        .where(product_workspace_scope(context, current_user))
     )
     product = result.scalar_one_or_none()
 
@@ -187,6 +201,7 @@ async def generate_listing(
             platform=payload.platform,
             language=payload.language,
             tone=payload.tone,
+            workspace_id=context.workspace.id,
         )
     except Exception as e:
         # 捕获所有 AI 调用异常，返回统一的中文错误提示
@@ -205,14 +220,26 @@ async def generate_listing(
     # ════════════════════════════════════════════════════════════
     # deduct_credits 用了行级锁（select_for_update），防并发扣超
     # 如果只剩 1 分，但两个请求同时来，锁确保只有一个能成功
-    await current_user.deduct_credits(
-        db,
-        1,
-        feature="ai_listing",
-        reference_type="listing",
-        reference_id=str(generated.draft.id),
-        description="AI 生成 Listing",
-    )
+    if context.workspace.type == "team":
+        await deduct_workspace_credits(
+            db,
+            workspace=context.workspace,
+            actor_user_id=current_user.id,
+            amount=1,
+            feature="ai_listing",
+            reference_type="listing",
+            reference_id=str(generated.draft.id),
+            description="AI 生成 Listing",
+        )
+    else:
+        await current_user.deduct_credits(
+            db,
+            1,
+            feature="ai_listing",
+            reference_type="listing",
+            reference_id=str(generated.draft.id),
+            description="AI 生成 Listing",
+        )
 
     # ════════════════════════════════════════════════════════════
     # 第 7 步：返回结果
@@ -243,6 +270,7 @@ async def generate_a_plus(
     payload: GenerateRequest,
     request: Request,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     _ratelimit=Depends(RateLimit("ai_generate")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -261,11 +289,11 @@ async def generate_a_plus(
         raise HTTPException(status_code=400, detail="无效的商品 ID")
 
     # 归属过滤：只允许基于自己的商品生成 A+，他人商品等同不存在
+    ensure_product_writer(context)
     result = await db.execute(
-        select(Product).where(
-            Product.id == product_id,
-            Product.user_id == current_user.id,
-        )
+        select(Product)
+        .where(Product.id == product_id)
+        .where(product_workspace_scope(context, current_user))
     )
     product = result.scalar_one_or_none()
     if not product:
@@ -275,7 +303,12 @@ async def generate_a_plus(
         raise HTTPException(status_code=400, detail="商品缺少标题")
 
     # 品牌档案注入（CAP-04）：A+ 也是文案生成出口，persona 放到 system prompt 顶部
-    persona = await fetch_persona(db, current_user.id)
+    persona = await fetch_persona(
+        db,
+        current_user.id,
+        context.workspace.id,
+        include_legacy_workspace=not context.explicit,
+    )
     kit = build_persona_kit(persona) if persona else None
     persona_block = format_persona_block(kit) if kit else ""
     brand_banned_words = (kit.get("banned_words") or []) if kit else []

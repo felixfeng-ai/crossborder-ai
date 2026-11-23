@@ -1,6 +1,7 @@
 """营销活动 API。"""
 
 import json
+import re
 import uuid
 from typing import Optional
 
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.image_asset import ImageAsset
 from app.models.marketing_campaign import MarketingCampaign
 from app.models.marketing_image_suite import MarketingImageSuiteItem
@@ -20,9 +21,51 @@ from app.models.product import Product
 from app.models.user import User
 from app.models.image_generation_task import ImageGenerationTask
 from app.models.video_generation_task import VideoGenerationTask
+from app.services.workspace_scope import workspace_access_filter
+from app.services.media_tokens import sign_media_path
 
 
 router = APIRouter(prefix="/marketing-campaigns", tags=["营销 Agent"])
+
+
+def _asset_url(asset: ImageAsset) -> str:
+    return sign_media_path(
+        f"{settings.API_V1_PREFIX}/images/assets/{asset.id}/file",
+        resource_type="image_asset",
+        resource_id=asset.id,
+        user_id=asset.user_id,
+        workspace_id=asset.workspace_id,
+    )
+
+
+def _task_urls(task: ImageGenerationTask) -> list[str]:
+    try:
+        values = json.loads(task.image_urls or "[]")
+    except (json.JSONDecodeError, TypeError):
+        values = []
+    if not isinstance(values, list):
+        return []
+    signed: list[str] = []
+    for value in values:
+        match = re.search(
+            r"/images/assets/([0-9a-fA-F-]{36})/file(?:\?.*)?$",
+            str(value),
+        )
+        if match is None:
+            signed.append(str(value))
+            continue
+        resource_id = match.group(1)
+        signed.append(
+            sign_media_path(
+                f"{settings.API_V1_PREFIX}/images/assets/"
+                f"{resource_id}/file",
+                resource_type="image_asset",
+                resource_id=resource_id,
+                user_id=task.user_id,
+                workspace_id=task.workspace_id,
+            )
+        )
+    return signed
 
 
 class CampaignCreateRequest(BaseModel):
@@ -62,25 +105,28 @@ async def get_owned_campaign(
     db: AsyncSession,
     user_id,
     campaign_id: str,
+    context: WorkspaceContext | None = None,
 ) -> MarketingCampaign | None:
     try:
         parsed = uuid.UUID(str(campaign_id))
     except (TypeError, ValueError):
         return None
-    return (
-        await db.execute(
-            select(MarketingCampaign).where(
-                MarketingCampaign.id == parsed,
-                MarketingCampaign.user_id == user_id,
-            )
+    query = select(MarketingCampaign).where(
+        MarketingCampaign.id == parsed,
+        MarketingCampaign.user_id == user_id,
+    )
+    if context is not None:
+        query = query.where(
+            workspace_access_filter(MarketingCampaign, context)
         )
-    ).scalar_one_or_none()
+    return (await db.execute(query)).scalar_one_or_none()
 
 
 @router.post("", status_code=201)
 async def create_campaign(
     payload: CampaignCreateRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     product_id = None
@@ -94,6 +140,7 @@ async def create_campaign(
                 select(Product).where(
                     Product.id == product_id,
                     Product.user_id == current_user.id,
+                    workspace_access_filter(Product, context),
                 )
             )
         ).scalar_one_or_none()
@@ -102,6 +149,7 @@ async def create_campaign(
 
     campaign = MarketingCampaign(
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
         product_id=product_id,
         title=payload.title.strip(),
         objective=payload.objective.strip(),
@@ -119,12 +167,16 @@ async def create_campaign(
 @router.get("")
 async def list_campaigns(
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     campaigns = (
         await db.execute(
             select(MarketingCampaign)
-            .where(MarketingCampaign.user_id == current_user.id)
+            .where(
+                MarketingCampaign.user_id == current_user.id,
+                workspace_access_filter(MarketingCampaign, context),
+            )
             .order_by(
                 desc(MarketingCampaign.updated_at),
                 desc(MarketingCampaign.id),
@@ -139,12 +191,14 @@ async def list_campaigns(
 async def get_campaign(
     campaign_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     campaign = await get_owned_campaign(
         db,
         current_user.id,
         campaign_id,
+        context,
     )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
@@ -155,6 +209,7 @@ async def get_campaign(
 async def list_campaign_assets(
     campaign_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """按活动聚合素材；活动归属和素材用户范围必须同时校验。"""
@@ -162,6 +217,7 @@ async def list_campaign_assets(
         db,
         current_user.id,
         campaign_id,
+        context,
     )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
@@ -172,6 +228,7 @@ async def list_campaign_assets(
             .where(
                 ImageGenerationTask.user_id == current_user.id,
                 ImageGenerationTask.campaign_id == campaign.id,
+                workspace_access_filter(ImageGenerationTask, context),
             )
             .order_by(desc(ImageGenerationTask.created_at))
             .limit(50)
@@ -183,6 +240,7 @@ async def list_campaign_assets(
             .where(
                 ImageAsset.user_id == current_user.id,
                 ImageAsset.kind == "generated",
+                workspace_access_filter(ImageAsset, context),
                 ImageAsset.generation_task_id.in_(
                     [task.id for task in image_tasks]
                 ),
@@ -200,6 +258,7 @@ async def list_campaign_assets(
             .where(
                 VideoGenerationTask.user_id == current_user.id,
                 VideoGenerationTask.campaign_id == campaign.id,
+                workspace_access_filter(VideoGenerationTask, context),
             )
             .order_by(desc(VideoGenerationTask.created_at))
             .limit(30)
@@ -224,6 +283,7 @@ async def list_campaign_assets(
             .where(
                 MarketingVideoProject.user_id == current_user.id,
                 MarketingVideoProject.campaign_id == campaign.id,
+                workspace_access_filter(MarketingVideoProject, context),
             )
             .order_by(desc(MarketingVideoProject.created_at))
             .limit(20)
@@ -234,12 +294,7 @@ async def list_campaign_assets(
     image_task_count = 0
     image_variant_count = 0
     for task in image_tasks:
-        try:
-            urls = json.loads(task.image_urls or "[]")
-        except (json.JSONDecodeError, TypeError):
-            urls = []
-        if not isinstance(urls, list):
-            urls = []
+        urls = _task_urls(task)
         task_assets = generated_by_task.get(task.id, [])
         if task.status == "completed" and not task_assets and not urls:
             continue
@@ -248,7 +303,7 @@ async def list_campaign_assets(
         generated_asset = task_assets[0] if task_assets else None
         suite_item = suite_item_by_task.get(task.id)
         thumbnail_url = (
-            f"{settings.API_V1_PREFIX}/images/assets/{generated_asset.id}/file"
+            _asset_url(generated_asset)
             if generated_asset is not None
             else urls[0] if urls else None
         )
@@ -277,10 +332,10 @@ async def list_campaign_assets(
                     "name": asset.name,
                     "variant_index": int(asset.variant_index or 0),
                     "thumbnail_url": (
-                        f"{settings.API_V1_PREFIX}/images/assets/{asset.id}/file"
+                        _asset_url(asset)
                     ),
                     "download_url": (
-                        f"{settings.API_V1_PREFIX}/images/assets/{asset.id}/file"
+                        _asset_url(asset)
                     ),
                     "created_at": str(asset.created_at),
                 }
@@ -302,7 +357,14 @@ async def list_campaign_assets(
                 else []
             ),
             "thumbnail_url": (
-                f"{settings.API_V1_PREFIX}/videos/tasks/{task.id}/thumbnail"
+                sign_media_path(
+                    f"{settings.API_V1_PREFIX}/videos/tasks/"
+                    f"{task.id}/thumbnail",
+                    resource_type="video_thumbnail",
+                    resource_id=task.id,
+                    user_id=task.user_id,
+                    workspace_id=task.workspace_id,
+                )
                 if has_file
                 else None
             ),
@@ -325,8 +387,14 @@ async def list_campaign_assets(
                 else []
             ),
             "thumbnail_url": (
-                f"{settings.API_V1_PREFIX}/marketing-videos/"
-                f"projects/{project.id}/thumbnail"
+                sign_media_path(
+                    f"{settings.API_V1_PREFIX}/marketing-videos/"
+                    f"projects/{project.id}/thumbnail",
+                    resource_type="marketing_video_thumbnail",
+                    resource_id=project.id,
+                    user_id=project.user_id,
+                    workspace_id=project.workspace_id,
+                )
                 if has_file
                 else None
             ),

@@ -71,3 +71,37 @@ def init_sentry() -> None:
         logging.getLogger(_LOGGER_NAME).warning(
             "SENTRY_DSN 已配置但未安装 sentry-sdk，跳过 Sentry"
         )
+
+
+def _write_alert_log(detail: str, level: str) -> None:
+    """内部日志写入点，便于测试替换而不影响全局 logging。"""
+
+    logger = logging.getLogger(_LOGGER_NAME)
+    log_method = getattr(logger, level, logger.warning)
+    log_method(detail)
+
+
+def emit_alert(
+    message: str,
+    *,
+    level: str = "warning",
+    context: dict | None = None,
+) -> None:
+    """同时写入结构化日志和 Sentry，供业务级异常告警使用。"""
+
+    detail = (
+        f"{message} | {context}"
+        if context
+        else message
+    )
+    _write_alert_log(detail, level)
+
+    if not getattr(settings, "SENTRY_DSN", ""):
+        return
+    try:
+        import sentry_sdk
+
+        sentry_sdk.capture_message(detail, level=level)
+    except ImportError:
+        # 日志已经记录，缺少可选依赖不能影响业务任务。
+        return

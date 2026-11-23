@@ -79,6 +79,70 @@ async def test_register_duplicate_email(
 
 
 @pytest.mark.asyncio
+async def test_username_availability_checks_real_uniqueness(
+    client: AsyncClient,
+    sample_user_data: dict,
+):
+    """用户名可用性接口必须在注册前后返回真实状态。"""
+    before = await client.get(
+        "/api/v1/auth/username-availability",
+        params={"username": sample_user_data["username"]},
+    )
+    assert before.status_code == 200
+    assert before.json() == {
+        "username": sample_user_data["username"],
+        "available": True,
+    }
+
+    registered = await client.post(
+        "/api/v1/auth/register",
+        json=sample_user_data,
+    )
+    assert registered.status_code == 201
+
+    after = await client.get(
+        "/api/v1/auth/username-availability",
+        params={"username": sample_user_data["username"]},
+    )
+    assert after.status_code == 200
+    assert after.json() == {
+        "username": sample_user_data["username"],
+        "available": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_username_availability_rejects_invalid_format(client: AsyncClient):
+    response = await client.get(
+        "/api/v1/auth/username-availability",
+        params={"username": "小Veya 测试"},
+    )
+
+    assert response.status_code == 422
+    assert "4–12" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_register_rejects_duplicate_username(
+    client: AsyncClient,
+    sample_user_data: dict,
+):
+    """不同邮箱也不能复用同一称呼。"""
+    first = await client.post("/api/v1/auth/register", json=sample_user_data)
+    assert first.status_code == 201
+
+    duplicate = await client.post(
+        "/api/v1/auth/register",
+        json={
+            **sample_user_data,
+            "email": "another@example.com",
+        },
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == "这个称呼已经被用了"
+
+
+@pytest.mark.asyncio
 async def test_login(client: AsyncClient, sample_user_data: dict):
     """测试用户登录
 

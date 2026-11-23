@@ -4,9 +4,7 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, insert, select, update
-from sqlalchemy.dialects.postgresql import insert as postgresql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.credit_transaction import CreditTransaction
@@ -14,8 +12,19 @@ from app.models.credit_wallet import CreditWallet
 from app.models.feature_usage import FeatureUsageCounter
 from app.models.subscription import UserSubscription
 from app.models.user import User
+from app.models.workspace import Workspace
+from app.models.workspace_credit_wallet import WorkspaceCreditWallet
+from app.models.workspace_subscription import WorkspaceSubscription
 from app.services.plan_catalog_service import get_effective_plan_config
 from app.services.plan_defaults import PLAN_CATALOG
+from app.services.personal_billing import (
+    get_or_create_personal_wallet,
+    get_personal_workspace,
+    sync_legacy_wallet_mirror,
+    workspace_wallet_balance,
+)
+from app.services.workspaces import ensure_personal_workspace
+from app.services.workspace_billing import activate_workspace_plan
 
 
 ANALYSIS_LIMITS = {
@@ -36,47 +45,170 @@ PRODUCT_SCRAPE_LIMITS = {
 }
 
 
+async def _personal_workspace_for_user(
+    db: AsyncSession,
+    user: User,
+) -> Workspace | None:
+    """读取用户个人工作区，用于同步旧用户账务。"""
+
+    return (
+        await db.execute(
+            select(Workspace)
+            .where(
+                Workspace.owner_user_id == user.id,
+                Workspace.type == "personal",
+                Workspace.status == "active",
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def _sync_legacy_subscription(
+    db: AsyncSession,
+    *,
+    user: User,
+    workspace_subscription: WorkspaceSubscription,
+) -> UserSubscription:
+    """把工作区订阅写入旧订阅表和 User.plan 兼容镜像。"""
+
+    active = (
+        await db.execute(
+            select(UserSubscription).where(
+                UserSubscription.user_id == user.id,
+                UserSubscription.status == "active",
+            )
+        )
+    ).scalars().all()
+    matching = next(
+        (item for item in active if item.plan == workspace_subscription.plan),
+        None,
+    )
+    for item in active:
+        if item is not matching:
+            item.status = "replaced"
+    if matching is None:
+        matching = UserSubscription(
+            user_id=user.id,
+            plan=workspace_subscription.plan,
+            status="active",
+            starts_at=workspace_subscription.starts_at,
+            expires_at=workspace_subscription.expires_at,
+            source=workspace_subscription.source,
+        )
+        db.add(matching)
+    else:
+        matching.starts_at = workspace_subscription.starts_at
+        matching.expires_at = workspace_subscription.expires_at
+        matching.source = workspace_subscription.source
+    user.plan = workspace_subscription.plan
+    await db.flush()
+    return matching
+
+
+async def _ensure_workspace_subscription(
+    db: AsyncSession,
+    *,
+    user: User,
+    workspace: Workspace | None,
+    now: datetime,
+) -> tuple[WorkspaceSubscription | None, bool]:
+    """从旧订阅一次性导入工作区；之后工作区订阅为权威。"""
+
+    if workspace is None:
+        return None, False
+    workspace_subscription = (
+        await db.execute(
+            select(WorkspaceSubscription)
+            .where(
+                WorkspaceSubscription.workspace_id == workspace.id,
+                WorkspaceSubscription.status == "active",
+                WorkspaceSubscription.expires_at > now,
+            )
+            .order_by(WorkspaceSubscription.expires_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if workspace_subscription is not None:
+        await _sync_legacy_subscription(
+            db,
+            user=user,
+            workspace_subscription=workspace_subscription,
+        )
+        return workspace_subscription, False
+
+    legacy = (
+        await db.execute(
+            select(UserSubscription)
+            .where(
+                UserSubscription.user_id == user.id,
+                UserSubscription.status == "active",
+                UserSubscription.expires_at > now,
+            )
+            .order_by(UserSubscription.expires_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    plan = legacy.plan if legacy is not None else user.plan
+    if plan not in {"standard", "professional"}:
+        return None, False
+    plan_config = (
+        await get_effective_plan_config(db, plan)
+        or PLAN_CATALOG.get(plan, PLAN_CATALOG["free"])
+    )
+    workspace_subscription = WorkspaceSubscription(
+        workspace_id=workspace.id,
+        plan=plan,
+        status="active",
+        starts_at=(
+            legacy.starts_at
+            if legacy is not None
+            else now
+        ),
+        expires_at=(
+            legacy.expires_at
+            if legacy is not None
+            else now + timedelta(days=plan_config["valid_days"])
+        ),
+        payer_user_id=user.id,
+        source=(
+            legacy.source
+            if legacy is not None
+            else "automatic_plan_reconciliation"
+        ),
+    )
+    db.add(workspace_subscription)
+    await db.flush()
+    await _sync_legacy_subscription(
+        db,
+        user=user,
+        workspace_subscription=workspace_subscription,
+    )
+    # 只有缺失任何历史订阅、由 user.plan 自动补建时才需要立即补额度。
+    return workspace_subscription, legacy is None
+
+
 async def get_or_create_wallet(
     db: AsyncSession,
     user: User,
     *,
     lock: bool = False,
 ) -> CreditWallet:
-    query = select(CreditWallet).where(CreditWallet.user_id == user.id)
-    if lock:
-        query = query.with_for_update()
-    wallet = (await db.execute(query)).scalar_one_or_none()
-    if wallet is None:
-        initial_credits = max(0, int(user.credits or 0))
-        dialect = db.get_bind().dialect.name
-        if dialect == "postgresql":
-            statement = postgresql_insert(CreditWallet).values(
-                user_id=user.id,
-                plan_credits=initial_credits,
-                purchased_credits=0,
-            ).on_conflict_do_nothing(index_elements=["user_id"])
-        elif dialect == "sqlite":
-            statement = sqlite_insert(CreditWallet).values(
-                user_id=user.id,
-                plan_credits=initial_credits,
-                purchased_credits=0,
-            ).on_conflict_do_nothing(index_elements=["user_id"])
-        else:
-            statement = insert(CreditWallet).values(
-                user_id=user.id,
-                plan_credits=initial_credits,
-                purchased_credits=0,
-            )
-        await db.execute(statement)
-        await db.flush()
-        wallet = (
-            await db.execute(
-                select(CreditWallet)
-                .where(CreditWallet.user_id == user.id)
-                .with_for_update() if lock else select(CreditWallet).where(CreditWallet.user_id == user.id)
-            )
-        ).scalar_one()
-    return wallet
+    workspace = await get_personal_workspace(db, user)
+    if workspace is None:
+        raise ValueError("个人工作区不存在")
+    workspace_wallet = await get_or_create_personal_wallet(
+        db,
+        user=user,
+        workspace=workspace,
+        lock=lock,
+    )
+    return await sync_legacy_wallet_mirror(
+        db,
+        user=user,
+        wallet=workspace_wallet,
+    )
 
 
 def wallet_total(wallet: CreditWallet) -> int:
@@ -86,8 +218,9 @@ def wallet_total(wallet: CreditWallet) -> int:
 async def _reclassify_excess_plan_credits(
     db: AsyncSession,
     user: User,
-    wallet: CreditWallet,
+    wallet: WorkspaceCreditWallet,
     allowance: int,
+    workspace: Workspace | None = None,
 ) -> CreditTransaction | None:
     """历史积分超出当前套餐额度时转成购买积分，保证总额不丢失。"""
     if user.plan not in {"standard", "professional"}:
@@ -97,11 +230,17 @@ async def _reclassify_excess_plan_credits(
         return None
     wallet.plan_credits = allowance
     wallet.purchased_credits = int(wallet.purchased_credits or 0) + excess
-    user.credits = wallet_total(wallet)
+    await sync_legacy_wallet_mirror(
+        db,
+        user=user,
+        wallet=wallet,
+    )
     transaction = CreditTransaction(
         user_id=user.id,
+        workspace_id=workspace.id if workspace else None,
+        actor_user_id=user.id,
         delta=0,
-        balance_after=user.credits,
+        balance_after=workspace_wallet_balance(wallet),
         wallet_type="purchased",
         feature="legacy_plan_credit_reclassification",
         reference_type="plan",
@@ -137,80 +276,89 @@ async def apply_monthly_allowance(
         )
     ).scalar_one()
     user = locked_user
-    reconciled = False
-    if user.plan in {"standard", "professional"}:
-        subscription = await get_active_subscription(db, user.id, now=current)
-        if subscription is None or subscription.plan != user.plan:
-            # plan 字段与订阅必须一致。旧数据或手工改套餐可能留下
-            # Professional + Free 30 分，这里自动补成正确订阅和额度。
-            await db.execute(
-                update(UserSubscription)
-                .where(
-                    UserSubscription.user_id == user.id,
-                    UserSubscription.status == "active",
-                )
-                .values(status="replaced")
-            )
-            plan_config = (
-                await get_effective_plan_config(db, user.plan)
-                or PLAN_CATALOG[user.plan]
-            )
-            db.add(
-                UserSubscription(
-                    user_id=user.id,
-                    plan=user.plan,
-                    status="active",
-                    starts_at=current,
-                    expires_at=current + timedelta(days=plan_config["valid_days"]),
-                    source="automatic_plan_reconciliation",
-                )
-            )
-            await db.flush()
-            reconciled = True
+    personal_workspace = await get_personal_workspace(db, user)
+    workspace_subscription, reconciled = await _ensure_workspace_subscription(
+        db,
+        user=user,
+        workspace=personal_workspace,
+        now=current,
+    )
+    effective_plan = (
+        workspace_subscription.plan
+        if workspace_subscription is not None
+        else user.plan
+    )
+    user.plan = effective_plan
+    wallet = await get_or_create_personal_wallet(
+        db,
+        user=user,
+        workspace=personal_workspace,
+        lock=True,
+    )
 
+    # 额度周期只认工作区钱包；旧用户字段仅作为兼容镜像。
     same_period = bool(
-        user.credit_period_start
-        and user.credit_period_start.year == current.year
-        and user.credit_period_start.month == current.month
+        wallet.credit_period_start
+        and wallet.credit_period_start.year == current.year
+        and wallet.credit_period_start.month == current.month
     )
     if not force and same_period and not reconciled:
         plan_config = (
-            await get_effective_plan_config(db, user.plan)
-            or PLAN_CATALOG.get(user.plan, PLAN_CATALOG["free"])
+            await get_effective_plan_config(db, effective_plan)
+            or PLAN_CATALOG.get(effective_plan, PLAN_CATALOG["free"])
         )
         allowance = int(plan_config["monthly_credits"])
-        wallet = await get_or_create_wallet(db, user, lock=True)
-        return await _reclassify_excess_plan_credits(
+        result = await _reclassify_excess_plan_credits(
             db,
             user,
             wallet,
             allowance,
+            personal_workspace,
         )
+        await sync_legacy_wallet_mirror(
+            db,
+            user=user,
+            wallet=wallet,
+        )
+        return result
 
-    wallet = await get_or_create_wallet(db, user, lock=True)
     plan_config = (
-        await get_effective_plan_config(db, user.plan)
-        or PLAN_CATALOG.get(user.plan, PLAN_CATALOG["free"])
+        await get_effective_plan_config(db, effective_plan)
+        or PLAN_CATALOG.get(effective_plan, PLAN_CATALOG["free"])
     )
     allowance = int(plan_config["monthly_credits"])
-    await _reclassify_excess_plan_credits(db, user, wallet, allowance)
-    previous_total = wallet_total(wallet)
+    await _reclassify_excess_plan_credits(
+        db,
+        user,
+        wallet,
+        allowance,
+        personal_workspace,
+    )
+    previous_total = workspace_wallet_balance(wallet)
     wallet.plan_credits = allowance
-    user.credit_period_start = current
-    user.credits = wallet_total(wallet)
+    wallet.credit_period_start = current
+    await sync_legacy_wallet_mirror(
+        db,
+        user=user,
+        wallet=wallet,
+    )
 
     transaction = CreditTransaction(
         user_id=user.id,
-        delta=user.credits - previous_total,
-        balance_after=user.credits,
+        workspace_id=(
+            personal_workspace.id if personal_workspace else None
+        ),
+        actor_user_id=user.id,
+        delta=workspace_wallet_balance(wallet) - previous_total,
+        balance_after=workspace_wallet_balance(wallet),
         wallet_type="plan",
         feature="monthly_allowance",
         reference_type="plan",
-        reference_id=user.plan,
-        description=f"{user.plan} 套餐 {current:%Y-%m} 月度额度",
+        reference_id=effective_plan,
+        description=f"{effective_plan} 套餐 {current:%Y-%m} 月度额度",
         metadata_json=json.dumps(
             {
-                "plan": user.plan,
+                "plan": effective_plan,
                 "allowance": allowance,
                 "purchased_credits": wallet.purchased_credits,
                 "period": current.strftime("%Y-%m"),
@@ -235,23 +383,26 @@ async def add_purchased_credits(
 ) -> int:
     if amount <= 0:
         return user.credits
-    wallet = await get_or_create_wallet(db, user, lock=True)
-    wallet_total_before = wallet_total(wallet)
-    mirrored_total = int(user.credits or 0)
-    if mirrored_total > wallet_total_before:
-        wallet.purchased_credits += mirrored_total - wallet_total_before
-    elif mirrored_total < wallet_total_before:
-        reduce = wallet_total_before - mirrored_total
-        from_plan = min(int(wallet.plan_credits or 0), reduce)
-        wallet.plan_credits -= from_plan
-        wallet.purchased_credits -= reduce - from_plan
+    workspace = await ensure_personal_workspace(db, user)
+    wallet = await get_or_create_personal_wallet(
+        db,
+        user=user,
+        workspace=workspace,
+        lock=True,
+    )
     wallet.purchased_credits += amount
-    user.credits = wallet_total(wallet)
+    mirror = await sync_legacy_wallet_mirror(
+        db,
+        user=user,
+        wallet=wallet,
+    )
     db.add(
         CreditTransaction(
             user_id=user.id,
+            workspace_id=workspace.id,
+            actor_user_id=user.id,
             delta=amount,
-            balance_after=user.credits,
+            balance_after=mirror.plan_credits + mirror.purchased_credits,
             wallet_type="purchased",
             feature=feature,
             reference_type=reference_type,
@@ -260,7 +411,7 @@ async def add_purchased_credits(
         )
     )
     await db.flush()
-    return user.credits
+    return workspace_wallet_balance(wallet)
 
 
 async def grant_purchased_credits(
@@ -309,29 +460,35 @@ async def activate_paid_plan(
     if not settings or plan == "free":
         raise ValueError("无效的付费套餐")
     current = now or datetime.now(timezone.utc)
-
-    await db.execute(
-        update(UserSubscription)
-        .where(
-            UserSubscription.user_id == user.id,
-            UserSubscription.status == "active",
-        )
-        .values(status="replaced")
+    workspace = await get_personal_workspace(db, user)
+    workspace_wallet = await get_or_create_personal_wallet(
+        db,
+        user=user,
+        workspace=workspace,
+        lock=True,
     )
-    subscription = UserSubscription(
-        user_id=user.id,
+    workspace_subscription = await activate_workspace_plan(
+        db,
+        workspace=workspace,
         plan=plan,
-        status="active",
-        starts_at=current,
-        expires_at=current + timedelta(
-            days=duration_days or int(settings["valid_days"])
-        ),
+        payer_user_id=user.id,
+        duration_days=duration_days,
+        now=current,
         source=source,
     )
-    db.add(subscription)
     user.plan = plan
-    user.credit_period_start = None
-    await apply_monthly_allowance(db, user, now=current, force=True)
+    # 套餐开通即进入新额度周期；清空周期会导致下一次余额读取重复补发额度。
+    workspace_wallet.credit_period_start = current
+    subscription = await _sync_legacy_subscription(
+        db,
+        user=user,
+        workspace_subscription=workspace_subscription,
+    )
+    await sync_legacy_wallet_mirror(
+        db,
+        user=user,
+        wallet=workspace_wallet,
+    )
     await db.flush()
     return subscription
 
@@ -342,22 +499,92 @@ async def expire_due_subscriptions(
     now: datetime | None = None,
 ) -> int:
     current = now or datetime.now(timezone.utc)
+    workspace_rows = (
+        await db.execute(
+            select(WorkspaceSubscription, Workspace)
+            .join(Workspace, Workspace.id == WorkspaceSubscription.workspace_id)
+            .where(
+                Workspace.type == "personal",
+                Workspace.status == "active",
+                WorkspaceSubscription.status == "active",
+                WorkspaceSubscription.expires_at <= current,
+            )
+        )
+    ).all()
+    expired = 0
+    handled_user_ids: set[uuid.UUID] = set()
+    for workspace_subscription, workspace in workspace_rows:
+        user = await db.get(User, workspace.owner_user_id)
+        if user is None:
+            continue
+        workspace_subscription.status = "expired"
+        user.plan = "free"
+        allowance = int(PLAN_CATALOG["free"]["monthly_credits"])
+        workspace_wallet = await get_or_create_personal_wallet(
+            db,
+            user=user,
+            workspace=workspace,
+            lock=True,
+        )
+        workspace_wallet.plan_credits = allowance
+        workspace_wallet.credit_period_start = current
+        await sync_legacy_wallet_mirror(
+            db,
+            user=user,
+            wallet=workspace_wallet,
+        )
+        legacy_subscriptions = (
+            await db.execute(
+                select(UserSubscription).where(
+                    UserSubscription.user_id == user.id,
+                    UserSubscription.status == "active",
+                )
+            )
+        ).scalars().all()
+        for legacy in legacy_subscriptions:
+            legacy.status = "expired"
+        if not legacy_subscriptions:
+            db.add(
+                UserSubscription(
+                    user_id=user.id,
+                    plan=workspace_subscription.plan,
+                    status="expired",
+                    starts_at=workspace_subscription.starts_at,
+                    expires_at=workspace_subscription.expires_at,
+                    source=workspace_subscription.source,
+                )
+            )
+        handled_user_ids.add(user.id)
+        expired += 1
+
     subscriptions = (
         await db.execute(
             select(UserSubscription).where(
                 UserSubscription.status == "active",
                 UserSubscription.expires_at <= current,
+                UserSubscription.user_id.not_in(handled_user_ids),
             )
         )
     ).scalars().all()
-    expired = 0
     for subscription in subscriptions:
         subscription.status = "expired"
         user = await db.get(User, subscription.user_id)
         if user is None:
             continue
         user.plan = "free"
-        user.credit_period_start = None
+        personal_workspace = await _personal_workspace_for_user(db, user)
+        if personal_workspace is not None:
+            active_workspace_subscriptions = (
+                await db.execute(
+                    select(WorkspaceSubscription).where(
+                        WorkspaceSubscription.workspace_id
+                        == personal_workspace.id,
+                        WorkspaceSubscription.status == "active",
+                    )
+                )
+            ).scalars().all()
+            for workspace_subscription in active_workspace_subscriptions:
+                workspace_subscription.status = "expired"
         await apply_monthly_allowance(db, user, now=current, force=True)
         expired += 1
     await db.flush()
@@ -371,6 +598,22 @@ async def get_active_subscription(
     now: datetime | None = None,
 ) -> UserSubscription | None:
     current = now or datetime.now(timezone.utc)
+    user = await db.get(User, user_id)
+    if user is None:
+        return None
+    personal_workspace = await get_personal_workspace(db, user)
+    workspace_subscription, _created = await _ensure_workspace_subscription(
+        db,
+        user=user,
+        workspace=personal_workspace,
+        now=current,
+    )
+    if workspace_subscription is not None:
+        return await _sync_legacy_subscription(
+            db,
+            user=user,
+            workspace_subscription=workspace_subscription,
+        )
     return (
         await db.execute(
             select(UserSubscription)

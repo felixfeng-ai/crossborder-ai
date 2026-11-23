@@ -140,6 +140,47 @@ async def test_provider_status_masks_secret(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_jungle_scout_config_is_encrypted_and_masked(
+    client: AsyncClient,
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    headers = await _register(client, "admin@veyaship.com")
+    monkeypatch.setattr(provider_config.settings, "JUNGLE_SCOUT_KEY_NAME", None)
+    monkeypatch.setattr(provider_config.settings, "JUNGLE_SCOUT_API_KEY", None)
+    secret = "jungle-scout-api-secret"
+
+    updated = await client.put(
+        "/api/v1/settings/providers/jungle_scout",
+        json={
+            "key_name": "veyaship",
+            "api_key": secret,
+            "marketplace": "us",
+        },
+        headers=headers,
+    )
+    assert updated.status_code == 200, updated.text
+    assert secret not in updated.text
+
+    row = (
+        await db_session.execute(
+            select(SystemConfig).where(
+                SystemConfig.key == "provider:jungle_scout:api_key"
+            )
+        )
+    ).scalar_one()
+    assert row.value.startswith("enc:")
+
+    status = await client.get("/api/v1/settings/providers", headers=headers)
+    data = status.json()["providers"]["jungle_scout"]
+    assert data["configured"] is True
+    assert data["fields"]["key_name"] == "veyaship"
+    assert data["fields"]["marketplace"] == "us"
+    assert "****" in data["fields"]["api_key"]
+    assert secret not in status.text
+
+
+@pytest.mark.asyncio
 async def test_non_admin_cannot_manage_providers(client: AsyncClient):
     headers = await _register(client, f"normal-{uuid.uuid4().hex[:6]}@example.com")
     response = await client.put(

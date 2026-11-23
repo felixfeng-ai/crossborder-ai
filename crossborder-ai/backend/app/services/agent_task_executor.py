@@ -12,10 +12,11 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.core.database import async_session_factory
 from app.models.agent_task import AgentTask
+from app.models.agent_work import AgentTurn
 from app.models.conversation import Conversation, ConversationMessage
 from app.models.marketing_campaign import MarketingCampaign
 from app.models.product import Product
@@ -25,6 +26,11 @@ from app.services.agent_context import (
     extract_pending_action,
     is_confirmation,
 )
+from app.services.work_items import (
+    complete_work_item_from_agent_task,
+    create_work_items_from_agent_result,
+)
+from app.services.workspaces import ensure_personal_workspace
 from app.services.ai.agent_orchestrator import AgentOrchestrator
 
 logger = logging.getLogger("veyaship")
@@ -94,6 +100,19 @@ def build_page_context(page_context: dict | None) -> str:
     return "\n".join(lines)
 
 
+def _conversation_scope(
+    workspace_id,
+    *,
+    allow_legacy_workspace: bool,
+):
+    """构造任务可访问的对话范围，显式工作区不得读取空归属历史。"""
+
+    scope = Conversation.workspace_id == workspace_id
+    if allow_legacy_workspace:
+        scope = or_(scope, Conversation.workspace_id.is_(None))
+    return scope
+
+
 async def execute_agent_task(task_id) -> None:
     """执行单个 Agent 任务。失败只更新任务状态为 failed，不抛异常。"""
     async with async_session_factory() as db:
@@ -116,6 +135,51 @@ async def execute_agent_task(task_id) -> None:
 
         params = json.loads(task.input)
         now = datetime.now(timezone.utc)
+        if task.task_type == "customer_reply":
+            from app.services.customer_reply_worker import (
+                process_customer_reply_work_item,
+            )
+
+            try:
+                result = await process_customer_reply_work_item(
+                    db,
+                    work_item_id=UUID(str(params["work_item_id"])),
+                )
+                task.result = json.dumps(result, ensure_ascii=False)
+                task.status = "succeeded"
+                task.finished_at = now
+                await db.commit()
+                logger.info(
+                    "客服自动值班任务 %s 完成：%s",
+                    task.id,
+                    result.get("status"),
+                )
+            except Exception as exc:
+                task.status = "failed"
+                task.error = str(exc)[:500]
+                task.finished_at = now
+                await db.commit()
+                logger.warning(
+                    "客服自动值班任务 %s 失败：%s",
+                    task.id,
+                    exc,
+                )
+            return
+        original_task_workspace_id = task.workspace_id
+        workspace_id = original_task_workspace_id
+        page_context = params.get("page_context")
+        if isinstance(page_context, dict) and page_context.get("agent_turn_id"):
+            try:
+                turn = await db.get(
+                    AgentTurn,
+                    UUID(str(page_context["agent_turn_id"])),
+                )
+            except (TypeError, ValueError):
+                turn = None
+            if turn is not None:
+                workspace_id = turn.workspace_id
+        if workspace_id is None:
+            workspace_id = (await ensure_personal_workspace(db, user)).id
 
         try:
             # 每完成一步 → 把累积 steps 写入任务 progress 列（SSE 端点轮询推流）。
@@ -133,6 +197,15 @@ async def execute_agent_task(task_id) -> None:
                         select(MarketingCampaign).where(
                             MarketingCampaign.id == UUID(str(campaign_id)),
                             MarketingCampaign.user_id == task.user_id,
+                            (
+                                MarketingCampaign.workspace_id == workspace_id
+                                if original_task_workspace_id is not None
+                                else or_(
+                                    MarketingCampaign.workspace_id
+                                    == workspace_id,
+                                    MarketingCampaign.workspace_id.is_(None),
+                                )
+                            ),
                         )
                     )
                 ).scalar_one_or_none()
@@ -142,6 +215,14 @@ async def execute_agent_task(task_id) -> None:
                             select(Product).where(
                                 Product.id == campaign.product_id,
                                 Product.user_id == task.user_id,
+                                (
+                                    Product.workspace_id == workspace_id
+                                    if original_task_workspace_id is not None
+                                    else or_(
+                                        Product.workspace_id == workspace_id,
+                                        Product.workspace_id.is_(None),
+                                    )
+                                ),
                             )
                         )
                     ).scalar_one_or_none()
@@ -152,6 +233,8 @@ async def execute_agent_task(task_id) -> None:
                 on_step=on_step,
                 campaign_id=str(campaign.id) if campaign is not None else None,
             )
+            # 兼容测试和旧插件中的构造签名，同时让工具能按工作区校验 SKU。
+            orchestrator.workspace_id = workspace_id
             if task.task_type == "agent_workflow":
                 result = await orchestrator.run_workflow(params["workflow"], params.get("params", {}))
                 conv_id = None
@@ -167,11 +250,23 @@ async def execute_agent_task(task_id) -> None:
                 if conv_id is not None:
                     conv = (
                         await db.execute(
-                            select(Conversation).where(Conversation.id == conv_id)
+                            select(Conversation).where(
+                                Conversation.id == conv_id,
+                                Conversation.user_id == task.user_id,
+                                _conversation_scope(
+                                    workspace_id,
+                                    allow_legacy_workspace=(
+                                        original_task_workspace_id is None
+                                    ),
+                                ),
+                            )
                         )
                     ).scalar_one_or_none()
                     if conv is not None:
                         workspace = conv.workspace or workspace
+                    else:
+                        conv_id = None
+                if conv_id is not None:
                     history_rows = (
                         await db.execute(
                             select(ConversationMessage)
@@ -220,10 +315,30 @@ async def execute_agent_task(task_id) -> None:
                         ),
                     )
 
+            pending_items = await create_work_items_from_agent_result(
+                db,
+                workspace_id=workspace_id,
+                actor_user_id=user.id,
+                agent_task_id=task.id,
+                result=result,
+            )
+            result["created_work_item_ids"] = [
+                str(item.id) for item in pending_items
+            ]
+
             # 保存助手消息 + 自动生成对话标题（复用原同步逻辑）
             if conv_id is not None:
                 conv = (await db.execute(
-                    select(Conversation).where(Conversation.id == conv_id)
+                    select(Conversation).where(
+                        Conversation.id == conv_id,
+                        Conversation.user_id == task.user_id,
+                        _conversation_scope(
+                            workspace_id,
+                            allow_legacy_workspace=(
+                                original_task_workspace_id is None
+                            ),
+                        ),
+                    )
                 )).scalar_one_or_none()
                 if conv is not None:
                     instruction = params.get("instruction", "")
@@ -243,10 +358,19 @@ async def execute_agent_task(task_id) -> None:
                     "steps": result.get("steps", []),
                     "status": result_status,
                     "conversation_id": str(conv_id) if conv_id else "",
+                    "created_work_item_ids": result.get("created_work_item_ids", []),
                 }, ensure_ascii=False)
                 task.status = result_status
                 task.error = result.get("summary", "") if result_status == "failed" else None
                 task.finished_at = now
+                # 用户任务必须同步反映 Agent 失败，不能只更新内部任务表。
+                await complete_work_item_from_agent_task(
+                    db,
+                    agent_task_id=task.id,
+                    status="failed",
+                    summary=result.get("summary", ""),
+                    error=task.error,
+                )
                 await db.commit()
                 logger.info("Agent 任务 %s 结束（%s），未扣积分", task.id, result_status)
                 return
@@ -265,6 +389,13 @@ async def execute_agent_task(task_id) -> None:
                 task.status = "failed"
                 task.error = str(e)
                 task.finished_at = now
+                await complete_work_item_from_agent_task(
+                    db,
+                    agent_task_id=task.id,
+                    status="failed",
+                    summary="积分不足，任务未执行",
+                    error=str(e),
+                )
                 await db.commit()
                 return
 
@@ -272,14 +403,30 @@ async def execute_agent_task(task_id) -> None:
                 "summary": result.get("summary", ""),
                 "steps": result.get("steps", []),
                 "conversation_id": str(conv_id) if conv_id else "",
+                "created_work_item_ids": result.get("created_work_item_ids", []),
             }, ensure_ascii=False)
             task.status = "succeeded"
             task.finished_at = now
+            # 成功状态与用户可见结果同事务提交，避免 App 看到“已完成”但结果为空。
+            await complete_work_item_from_agent_task(
+                db,
+                agent_task_id=task.id,
+                status="succeeded",
+                summary=result.get("summary", ""),
+                error=None,
+            )
             await db.commit()
             logger.info("Agent 任务 %s 执行成功（%s）", task.id, task.task_type)
         except Exception as e:
             task.status = "failed"
             task.error = str(e)[:500]
             task.finished_at = now
+            await complete_work_item_from_agent_task(
+                db,
+                agent_task_id=task.id,
+                status="failed",
+                summary="Agent 执行失败",
+                error=task.error,
+            )
             await db.commit()
             logger.warning("Agent 任务 %s 执行失败：%s", task.id, e)

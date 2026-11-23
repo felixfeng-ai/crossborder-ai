@@ -14,11 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.rate_limit import RateLimit
 from app.core.access_control import check_feature_access
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.user import User
 from app.models.conversation import Conversation, ConversationMessage
 from app.models.agent_task import AgentTask
 from app.models.marketing_campaign import MarketingCampaign
+from app.services.workspace_scope import workspace_access_filter
 from pydantic import BaseModel, Field, field_validator
 
 router = APIRouter(prefix="/agent", tags=["AI 智能助手"])
@@ -30,7 +31,12 @@ router = APIRouter(prefix="/agent", tags=["AI 智能助手"])
 # 预设工作流模板（单一数据源）：/workflows 展示与 /workflow 执行统一从这里读，
 # 保证前端标注的积分与实际扣费一致（曾出现列表标 cost=1、执行硬编码 cost=2 的不一致）。
 WORKFLOW_TEMPLATES: dict[str, dict] = {
-    "select_products": {"id": "select_products", "name": "AI 选品决策", "desc": "输入品类 → AI 推荐值得做的商品 + 利润估算", "cost": 2},
+    "select_products": {
+        "id": "select_products",
+        "name": "Amazon 选品决策",
+        "desc": "输入品类 → 真实 Amazon US 样本、细分方向和数据缺口",
+        "cost": 2,
+    },
     "decision_and_list": {"id": "decision_and_list", "name": "判断商品 + 生成 Listing", "desc": "分析能不能做 → 生成 Listing → 合规修复", "cost": 2},
     "store_check": {"id": "store_check", "name": "整店巡检", "desc": "检查所有商品状态，找出待处理问题", "cost": 1},
     "1688_to_shopify": {"id": "1688_to_shopify", "name": "1688 → Shopify 上架", "desc": "抓取商品 → AI 生成 Listing → 发布到 Shopify", "cost": 2},
@@ -61,12 +67,14 @@ async def list_conversations(
     workspace: str = Query("general"),
     campaign_id: str | None = Query(None),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """获取用户的对话历史列表"""
     filters = [
         Conversation.user_id == current_user.id,
         Conversation.workspace == _normalize_workspace(workspace),
+        workspace_access_filter(Conversation, context),
     ]
     if campaign_id is not None:
         if campaign_id:
@@ -93,6 +101,7 @@ async def create_conversation(
     workspace: str = Query("general"),
     campaign_id: str = Query(""),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """创建新的对话会话"""
@@ -108,6 +117,7 @@ async def create_conversation(
                 select(MarketingCampaign).where(
                     MarketingCampaign.id == parsed_campaign_id,
                     MarketingCampaign.user_id == current_user.id,
+                    workspace_access_filter(MarketingCampaign, context),
                 )
             )
         ).scalar_one_or_none()
@@ -115,6 +125,7 @@ async def create_conversation(
             raise HTTPException(status_code=404, detail="营销活动不存在")
     conv = Conversation(
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
         workspace=_normalize_workspace(workspace),
         campaign_id=parsed_campaign_id,
     )
@@ -127,6 +138,7 @@ async def create_conversation(
 async def get_conversation(
     conversation_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """获取对话的完整消息历史"""
@@ -136,7 +148,15 @@ async def get_conversation(
     except ValueError:
         raise HTTPException(status_code=400, detail="无效的对话ID")
 
-    conv = (await db.execute(select(Conversation).where(Conversation.id == cid, Conversation.user_id == current_user.id))).scalar_one_or_none()
+    conv = (
+        await db.execute(
+            select(Conversation).where(
+                Conversation.id == cid,
+                Conversation.user_id == current_user.id,
+                workspace_access_filter(Conversation, context),
+            )
+        )
+    ).scalar_one_or_none()
     if not conv:
         raise HTTPException(status_code=404, detail="对话不存在")
 
@@ -270,6 +290,7 @@ async def run_agent(
     payload: AgentRequest,
     request: Request,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     _ratelimit=Depends(RateLimit("ai_generate")),
     db: AsyncSession = Depends(get_db),
     idempotency_key: str = Header(default="", alias="Idempotency-Key"),
@@ -298,6 +319,7 @@ async def run_agent(
                 select(MarketingCampaign).where(
                     MarketingCampaign.id == campaign_uuid,
                     MarketingCampaign.user_id == current_user.id,
+                    workspace_access_filter(MarketingCampaign, context),
                 )
             )
         ).scalar_one_or_none()
@@ -314,6 +336,7 @@ async def run_agent(
             select(AgentTask).where(
                 AgentTask.user_id == current_user.id,
                 AgentTask.idempotency_key == idempotency_key,
+                workspace_access_filter(AgentTask, context),
             )
         )).scalar_one_or_none()
         if existing:
@@ -324,7 +347,15 @@ async def run_agent(
     if payload.conversation_id:
         try:
             cid = UUID(payload.conversation_id)
-            conv = (await db.execute(select(Conversation).where(Conversation.id == cid, Conversation.user_id == current_user.id))).scalar_one_or_none()
+            conv = (
+                await db.execute(
+                    select(Conversation).where(
+                        Conversation.id == cid,
+                        Conversation.user_id == current_user.id,
+                        workspace_access_filter(Conversation, context),
+                    )
+                )
+            ).scalar_one_or_none()
             if conv:
                 if campaign_uuid is None or conv.campaign_id == campaign_uuid:
                     conv_id = conv.id
@@ -334,6 +365,7 @@ async def run_agent(
     if not conv_id:
         conv = Conversation(
             user_id=current_user.id,
+            workspace_id=context.workspace.id,
             workspace=_normalize_workspace(payload.workspace),
             campaign_id=campaign_uuid,
         )
@@ -359,6 +391,7 @@ async def run_agent(
 
     task = AgentTask(
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
         task_type="agent_run",
         status="pending",
         input=json.dumps(task_input, ensure_ascii=False),
@@ -375,6 +408,7 @@ async def run_agent(
 async def get_agent_task(
     task_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """查询 Agent 任务状态（前端轮询用）。
@@ -388,8 +422,13 @@ async def get_agent_task(
     except ValueError:
         raise HTTPException(status_code=400, detail="无效的任务ID")
 
+    task_scope = workspace_access_filter(AgentTask, context)
     task = (await db.execute(
-        select(AgentTask).where(AgentTask.id == tid, AgentTask.user_id == current_user.id)
+        select(AgentTask).where(
+            AgentTask.id == tid,
+            AgentTask.user_id == current_user.id,
+            task_scope,
+        )
     )).scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -401,6 +440,7 @@ async def get_agent_task(
 async def stream_agent_task(
     task_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """SSE 推流：任务执行过程中实时推送步骤进度，完成时推送最终结果。
@@ -419,8 +459,13 @@ async def stream_agent_task(
     except ValueError:
         raise HTTPException(status_code=400, detail="无效的任务ID")
 
+    task_scope = workspace_access_filter(AgentTask, context)
     task = (await db.execute(
-        select(AgentTask).where(AgentTask.id == tid, AgentTask.user_id == current_user.id)
+        select(AgentTask).where(
+            AgentTask.id == tid,
+            AgentTask.user_id == current_user.id,
+            task_scope,
+        )
     )).scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -431,7 +476,10 @@ async def stream_agent_task(
         last_heartbeat = asyncio.get_running_loop().time()
         while True:
             fresh = (await db.execute(
-                select(AgentTask).where(AgentTask.id == tid)
+                select(AgentTask).where(
+                    AgentTask.id == tid,
+                    task_scope,
+                )
             )).scalar_one_or_none()
             if fresh is None:
                 yield "event: done\ndata: {\"status\":\"failed\",\"error\":\"任务不存在\"}\n\n"
@@ -482,6 +530,7 @@ async def run_workflow(
     payload: WorkflowRequest,
     request: Request,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     _ratelimit=Depends(RateLimit("ai_generate")),
     db: AsyncSession = Depends(get_db),
     idempotency_key: str = Header(default="", alias="Idempotency-Key"),
@@ -504,6 +553,7 @@ async def run_workflow(
             select(AgentTask).where(
                 AgentTask.user_id == current_user.id,
                 AgentTask.idempotency_key == idempotency_key,
+                workspace_access_filter(AgentTask, context),
             )
         )).scalar_one_or_none()
         if existing:
@@ -511,6 +561,7 @@ async def run_workflow(
 
     task = AgentTask(
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
         task_type="agent_workflow",
         status="pending",
         input=json.dumps({

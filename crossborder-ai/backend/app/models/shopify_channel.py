@@ -16,7 +16,19 @@ class ShopifyChannel(Base):
     __tablename__ = "shopify_channels"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # 历史网页渠道允许为空；移动/团队同步绑定到明确工作区。
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     shop_name: Mapped[str] = mapped_column(String(255), nullable=False)  # xxx.myshopify.com
     access_token: Mapped[str] = mapped_column(Text, nullable=False)

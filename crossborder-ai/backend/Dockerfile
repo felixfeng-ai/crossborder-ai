@@ -46,11 +46,12 @@ COPY --from=deps /usr/local/bin/ /usr/local/bin/
 # 仅复制后端应用代码（.dockerignore 排除了 .env, __pycache__ 等）
 COPY ./app /app/app
 COPY ./migrations /app/migrations
+COPY ./alembic.ini /app/alembic.ini
 
 # 创建非 root 用户运行应用（安全最佳实践）
 RUN addgroup --system --gid 1001 app \
     && adduser --system --uid 1001 --ingroup app app \
-    && mkdir -p /app/storage/images /app/storage/videos \
+    && mkdir -p /app/storage/images /app/storage/videos /app/storage/avatars \
     && chown -R app:app /app
 
 USER app

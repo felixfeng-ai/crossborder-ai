@@ -20,6 +20,7 @@ class UserResponse(BaseModel):
     credits: int
     plan: str
     created_at: datetime
+    avatar_url: Optional[str] = None
     # 管理员标记：邮箱在 ADMIN_EMAILS 配置里，前端据此显示后台管理入口
     is_admin: bool = False
 
@@ -28,4 +29,21 @@ class UserResponse(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+    expires_in: int
+    session_id: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=6, max_length=128)
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(..., min_length=20, max_length=512)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=6, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)

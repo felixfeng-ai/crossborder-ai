@@ -30,6 +30,11 @@ from app.services.jimeng_video import (
     query_jimeng_video,
     submit_jimeng_video,
 )
+from app.services.personal_billing import (
+    get_or_create_personal_wallet,
+    get_personal_workspace,
+    sync_legacy_wallet_mirror,
+)
 
 
 def _image_bytes() -> bytes:
@@ -45,7 +50,18 @@ async def _professional_user(db_session) -> User:
         )
     ).scalar_one()
     user.plan = "professional"
-    user.credits = 300
+    workspace = await get_personal_workspace(db_session, user)
+    assert workspace is not None
+    wallet = await get_or_create_personal_wallet(
+        db_session,
+        user=user,
+        workspace=workspace,
+        lock=True,
+    )
+    # 工作区钱包是积分唯一事实源，旧 User.credits 只是兼容镜像。
+    wallet.plan_credits = 300
+    wallet.purchased_credits = 0
+    await sync_legacy_wallet_mirror(db_session, user=user, wallet=wallet)
     await db_session.flush()
     return user
 

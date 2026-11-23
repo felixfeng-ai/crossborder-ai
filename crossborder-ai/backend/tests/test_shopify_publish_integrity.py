@@ -18,6 +18,7 @@ from app.models.shopify_channel import ShopifyChannel
 from app.models.user import User
 from app.services.ai.agent_orchestrator import AgentOrchestrator
 from app.services.ai.deepseek import DeepSeekService
+from tests.ai_mock_helpers import mock_listing_ai
 from app.services.listing_service import persist_generated_listing
 from app.services.shopify_publish_service import (
     PreparedShopifyProduct,
@@ -334,10 +335,10 @@ async def test_publish_endpoint_sends_complete_variant_payload(
     )
     assert variant.status_code == 201, variant.text
 
-    async def fake_generate(self, system_prompt, user_prompt, **kwargs):
-        return "Premium storage box with reinforced handles."
-
-    monkeypatch.setattr(DeepSeekService, "generate", fake_generate)
+    mock_listing_ai(
+        monkeypatch,
+        "Premium storage box with reinforced handles.",
+    )
     generated = await client.post(
         "/api/v1/content/generate",
         json={"product_id": product_id, "platform": "shopify", "language": "en"},

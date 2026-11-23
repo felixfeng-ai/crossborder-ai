@@ -15,13 +15,13 @@ from typing import Literal, Optional
 from uuid import UUID, UUID as UUIDType, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.rate_limit import RateLimit
 from app.core.redis import cache_clear
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.listing_draft import ListingDraft
@@ -31,6 +31,11 @@ from app.services.listing_service import serialize_listing
 from app.services.plan_service import (
     consume_feature_allowance,
     feature_allowance_snapshot,
+)
+from app.services.product_workspace_scope import (
+    ensure_product_writer,
+    listing_draft_workspace_scope,
+    product_workspace_scope,
 )
 from app.services import provider_config
 from pydantic import BaseModel, Field, field_validator
@@ -165,6 +170,7 @@ async def scrape_product(
     payload: ScrapeRequest,
     request: Request,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     _ratelimit=Depends(RateLimit("scrape")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -188,10 +194,9 @@ async def scrape_product(
     # ── 查重 ───────────────────────────────────────────────
     # 检查是否已抓取过这个 URL
     result = await db.execute(
-        select(Product).where(
-            Product.url == payload.url,
-            Product.user_id == current_user.id,
-        )
+        select(Product)
+        .where(product_workspace_scope(context, current_user))
+        .where(Product.url == payload.url)
     )
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="该商品已抓取过")
@@ -228,8 +233,11 @@ async def scrape_product(
 
     # ── INSERT ─────────────────────────────────────────────
     # user_id 记录是谁抓取的，用于后续按用户统计
+    ensure_product_writer(context)
     product = Product(
-        user_id=current_user.id,  # 记录所属用户
+        user_id=current_user.id,
+        workspace_id=context.workspace.id,
+        created_by_user_id=current_user.id,
         url=data["url"],
         origin_type="1688",
         title=data["title"],
@@ -268,16 +276,16 @@ async def scrape_product(
 async def create_product_manual(
     payload: ManualProductRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """手动录入商品（兜底方案，抓取失败时用）"""
     normalized_url = (payload.url or "").strip()
     if normalized_url:
         result = await db.execute(
-            select(Product).where(
-                Product.url == normalized_url,
-                Product.user_id == current_user.id,
-            )
+            select(Product)
+            .where(product_workspace_scope(context, current_user))
+            .where(Product.url == normalized_url)
         )
         if result.scalar_one_or_none():
             raise HTTPException(status_code=409, detail="该商品链接已存在")
@@ -286,9 +294,12 @@ async def create_product_manual(
     origin_type = payload.origin_type or (
         "1688" if "1688.com" in normalized_url else "own"
     )
+    ensure_product_writer(context)
     product = Product(
         id=new_id,
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
+        created_by_user_id=current_user.id,
         url=normalized_url or f"own://{new_id}",
         origin_type=origin_type,
         title=payload.title,
@@ -315,6 +326,8 @@ async def create_product_manual(
         db.add(
             ProductVariant(
                 user_id=current_user.id,
+                workspace_id=context.workspace.id,
+                created_by_user_id=current_user.id,
                 product_id=product.id,
                 sku=payload.sku or f"OWN-{str(product.id)[:8].upper()}",
                 name=payload.title,
@@ -337,6 +350,7 @@ async def list_products(
     page_size: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None, description="搜索标题"),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """分页查询商品列表
@@ -351,7 +365,7 @@ async def list_products(
     # 只查当前用户自己的商品（防跨租户枚举他人商品）
     query = (
         select(Product)
-        .where(Product.user_id == current_user.id)
+        .where(product_workspace_scope(context, current_user))
         .order_by(Product.updated_at.desc())
     )
 
@@ -384,6 +398,7 @@ async def list_products(
 async def get_product(
     product_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """查询单个商品详情（仅本人；他人商品按不存在处理）
@@ -400,10 +415,9 @@ async def get_product(
         raise HTTPException(status_code=400, detail="无效的商品 ID")
 
     result = await db.execute(
-        select(Product).where(
-            Product.id == uid,
-            Product.user_id == current_user.id,
-        )
+        select(Product)
+        .where(Product.id == uid)
+        .where(product_workspace_scope(context, current_user))
     )
     product = result.scalar_one_or_none()
     if not product:
@@ -416,6 +430,7 @@ async def get_product(
 async def list_product_listings(
     product_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """List persisted listing drafts for one owned product."""
@@ -425,20 +440,17 @@ async def list_product_listings(
         raise HTTPException(status_code=400, detail="无效的商品 ID")
 
     owned = await db.execute(
-        select(Product.id).where(
-            Product.id == pid,
-            Product.user_id == current_user.id,
-        )
+        select(Product.id)
+        .where(Product.id == pid)
+        .where(product_workspace_scope(context, current_user))
     )
     if owned.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="商品不存在")
 
     result = await db.execute(
         select(ListingDraft)
-        .where(
-            ListingDraft.product_id == pid,
-            ListingDraft.user_id == current_user.id,
-        )
+        .where(ListingDraft.product_id == pid)
+        .where(listing_draft_workspace_scope(context, current_user))
         .order_by(ListingDraft.created_at.desc())
     )
     drafts = result.scalars().all()
@@ -452,6 +464,7 @@ async def list_product_listings(
 async def delete_product(
     product_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """删除商品"""
@@ -463,15 +476,15 @@ async def delete_product(
 
     # 归属过滤：他人商品等同不存在，禁止跨租户删除
     result = await db.execute(
-        select(Product).where(
-            Product.id == uid,
-            Product.user_id == current_user.id,
-        )
+        select(Product)
+        .where(Product.id == uid)
+        .where(product_workspace_scope(context, current_user))
     )
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="商品不存在")
 
+    ensure_product_writer(context)
     await db.delete(product)
     await db.flush()
     return {"message": "商品已删除"}
@@ -485,21 +498,22 @@ class BatchDeleteRequest(BaseModel):
 async def batch_delete_products(
     payload: BatchDeleteRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """批量删除商品"""
     from uuid import UUID
 
+    ensure_product_writer(context)
     deleted = 0
     for product_id in payload.ids:
         try:
             uid = UUID(product_id)
             # 归属过滤：只删自己的商品，他人商品自动跳过
             result = await db.execute(
-                select(Product).where(
-                    Product.id == uid,
-                    Product.user_id == current_user.id,
-                )
+                select(Product)
+                .where(Product.id == uid)
+                .where(product_workspace_scope(context, current_user))
             )
             product = result.scalar_one_or_none()
             if product:
@@ -515,14 +529,16 @@ async def batch_delete_products(
 @router.delete("", status_code=status.HTTP_200_OK)
 async def delete_all_products(
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """删除当前用户所有商品"""
     result = await db.execute(
-        select(Product).where(Product.user_id == current_user.id)
+        select(Product).where(product_workspace_scope(context, current_user))
     )
     products = result.scalars().all()
     count = len(products)
+    ensure_product_writer(context)
     for p in products:
         await db.delete(p)
     await db.flush()

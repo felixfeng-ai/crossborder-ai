@@ -5,7 +5,7 @@ import math
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.listing_draft import ListingDraft
@@ -22,6 +22,7 @@ from app.services.operation_digest import (
 )
 from app.services import provider_config
 from app.services.scraper import scrape_1688
+from app.services.workspaces import ensure_personal_workspace
 
 
 DEFAULT_SETTINGS = {
@@ -87,12 +88,27 @@ def calculate_replenishment(
     }
 
 
-async def get_or_create_settings(db: AsyncSession, user_id) -> MonitorSetting:
-    setting = await db.get(MonitorSetting, user_id)
+async def get_or_create_settings(
+    db: AsyncSession,
+    user_id,
+    workspace_id=None,
+) -> MonitorSetting:
+    if workspace_id is None:
+        user = await db.get(User, user_id)
+        if user is None:
+            raise ValueError("用户不存在")
+        workspace_id = (await ensure_personal_workspace(db, user)).id
+    setting = await db.get(MonitorSetting, workspace_id)
     if setting is None:
-        setting = MonitorSetting(user_id=user_id, **DEFAULT_SETTINGS)
+        setting = MonitorSetting(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            **DEFAULT_SETTINGS,
+        )
         db.add(setting)
         await db.flush()
+    elif setting.user_id != user_id:
+        setting.user_id = user_id
     return setting
 
 
@@ -142,40 +158,90 @@ def _alert_key(alert_type: str, variant_id, product_id) -> str:
     return f"{alert_type}:{variant_id or '-'}:{product_id or '-'}"
 
 
-async def run_monitor_scan(db: AsyncSession, user: User) -> dict[str, Any]:
+async def run_monitor_scan(
+    db: AsyncSession,
+    user: User,
+    *,
+    workspace_id=None,
+    include_legacy_workspace: bool = False,
+) -> dict[str, Any]:
     """生成最新 SKU 快照、补货计划并同步预警状态。"""
-    setting = await get_or_create_settings(db, user.id)
+    setting = await get_or_create_settings(
+        db,
+        user.id,
+        workspace_id,
+    )
 
-    result = await db.execute(
+    variant_query = (
         select(ProductVariant, Product)
         .join(Product, Product.id == ProductVariant.product_id)
         .where(ProductVariant.user_id == user.id)
     )
+    if workspace_id is not None:
+        variant_scope = ProductVariant.workspace_id == workspace_id
+        product_scope = Product.workspace_id == workspace_id
+        if include_legacy_workspace:
+            variant_scope = or_(
+                variant_scope,
+                ProductVariant.workspace_id.is_(None),
+            )
+            product_scope = or_(
+                product_scope,
+                Product.workspace_id.is_(None),
+            )
+        variant_query = variant_query.where(
+            variant_scope,
+            product_scope,
+        )
+    result = await db.execute(variant_query)
     rows = result.all()
 
+    snapshot_query = select(VariantSnapshot).where(
+        VariantSnapshot.user_id == user.id
+    )
+    if workspace_id is not None:
+        snapshot_scope = VariantSnapshot.workspace_id == workspace_id
+        if include_legacy_workspace:
+            snapshot_scope = or_(
+                snapshot_scope,
+                VariantSnapshot.workspace_id.is_(None),
+            )
+        snapshot_query = snapshot_query.where(snapshot_scope)
     snapshot_result = await db.execute(
-        select(VariantSnapshot)
-        .where(VariantSnapshot.user_id == user.id)
-        .order_by(desc(VariantSnapshot.captured_at))
+        snapshot_query.order_by(desc(VariantSnapshot.captured_at))
     )
     previous_snapshots: dict[Any, VariantSnapshot] = {}
     for snapshot in snapshot_result.scalars().all():
         previous_snapshots.setdefault(snapshot.variant_id, snapshot)
 
-    blocked_result = await db.execute(
-        select(ListingDraft).where(
-            ListingDraft.user_id == user.id,
-            ListingDraft.compliance_status == "block",
-        )
+    blocked_query = select(ListingDraft).where(
+        ListingDraft.user_id == user.id,
+        ListingDraft.compliance_status == "block",
     )
+    if workspace_id is not None:
+        blocked_scope = ListingDraft.workspace_id == workspace_id
+        if include_legacy_workspace:
+            blocked_scope = or_(
+                blocked_scope,
+                ListingDraft.workspace_id.is_(None),
+            )
+        blocked_query = blocked_query.where(blocked_scope)
+    blocked_result = await db.execute(blocked_query)
     blocked_listings = blocked_result.scalars().all()
 
-    active_result = await db.execute(
-        select(OperationAlert).where(
-            OperationAlert.user_id == user.id,
-            OperationAlert.status.in_(["open", "acknowledged"]),
-        )
+    active_query = select(OperationAlert).where(
+        OperationAlert.user_id == user.id,
+        OperationAlert.status.in_(["open", "acknowledged"]),
     )
+    if workspace_id is not None:
+        active_scope = OperationAlert.workspace_id == workspace_id
+        if include_legacy_workspace:
+            active_scope = or_(
+                active_scope,
+                OperationAlert.workspace_id.is_(None),
+            )
+        active_query = active_query.where(active_scope)
+    active_result = await db.execute(active_query)
     active_alerts = {
         _alert_key(alert.alert_type, alert.variant_id, alert.product_id): alert
         for alert in active_result.scalars().all()
@@ -207,6 +273,7 @@ async def run_monitor_scan(db: AsyncSession, user: User) -> dict[str, Any]:
         db.add(
             VariantSnapshot(
                 user_id=user.id,
+                workspace_id=workspace_id,
                 variant_id=variant.id,
                 sku=variant.sku,
                 selling_price=variant.price,
@@ -393,6 +460,7 @@ async def run_monitor_scan(db: AsyncSession, user: User) -> dict[str, Any]:
             db.add(
                 OperationAlert(
                     user_id=user.id,
+                    workspace_id=workspace_id,
                     alert_type=alert_data["alert_type"],
                     variant_id=alert_data["variant_id"],
                     product_id=alert_data["product_id"],
@@ -416,7 +484,12 @@ async def run_monitor_scan(db: AsyncSession, user: User) -> dict[str, Any]:
         for key in desired
         if key not in active_alerts or active_alerts[key].status == "open"
     )
-    digest = await get_operation_digest(db, user_id=user.id)
+    digest = await get_operation_digest(
+        db,
+        user_id=user.id,
+        workspace_id=workspace_id,
+        include_legacy_workspace=include_legacy_workspace,
+    )
     return {
         "sku_count": len(rows),
         "low_stock_count": low_stock_count,
@@ -443,15 +516,30 @@ async def scan_all_users(db: AsyncSession) -> int:
     return count
 
 
-async def refresh_supplier_costs(db: AsyncSession, user: User) -> dict[str, Any]:
+async def refresh_supplier_costs(
+    db: AsyncSession,
+    user: User,
+    *,
+    workspace_id=None,
+    include_legacy_workspace: bool = False,
+) -> dict[str, Any]:
     """使用平台抓取链刷新 1688 供货价，并补齐未手工设置成本的 SKU。"""
     await provider_config.refresh(db)
+    product_query = select(Product).where(
+        Product.user_id == user.id,
+        Product.url.is_not(None),
+    )
+    if workspace_id is not None:
+        product_scope = Product.workspace_id == workspace_id
+        if include_legacy_workspace:
+            product_scope = or_(
+                product_scope,
+                Product.workspace_id.is_(None),
+            )
+        product_query = product_query.where(product_scope)
     products = (
         await db.execute(
-            select(Product)
-            .where(Product.user_id == user.id, Product.url.is_not(None))
-            .order_by(desc(Product.updated_at))
-            .limit(50)
+            product_query.order_by(desc(Product.updated_at)).limit(50)
         )
     ).scalars().all()
 
@@ -472,14 +560,21 @@ async def refresh_supplier_costs(db: AsyncSession, user: User) -> dict[str, Any]
                 failures.append({"product_id": str(product.id), "error": "未返回供货价"})
                 continue
             product.price = float(new_price)
-            variants = (
-                await db.execute(
-                    select(ProductVariant).where(
-                        ProductVariant.product_id == product.id,
-                        ProductVariant.user_id == user.id,
-                        ProductVariant.cost_price.is_(None),
+            variant_query = select(ProductVariant).where(
+                ProductVariant.product_id == product.id,
+                ProductVariant.user_id == user.id,
+                ProductVariant.cost_price.is_(None),
+            )
+            if workspace_id is not None:
+                variant_scope = ProductVariant.workspace_id == workspace_id
+                if include_legacy_workspace:
+                    variant_scope = or_(
+                        variant_scope,
+                        ProductVariant.workspace_id.is_(None),
                     )
-                )
+                variant_query = variant_query.where(variant_scope)
+            variants = (
+                await db.execute(variant_query)
             ).scalars().all()
             for variant in variants:
                 variant.cost_price = float(new_price)

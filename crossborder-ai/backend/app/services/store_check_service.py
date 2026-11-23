@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.listing_draft import ListingDraft
@@ -60,41 +60,66 @@ async def run_store_check(
     db: AsyncSession,
     user: User,
     *,
+    workspace_id=None,
+    include_legacy_workspace: bool = False,
     persist_log: bool = True,
 ) -> dict[str, Any]:
     """执行完整整店巡检并写入可展开的历史记录。"""
+    def scoped(query, model):
+        if workspace_id is not None:
+            scope = model.workspace_id == workspace_id
+            if include_legacy_workspace:
+                scope = or_(scope, model.workspace_id.is_(None))
+            return query.where(scope)
+        return query
+
     products = (
         await db.execute(
-            select(Product)
-            .where(Product.user_id == user.id)
+            scoped(
+                select(Product).where(Product.user_id == user.id),
+                Product,
+            )
             .order_by(desc(Product.updated_at))
         )
     ).scalars().all()
     listings = (
         await db.execute(
-            select(ListingDraft)
-            .where(ListingDraft.user_id == user.id)
+            scoped(
+                select(ListingDraft).where(ListingDraft.user_id == user.id),
+                ListingDraft,
+            )
             .order_by(desc(ListingDraft.updated_at))
         )
     ).scalars().all()
     variants = (
         await db.execute(
-            select(ProductVariant).where(ProductVariant.user_id == user.id)
+            scoped(
+                select(ProductVariant).where(
+                    ProductVariant.user_id == user.id
+                ),
+                ProductVariant,
+            )
         )
     ).scalars().all()
     publications = (
         await db.execute(
-            select(Publication).where(
-                Publication.user_id == user.id,
-                Publication.status == "completed",
+            scoped(
+                select(Publication).where(
+                    Publication.user_id == user.id,
+                    Publication.status == "completed",
+                ),
+                Publication,
             )
         )
     ).scalars().all()
     alerts = (
         await db.execute(
-            select(OperationAlert).where(
-                OperationAlert.user_id == user.id,
-                OperationAlert.status == "open",
+            scoped(
+                select(OperationAlert).where(
+                    OperationAlert.user_id == user.id,
+                    OperationAlert.status == "open",
+                ),
+                OperationAlert,
             )
         )
     ).scalars().all()
@@ -294,6 +319,7 @@ async def run_store_check(
     if persist_log:
         log = StoreCheckLog(
             user_id=user.id,
+            workspace_id=workspace_id,
             total=total,
             healthy=healthy,
             issue_count=issue_count,

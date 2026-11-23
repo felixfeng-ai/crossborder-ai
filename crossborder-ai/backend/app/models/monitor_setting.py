@@ -1,4 +1,4 @@
-"""用户级运营监控阈值设置。"""
+"""工作区级运营监控阈值设置。"""
 
 import uuid
 from datetime import datetime
@@ -11,12 +11,18 @@ from app.core.database import Base
 
 
 class MonitorSetting(Base):
-    __tablename__ = "monitor_settings"
+    __tablename__ = "workspace_monitor_settings"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
         primary_key=True,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     target_margin_rate: Mapped[float] = mapped_column(Float, default=25.0, nullable=False)
     low_stock_days: Mapped[int] = mapped_column(Integer, default=7, nullable=False)

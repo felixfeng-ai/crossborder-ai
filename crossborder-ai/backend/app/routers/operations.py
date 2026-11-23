@@ -10,7 +10,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.monitor_setting import MonitorSetting
 from app.models.operation_alert import OperationAlert
 from app.models.product_variant import ProductVariant
@@ -25,6 +25,7 @@ from app.services.operations_monitor import (
     serialize_alert,
     serialize_settings,
 )
+from app.services.workspace_scope import workspace_access_filter
 
 
 router = APIRouter(prefix="/operations", tags=["Operations Monitor"])
@@ -51,9 +52,14 @@ class AlertUpdateRequest(BaseModel):
 @router.get("/settings")
 async def get_monitor_settings(
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    setting = await get_or_create_settings(db, current_user.id)
+    setting = await get_or_create_settings(
+        db,
+        current_user.id,
+        context.workspace.id,
+    )
     return serialize_settings(setting)
 
 
@@ -61,9 +67,14 @@ async def get_monitor_settings(
 async def update_monitor_settings(
     payload: MonitorSettingsRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    setting = await get_or_create_settings(db, current_user.id)
+    setting = await get_or_create_settings(
+        db,
+        current_user.id,
+        context.workspace.id,
+    )
     for field, value in payload.model_dump().items():
         setattr(setting, field, value)
     await db.flush()
@@ -74,38 +85,59 @@ async def update_monitor_settings(
 @router.post("/scan")
 async def scan_operations(
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    return await run_monitor_scan(db, current_user)
+    return await run_monitor_scan(
+        db,
+        current_user,
+        workspace_id=context.workspace.id,
+        include_legacy_workspace=not context.explicit,
+    )
 
 
 @router.post("/refresh-costs")
 async def refresh_supplier_cost_snapshots(
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     _ratelimit=Depends(RateLimit("ai_generate")),
     db: AsyncSession = Depends(get_db),
 ):
-    return await refresh_supplier_costs(db, current_user)
+    return await refresh_supplier_costs(
+        db,
+        current_user,
+        workspace_id=context.workspace.id,
+        include_legacy_workspace=not context.explicit,
+    )
 
 
 @router.get("/overview")
 async def get_operations_overview(
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    setting = await get_or_create_settings(db, current_user.id)
+    setting = await get_or_create_settings(
+        db,
+        current_user.id,
+        context.workspace.id,
+    )
     open_alerts = (
         await db.execute(
             select(func.count(OperationAlert.id)).where(
                 OperationAlert.user_id == current_user.id,
                 OperationAlert.status == "open",
+                workspace_access_filter(OperationAlert, context),
             )
         )
     ).scalar() or 0
     latest_snapshot = (
         await db.execute(
             select(VariantSnapshot)
-            .where(VariantSnapshot.user_id == current_user.id)
+            .where(
+                VariantSnapshot.user_id == current_user.id,
+                workspace_access_filter(VariantSnapshot, context),
+            )
             .order_by(desc(VariantSnapshot.captured_at))
             .limit(1)
         )
@@ -120,10 +152,16 @@ async def get_operations_overview(
 @router.get("/digest")
 async def get_operations_digest(
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """返回当前开放预警的优先级摘要，不重复执行扫描。"""
-    return await get_operation_digest(db, user_id=current_user.id)
+    return await get_operation_digest(
+        db,
+        user_id=current_user.id,
+        workspace_id=context.workspace.id,
+        include_legacy_workspace=not context.explicit,
+    )
 
 
 @router.get("/alerts")
@@ -134,9 +172,13 @@ async def list_operation_alerts(
         pattern="^(open|acknowledged|resolved|all)$",
     ),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(OperationAlert).where(OperationAlert.user_id == current_user.id)
+    query = select(OperationAlert).where(
+        OperationAlert.user_id == current_user.id,
+        workspace_access_filter(OperationAlert, context),
+    )
     if alert_status != "all":
         query = query.where(OperationAlert.status == alert_status)
     result = await db.execute(
@@ -154,6 +196,7 @@ async def update_operation_alert(
     alert_id: str,
     payload: AlertUpdateRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -165,6 +208,7 @@ async def update_operation_alert(
             select(OperationAlert).where(
                 OperationAlert.id == parsed_id,
                 OperationAlert.user_id == current_user.id,
+                workspace_access_filter(OperationAlert, context),
             )
         )
     ).scalar_one_or_none()
@@ -186,6 +230,7 @@ async def update_variant_sales_rate(
     variant_id: str,
     payload: SalesRateRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -197,6 +242,7 @@ async def update_variant_sales_rate(
             select(ProductVariant).where(
                 ProductVariant.id == parsed_id,
                 ProductVariant.user_id == current_user.id,
+                workspace_access_filter(ProductVariant, context),
             )
         )
     ).scalar_one_or_none()

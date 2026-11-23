@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.access_control import check_feature_access
 from app.core.config import settings
 from app.core.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.image_asset import ImageAsset
 from app.models.marketing_video import MarketingVideoShot
 from app.models.user import User
@@ -23,6 +23,7 @@ from app.models.video_generation_task import VideoGenerationTask
 from app.services.minimax_video import (
     VIDEO_TEMPLATES,
 )
+from app.services.media_tokens import media_token_matches, sign_media_path
 from app.services.video_quality import (
     compile_i2va_prompt,
     estimate_quality_credits,
@@ -32,6 +33,7 @@ from app.services.video_quality import (
 )
 from app.services.video_thumbnail import ensure_video_thumbnail
 from app.services.video_task_executor import cancel_video_task, submit_video_task
+from app.services.workspace_scope import workspace_access_filter
 from app.services.video_provider import (
     get_video_capabilities_summary,
     get_video_provider,
@@ -78,8 +80,16 @@ def _video_file_url(task_id) -> str:
     return f"{settings.API_V1_PREFIX}/videos/tasks/{task_id}/file"
 
 
-def _video_thumbnail_url(task_id) -> str:
-    return f"{settings.API_V1_PREFIX}/videos/tasks/{task_id}/thumbnail"
+def _video_thumbnail_url(task: VideoGenerationTask) -> str:
+    """视频封面使用短时签名 URL，任务 UUID 本身不再具备匿名读取权限。"""
+
+    return sign_media_path(
+        f"{settings.API_V1_PREFIX}/videos/tasks/{task.id}/thumbnail",
+        resource_type="video_thumbnail",
+        resource_id=task.id,
+        user_id=task.user_id,
+        workspace_id=task.workspace_id,
+    )
 
 
 def _serialize_task(task: VideoGenerationTask) -> VideoTaskResponse:
@@ -88,7 +98,7 @@ def _serialize_task(task: VideoGenerationTask) -> VideoTaskResponse:
         status=task.status,
         video_url=_video_file_url(task.id) if task.status == "succeeded" else None,
         thumbnail_url=(
-            _video_thumbnail_url(task.id)
+            _video_thumbnail_url(task)
             if task.status == "succeeded"
             else None
         ),
@@ -120,6 +130,7 @@ async def _get_owned_task(
     db: AsyncSession,
     task_id: str,
     user_id,
+    context: WorkspaceContext,
 ) -> VideoGenerationTask:
     try:
         parsed_id = uuid.UUID(task_id)
@@ -131,6 +142,7 @@ async def _get_owned_task(
             select(VideoGenerationTask).where(
                 VideoGenerationTask.id == parsed_id,
                 VideoGenerationTask.user_id == user_id,
+                workspace_access_filter(VideoGenerationTask, context),
             )
         )
     ).scalar_one_or_none()
@@ -143,6 +155,7 @@ async def _get_owned_source_asset(
     db: AsyncSession,
     source_asset_id: str,
     user_id,
+    context: WorkspaceContext,
 ) -> ImageAsset:
     try:
         parsed_id = uuid.UUID(source_asset_id)
@@ -153,6 +166,7 @@ async def _get_owned_source_asset(
             select(ImageAsset).where(
                 ImageAsset.id == parsed_id,
                 ImageAsset.user_id == user_id,
+                workspace_access_filter(ImageAsset, context),
             )
         )
     ).scalar_one_or_none()
@@ -181,6 +195,7 @@ async def generate_video(
     payload: GenerateVideoRequest,
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """提交图生视频任务；供应商受理后才扣减积分。"""
@@ -220,6 +235,7 @@ async def generate_video(
         db,
         payload.source_asset_id,
         current_user.id,
+        context,
     )
     key = (idempotency_key or "").strip()[:100] or None
     # 行锁把同一用户的提交串行化，避免并发请求同时通过余额检查。
@@ -238,6 +254,7 @@ async def generate_video(
                 select(VideoGenerationTask).where(
                     VideoGenerationTask.user_id == current_user.id,
                     VideoGenerationTask.idempotency_key == key,
+                    workspace_access_filter(VideoGenerationTask, context),
                 )
             )
         ).scalar_one_or_none()
@@ -260,6 +277,7 @@ async def generate_video(
 
     task = VideoGenerationTask(
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
         source_asset_id=uuid.UUID(payload.source_asset_id),
         template_id=payload.template_id,
         provider=str(quality_tier["provider"]),
@@ -309,9 +327,10 @@ async def generate_video(
 async def get_video_task(
     task_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    task = await _get_owned_task(db, task_id, current_user.id)
+    task = await _get_owned_task(db, task_id, current_user.id, context)
     return _serialize_task(task)
 
 
@@ -319,6 +338,7 @@ async def get_video_task(
 async def list_video_history(
     limit: int = Query(30, ge=1, le=100),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     marketing_task_ids = select(MarketingVideoShot.video_task_id).where(
@@ -330,6 +350,7 @@ async def list_video_history(
             .where(
                 VideoGenerationTask.user_id == current_user.id,
                 VideoGenerationTask.id.not_in(marketing_task_ids),
+                workspace_access_filter(VideoGenerationTask, context),
             )
             .order_by(
                 desc(VideoGenerationTask.created_at),
@@ -345,10 +366,11 @@ async def list_video_history(
 async def delete_video_task(
     task_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """删除终态单镜头视频；营销项目镜头必须随项目一起删除。"""
-    task = await _get_owned_task(db, task_id, current_user.id)
+    task = await _get_owned_task(db, task_id, current_user.id, context)
     if task.status in {"queued", "running"}:
         raise HTTPException(status_code=409, detail="视频任务仍在运行，暂时不能删除")
     used_by_marketing = (
@@ -378,9 +400,10 @@ async def delete_video_task(
 async def cancel_task(
     task_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    task = await _get_owned_task(db, task_id, current_user.id)
+    task = await _get_owned_task(db, task_id, current_user.id, context)
     if task.status not in {"queued", "running"}:
         raise HTTPException(status_code=409, detail="当前任务无法取消")
     if not await cancel_video_task(db, task):
@@ -392,10 +415,11 @@ async def cancel_task(
 async def get_video_file(
     task_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """鉴权后提供 MP4 文件，避免素材目录被匿名直链访问。"""
-    task = await _get_owned_task(db, task_id, current_user.id)
+    task = await _get_owned_task(db, task_id, current_user.id, context)
     if task.status != "succeeded" or not task.storage_key:
         raise HTTPException(status_code=404, detail="视频文件不存在")
     path = _task_path(task.storage_key)
@@ -411,9 +435,10 @@ async def get_video_file(
 @router.get("/tasks/{task_id}/thumbnail")
 async def get_video_thumbnail(
     task_id: str,
+    token: Optional[str] = Query(None, description="短时媒体访问令牌"),
     db: AsyncSession = Depends(get_db),
 ):
-    """通过不可猜测任务 UUID 提供懒生成封面。"""
+    """校验短时签名后提供懒生成封面。"""
     try:
         parsed_id = uuid.UUID(task_id)
     except ValueError:
@@ -428,6 +453,14 @@ async def get_video_thumbnail(
     ).scalar_one_or_none()
     if task is None or not task.storage_key:
         raise HTTPException(status_code=404, detail="视频封面不存在")
+    if not media_token_matches(
+        token,
+        resource_type="video_thumbnail",
+        resource_id=task.id,
+        user_id=task.user_id,
+        workspace_id=task.workspace_id,
+    ):
+        raise HTTPException(status_code=401, detail="视频封面令牌无效或已过期")
     video_path = _task_path(task.storage_key)
     try:
         cover_path = await run_in_threadpool(ensure_video_thumbnail, video_path)

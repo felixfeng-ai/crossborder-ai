@@ -11,6 +11,7 @@ from app.models.automation_preference import (
     AutomationTaskState,
 )
 from app.models.user import User
+from app.services.workspaces import ensure_personal_workspace
 
 
 PAID_PLANS = {"standard", "professional"}
@@ -48,12 +49,18 @@ TASK_META = {
 async def get_or_create_preferences(
     db: AsyncSession,
     user_id,
+    workspace_id,
 ) -> AutomationPreference:
-    preference = await db.get(AutomationPreference, user_id)
+    preference = await db.get(AutomationPreference, workspace_id)
     if preference is None:
-        preference = AutomationPreference(user_id=user_id)
+        preference = AutomationPreference(
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
         db.add(preference)
         await db.flush()
+    elif preference.user_id != user_id:
+        preference.user_id = user_id
     return preference
 
 
@@ -73,8 +80,16 @@ async def automation_enabled_for_user(
     db: AsyncSession,
     user: User,
     task: str,
+    *,
+    workspace_id=None,
 ) -> bool:
-    preference = await get_or_create_preferences(db, user.id)
+    if workspace_id is None:
+        workspace_id = (await ensure_personal_workspace(db, user)).id
+    preference = await get_or_create_preferences(
+        db,
+        user.id,
+        workspace_id,
+    )
     return effective_automation_enabled(user, preference, task)
 
 
@@ -116,12 +131,20 @@ def serialize_automation_settings(
 async def load_automation_settings(
     db: AsyncSession,
     user: User,
+    *,
+    workspace_id=None,
 ) -> dict[str, Any]:
-    preference = await get_or_create_preferences(db, user.id)
+    if workspace_id is None:
+        workspace_id = (await ensure_personal_workspace(db, user)).id
+    preference = await get_or_create_preferences(
+        db,
+        user.id,
+        workspace_id,
+    )
     states = (
         await db.execute(
             select(AutomationTaskState).where(
-                AutomationTaskState.user_id == user.id
+                AutomationTaskState.workspace_id == workspace_id
             )
         )
     ).scalars().all()
@@ -132,32 +155,51 @@ async def update_automation_settings(
     db: AsyncSession,
     user: User,
     updates: dict[str, bool],
+    *,
+    workspace_id=None,
 ) -> dict[str, Any]:
     """保存开关；Free 用户不能主动开启业务自动化。"""
     if user.plan not in PAID_PLANS and any(updates.values()):
         raise PermissionError("Standard 及以上套餐才能开启业务自动化")
-    preference = await get_or_create_preferences(db, user.id)
+    if workspace_id is None:
+        workspace_id = (await ensure_personal_workspace(db, user)).id
+    preference = await get_or_create_preferences(
+        db,
+        user.id,
+        workspace_id,
+    )
     for key, value in updates.items():
         if key not in FIELD_TO_TASK:
             continue
         setattr(preference, key, bool(value))
     await db.flush()
-    return await load_automation_settings(db, user)
+    return await load_automation_settings(
+        db,
+        user,
+        workspace_id=workspace_id,
+    )
 
 
 async def record_task_state(
     db: AsyncSession,
     *,
     user_id,
+    workspace_id,
     task: str,
     status: str,
     error: str | None = None,
 ) -> AutomationTaskState:
     """写入最近一次真实执行结果，最多保留 500 字错误摘要。"""
-    state = await db.get(AutomationTaskState, (user_id, task))
+    state = await db.get(AutomationTaskState, (workspace_id, task))
     if state is None:
-        state = AutomationTaskState(user_id=user_id, task=task)
+        state = AutomationTaskState(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            task=task,
+        )
         db.add(state)
+    else:
+        state.user_id = user_id
     state.last_run_at = datetime.now(timezone.utc)
     state.status = status
     state.error = (error or "")[:500] or None

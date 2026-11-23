@@ -6,6 +6,8 @@
 
 管理员端（require_admin，邮箱在 ADMIN_EMAILS 里）：
 - GET  /billing/admin/upgrades        待办 + 历史对账
+- GET  /billing/admin/reconciliation/cases  账务差异止付案件
+- POST /billing/admin/reconciliation/cases/{id}/approve  审批修复
 - POST /billing/upgrades/{id}/approve  核对转账后开通套餐
 - POST /billing/upgrades/{id}/reject   拒绝（留原因）
 """
@@ -16,15 +18,22 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, select
+from sqlalchemy import and_, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.dependencies import get_current_user, require_admin
+from app.dependencies import (
+    WorkspaceContext,
+    get_current_user,
+    get_web_workspace,
+    require_admin,
+)
+from app.models.billing_reconciliation_case import BillingReconciliationCase
 from app.models.credit_purchase import CreditPurchase
 from app.models.plan_upgrade import PlanUpgradeRequest
 from app.models.subscription import UserSubscription
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.services.credit_service import apply_monthly_allowance
 from app.services.plan_catalog_service import (
     get_plan_rank,
@@ -33,10 +42,21 @@ from app.services.plan_catalog_service import (
 )
 from app.services.plan_service import (
     activate_paid_plan,
-    get_active_subscription,
-    get_or_create_wallet,
     grant_purchased_credits,
-    plan_wallet_response,
+)
+from app.services.personal_billing import get_or_create_personal_wallet
+from app.services.workspace_billing import (
+    activate_workspace_plan,
+    get_active_workspace_subscription,
+    get_workspace_current_plan,
+    grant_workspace_purchased_credits,
+    get_or_create_workspace_wallet,
+    workspace_wallet_response,
+)
+from app.services.workspace_billing_reconciliation import (
+    BillingReconciliationRepairError,
+    approve_billing_reconciliation_case,
+    billing_reconciliation_case_response,
 )
 
 router = APIRouter(prefix="/billing", tags=["套餐与支付"])
@@ -68,6 +88,10 @@ class HandleRequest(BaseModel):
     note: str = Field("", max_length=200, description="管理员备注（拒绝原因等）")
 
 
+class ReconciliationApprovalRequest(BaseModel):
+    note: str = Field("", max_length=500, description="管理员修复依据")
+
+
 class CreditPackPurchaseRequest(BaseModel):
     pack_id: str
     contact: str = Field(..., min_length=2, max_length=100)
@@ -87,6 +111,7 @@ def _request_response(req: PlanUpgradeRequest) -> dict:
         "bonus_credits": req.bonus_credits,
         "duration_days": req.duration_days,
         "status": req.status,
+        "workspace_id": str(req.workspace_id) if req.workspace_id else None,
         "note": req.note or "",
         "created_at": str(req.created_at) if req.created_at else None,
         "handled_at": str(req.handled_at) if req.handled_at else None,
@@ -169,13 +194,39 @@ async def get_campaign(
 @router.get("/wallet")
 async def get_wallet(
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """返回双钱包、套餐到期时间和当前统计。"""
+    if context.workspace.type == "team":
+        workspace_wallet = await get_or_create_workspace_wallet(
+            db,
+            context.workspace,
+        )
+        subscription = await get_active_workspace_subscription(
+            db,
+            context.workspace.id,
+        )
+        return workspace_wallet_response(
+            context.workspace,
+            workspace_wallet,
+            subscription,
+        )
     await apply_monthly_allowance(db, current_user)
-    wallet = await get_or_create_wallet(db, current_user)
-    subscription = await get_active_subscription(db, current_user.id)
-    return plan_wallet_response(current_user, wallet, subscription)
+    wallet = await get_or_create_personal_wallet(
+        db,
+        user=current_user,
+        workspace=context.workspace,
+    )
+    subscription = await get_active_workspace_subscription(
+        db,
+        context.workspace.id,
+    )
+    return workspace_wallet_response(
+        context.workspace,
+        wallet,
+        subscription,
+    )
 
 
 @router.get("/credit-packs")
@@ -194,6 +245,11 @@ def _credit_purchase_response(purchase: CreditPurchase) -> dict:
         "order_id": purchase.order_id,
         "contact": purchase.contact,
         "status": purchase.status,
+        "workspace_id": (
+            str(purchase.workspace_id)
+            if purchase.workspace_id
+            else None
+        ),
         "note": purchase.note or "",
         "created_at": str(purchase.created_at),
         "handled_at": str(purchase.handled_at) if purchase.handled_at else None,
@@ -204,6 +260,7 @@ def _credit_purchase_response(purchase: CreditPurchase) -> dict:
 async def purchase_credit_pack(
     payload: CreditPackPurchaseRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     packs = await list_public_credit_packs(db)
@@ -225,10 +282,23 @@ async def purchase_credit_pack(
                 status_code=409,
                 detail="首购体验包每个账号只能成功购买一次",
             )
+    purchase_scope = CreditPurchase.workspace_id == context.workspace.id
+    if (
+        context.workspace.type == "personal"
+        and context.workspace.owner_user_id == current_user.id
+    ):
+        purchase_scope = or_(
+            purchase_scope,
+            and_(
+                CreditPurchase.workspace_id.is_(None),
+                CreditPurchase.user_id == current_user.id,
+            ),
+        )
     existing = (
         await db.execute(
-            select(CreditPurchase).where(
-                CreditPurchase.user_id == current_user.id,
+            select(CreditPurchase)
+            .where(purchase_scope)
+            .where(
                 CreditPurchase.pack_id == payload.pack_id,
                 CreditPurchase.status == "pending",
             )
@@ -242,6 +312,8 @@ async def purchase_credit_pack(
     order_id = f"CP{datetime.now():%Y%m%d}{uuid_lib.uuid4().hex[:8].upper()}"
     purchase = CreditPurchase(
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
+        created_by_user_id=current_user.id,
         pack_id=pack["id"],
         pack_name=pack["name"],
         credits=pack["credits"],
@@ -298,13 +370,28 @@ async def approve_credit_purchase(
 ):
     purchase = await _load_pending_credit_purchase(db, purchase_id)
     user = (await db.execute(select(User).where(User.id == purchase.user_id))).scalar_one()
-    await grant_purchased_credits(
-        db,
-        user,
-        purchase.credits,
-        reference_type="credit_purchase",
-        reference_id=purchase.order_id,
+    workspace = (
+        await db.get(Workspace, purchase.workspace_id)
+        if purchase.workspace_id
+        else None
     )
+    if workspace is not None and workspace.type == "team":
+        await grant_workspace_purchased_credits(
+            db,
+            workspace=workspace,
+            actor_user_id=admin.id,
+            amount=purchase.credits,
+            reference_type="credit_purchase",
+            reference_id=purchase.order_id,
+        )
+    else:
+        await grant_purchased_credits(
+            db,
+            user,
+            purchase.credits,
+            reference_type="credit_purchase",
+            reference_id=purchase.order_id,
+        )
     purchase.status = "approved"
     purchase.handled_by = admin.id
     purchase.handled_at = datetime.now(timezone.utc)
@@ -333,6 +420,7 @@ async def reject_credit_purchase(
 async def upgrade_plan(
     payload: UpgradeRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """提交升级申请（人工收款：转账后管理员审核开通）
@@ -345,7 +433,12 @@ async def upgrade_plan(
     if payload.plan not in plan_map:
         raise HTTPException(status_code=400, detail="无效的套餐")
     target_rank = await get_plan_rank(db, payload.plan)
-    current_rank = await get_plan_rank(db, current_user.plan)
+    current_plan = (
+        await get_workspace_current_plan(db, context.workspace.id)
+        if context.workspace.type == "team"
+        else current_user.plan
+    )
+    current_rank = await get_plan_rank(db, current_plan)
     if target_rank <= current_rank:
         raise HTTPException(
             status_code=409,
@@ -353,12 +446,27 @@ async def upgrade_plan(
         )
 
     # 同一套餐已有待处理申请 → 直接返回，避免重复提交刷单
-    existing = (await db.execute(
-        select(PlanUpgradeRequest).where(
-            PlanUpgradeRequest.user_id == current_user.id,
-            PlanUpgradeRequest.status == "pending",
+    request_scope = (
+        PlanUpgradeRequest.workspace_id == context.workspace.id
+    )
+    if (
+        context.workspace.type == "personal"
+        and context.workspace.owner_user_id == current_user.id
+    ):
+        request_scope = or_(
+            request_scope,
+            and_(
+                PlanUpgradeRequest.workspace_id.is_(None),
+                PlanUpgradeRequest.user_id == current_user.id,
+            ),
         )
-    )).scalar_one_or_none()
+    existing = (
+        await db.execute(
+            select(PlanUpgradeRequest)
+            .where(request_scope)
+            .where(PlanUpgradeRequest.status == "pending")
+        )
+    ).scalar_one_or_none()
     if existing:
         return {
             **_request_response(existing),
@@ -399,6 +507,8 @@ async def upgrade_plan(
 
     req = PlanUpgradeRequest(
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
+        created_by_user_id=current_user.id,
         plan=payload.plan,
         contact=payload.contact,
         order_id=order_id,
@@ -460,6 +570,54 @@ async def list_all_upgrades(
     return {"items": [_request_response(r) for r in result.scalars().all()]}
 
 
+@router.get("/admin/reconciliation/cases")
+async def list_billing_reconciliation_cases(
+    status: str = "open",
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """管理员查看账务差异止付案件，默认只看未结案。"""
+
+    query = select(BillingReconciliationCase)
+    if status in {"open", "resolved"}:
+        query = query.where(BillingReconciliationCase.status == status)
+    result = await db.execute(
+        query.order_by(desc(BillingReconciliationCase.created_at)).limit(200)
+    )
+    return {
+        "items": [
+            billing_reconciliation_case_response(case)
+            for case in result.scalars().all()
+        ]
+    }
+
+
+@router.post("/admin/reconciliation/cases/{case_id}/approve")
+async def approve_billing_reconciliation(
+    case_id: str,
+    payload: ReconciliationApprovalRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """管理员批准后按最新工作区事实修复目标用户镜像并解除止付。"""
+
+    try:
+        parsed_case_id = uuid_lib.UUID(case_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="无效的账务案件 ID") from exc
+    try:
+        result = await approve_billing_reconciliation_case(
+            db,
+            case_id=parsed_case_id,
+            approved_by_user_id=admin.id,
+            note=payload.note,
+        )
+    except BillingReconciliationRepairError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await db.commit()
+    return {"ok": True, "result": result}
+
+
 @router.post("/upgrades/{request_id}/approve")
 async def approve_upgrade(
     request_id: str,
@@ -472,7 +630,17 @@ async def approve_upgrade(
 
     user = (await db.execute(select(User).where(User.id == req.user_id))).scalar_one()
     target_rank = await get_plan_rank(db, req.plan)
-    current_rank = await get_plan_rank(db, user.plan)
+    workspace = (
+        await db.get(Workspace, req.workspace_id)
+        if req.workspace_id
+        else None
+    )
+    current_plan = (
+        await get_workspace_current_plan(db, workspace.id)
+        if workspace is not None and workspace.type == "team"
+        else user.plan
+    )
+    current_rank = await get_plan_rank(db, current_plan)
     if target_rank <= current_rank:
         req.status = "rejected"
         req.handled_by = admin.id
@@ -483,20 +651,38 @@ async def approve_upgrade(
             status_code=409,
             detail="该申请不是有效升级，已自动标记拒绝，不能开通低档或同级套餐",
         )
-    await activate_paid_plan(
-        db,
-        user,
-        req.plan,
-        duration_days=req.duration_days or 30,
-    )
-    if req.bonus_credits:
-        await grant_purchased_credits(
+    if workspace is not None and workspace.type == "team":
+        await activate_workspace_plan(
+            db,
+            workspace=workspace,
+            plan=req.plan,
+            payer_user_id=user.id,
+            duration_days=req.duration_days or 30,
+        )
+        if req.bonus_credits:
+            await grant_workspace_purchased_credits(
+                db,
+                workspace=workspace,
+                actor_user_id=admin.id,
+                amount=req.bonus_credits,
+                reference_type="plan_upgrade_bonus",
+                reference_id=req.order_id,
+            )
+    else:
+        await activate_paid_plan(
             db,
             user,
-            req.bonus_credits,
-            reference_type="plan_upgrade_bonus",
-            reference_id=req.order_id,
+            req.plan,
+            duration_days=req.duration_days or 30,
         )
+        if req.bonus_credits:
+            await grant_purchased_credits(
+                db,
+                user,
+                req.bonus_credits,
+                reference_type="plan_upgrade_bonus",
+                reference_id=req.order_id,
+            )
 
     req.status = "approved"
     req.handled_by = admin.id

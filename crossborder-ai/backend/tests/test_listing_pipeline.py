@@ -19,6 +19,7 @@ from app.models.shopify_channel import ShopifyChannel
 from app.models.user import User
 from app.routers import shopify as shopify_module
 from app.services.ai.deepseek import DeepSeekService
+from tests.ai_mock_helpers import mock_listing_ai
 
 
 async def _create_product(client: AsyncClient, auth_headers: dict, suffix: str = "1") -> str:
@@ -36,10 +37,7 @@ async def _create_product(client: AsyncClient, auth_headers: dict, suffix: str =
 
 
 def _mock_generate(monkeypatch: pytest.MonkeyPatch, canned: str) -> None:
-    async def fake_generate(self, system_prompt: str, user_prompt: str, **kwargs) -> str:
-        return canned
-
-    monkeypatch.setattr(DeepSeekService, "generate", fake_generate)
+    mock_listing_ai(monkeypatch, canned)
 
 
 async def _generate_listing(

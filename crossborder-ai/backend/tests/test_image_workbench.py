@@ -90,7 +90,10 @@ async def test_upload_persists_user_asset_and_serves_file(
     assert data["kind"] == "upload"
     assert data["width"] == 120
     assert data["height"] == 80
-    assert data["image_url"].endswith(f"/images/assets/{data['id']}/file")
+    assert data["image_url"].split("?", 1)[0].endswith(
+        f"/images/assets/{data['id']}/file"
+    )
+    assert "?token=" in data["image_url"]
 
     asset = (
         await db_session.execute(

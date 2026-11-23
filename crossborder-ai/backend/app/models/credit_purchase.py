@@ -22,6 +22,18 @@ class CreditPurchase(Base):
         nullable=False,
         index=True,
     )
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     pack_id: Mapped[str] = mapped_column(String(32), nullable=False)
     pack_name: Mapped[str] = mapped_column(String(100), nullable=False)
     credits: Mapped[int] = mapped_column(Integer, nullable=False)

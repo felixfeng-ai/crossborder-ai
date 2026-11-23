@@ -77,6 +77,7 @@ async def persist_generated_listing(
     *,
     user: User,
     product: Product,
+    workspace_id: UUID | None = None,
     platform: str,
     language: str,
     tone: str,
@@ -95,6 +96,9 @@ async def persist_generated_listing(
     status = "blocked" if blocked else "ready"
     draft = ListingDraft(
         user_id=user.id,
+        # 工作区由调用链显式传入，兼容历史商品尚未回填工作区的场景。
+        workspace_id=workspace_id or product.workspace_id,
+        created_by_user_id=product.created_by_user_id or user.id,
         product_id=product.id,
         platform=platform,
         language=language,
@@ -240,6 +244,7 @@ async def generate_and_persist_listing(
     *,
     user: User,
     product: Product,
+    workspace_id: UUID | None = None,
     platform: str,
     language: str,
     tone: str = "professional",
@@ -254,7 +259,7 @@ async def generate_and_persist_listing(
         raise ValueError("商品缺少标题，请先补充商品信息")
 
     text_generator = llm or DeepSeekService()
-    persona = await fetch_persona(db, user.id)
+    persona = await fetch_persona(db, user.id, workspace_id)
     persona_kit = build_persona_kit(persona) if persona else None
     persona_block = format_persona_block(persona_kit) if persona_kit else ""
     brand_banned_words = (persona_kit or {}).get("banned_words") or []
@@ -319,6 +324,7 @@ async def generate_and_persist_listing(
         db,
         user=user,
         product=product,
+        workspace_id=workspace_id,
         platform=platform,
         language=language,
         tone=tone,
@@ -526,17 +532,47 @@ async def auto_fix_listing_compliance(
 
 
 async def get_owned_listing(
-    db: AsyncSession, listing_id: str | UUID, user_id: UUID
+    db: AsyncSession,
+    listing_id: str | UUID,
+    user_id: UUID,
+    *,
+    workspace_id: UUID | None = None,
 ) -> Optional[ListingDraft]:
     try:
         lid = listing_id if isinstance(listing_id, UUID) else UUID(str(listing_id))
     except (ValueError, TypeError):
         return None
+    query = select(ListingDraft).where(
+        ListingDraft.id == lid,
+        ListingDraft.user_id == user_id,
+    )
+    if workspace_id is not None:
+        # Agent 与显式工作区调用必须严格匹配，不能读到同用户其他空间数据。
+        query = query.where(ListingDraft.workspace_id == workspace_id)
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
+
+
+async def get_workspace_listing(
+    db: AsyncSession,
+    listing_id: str | UUID,
+    context,
+    current_user: User,
+) -> Optional[ListingDraft]:
+    """按工作区读取 ListingDraft，供 Web 与 App 路由使用。"""
+
+    from app.services.product_workspace_scope import (
+        listing_draft_workspace_scope,
+    )
+
+    try:
+        lid = listing_id if isinstance(listing_id, UUID) else UUID(str(listing_id))
+    except (ValueError, TypeError):
+        return None
     result = await db.execute(
-        select(ListingDraft).where(
-            ListingDraft.id == lid,
-            ListingDraft.user_id == user_id,
-        )
+        select(ListingDraft)
+        .where(ListingDraft.id == lid)
+        .where(listing_draft_workspace_scope(context, current_user))
     )
     return result.scalar_one_or_none()
 

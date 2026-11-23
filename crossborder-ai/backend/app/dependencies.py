@@ -21,6 +21,8 @@
 - 可维护：修改依赖实现，所有路由自动生效
 """
 
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
@@ -33,6 +35,13 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import decode_token
 from app.models.user import User
+from app.models.user_session import UserSession
+from app.models.workspace import Workspace, WorkspaceMember
+from app.services.workspaces import (
+    ensure_personal_workspace,
+    get_workspace_membership,
+)
+from app.services.personal_billing import refresh_personal_billing_mirror
 
 # ── OAuth2 密码流配置 ──────────────────────────────────────────
 # OAuth2PasswordBearer 告诉 FastAPI：
@@ -91,14 +100,15 @@ async def get_current_user(
     # 第二步：解码 token，提取用户 ID
     try:
         payload = decode_token(token)
+        if payload.get("type") != "access":
+            raise ValueError("invalid token type")
         user_id_str: str | None = payload.get("sub")
-        if user_id_str is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="无效的登录令牌",
-            )
+        session_id_str: str | None = payload.get("sid")
+        if user_id_str is None or session_id_str is None:
+            raise ValueError("invalid token payload")
         # 把字符串 ID 转成 UUID 对象（数据库用 UUID 做主键）
         user_id = UUID(user_id_str)
+        session_id = UUID(session_id_str)
     except (JWTError, ValueError):
         # JWTError = 签名无效或已过期
         # ValueError = UUID 格式不对
@@ -107,21 +117,41 @@ async def get_current_user(
             detail="登录已过期，请重新登录",
         )
 
+    session = await db.get(UserSession, session_id)
+    now = datetime.now(timezone.utc)
+    if (
+        session is None
+        or session.user_id != user_id
+        or session.revoked_at is not None
+        or (
+            session.expires_at
+            if session.expires_at.tzinfo
+            else session.expires_at.replace(tzinfo=timezone.utc)
+        ) <= now
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="登录会话已失效，请重新登录",
+        )
+
     # 第三步：查数据库，确认用户还存在
     # 这一步不是必须的（JWT 本身已经够安全），
     # 但可以拦截"用户已被删除"的情况
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
-    if user is None:
+    if user is None or user.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户不存在",
+            detail="账号已注销",
         )
+
+    await refresh_personal_billing_mirror(db, user)
 
     # 挂到 request.state，供后续依赖（如 RateLimit）读取，实现按用户粒度限流。
     # 注意：RateLimit 依赖必须在路由签名里声明在 get_current_user 之后才会先跑到这里。
     request.state.user = user
+    request.state.auth_session_id = session.id
     return user
 
 
@@ -138,3 +168,93 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="仅管理员可执行此操作",
         )
     return current_user
+
+
+@dataclass(frozen=True)
+class WorkspaceContext:
+    workspace: Workspace
+    membership: WorkspaceMember
+    explicit: bool = False
+
+    @property
+    def role(self) -> str:
+        return self.membership.role
+
+
+async def get_current_workspace(
+    workspace_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> WorkspaceContext:
+    """验证路径中的工作区属于当前用户。"""
+
+    workspace = await db.get(Workspace, workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="工作区不存在")
+    membership = await get_workspace_membership(
+        db,
+        workspace_id=workspace_id,
+        user_id=current_user.id,
+    )
+    if membership is None:
+        raise HTTPException(status_code=404, detail="工作区不存在")
+    return WorkspaceContext(
+        workspace=workspace,
+        membership=membership,
+        explicit=True,
+    )
+
+
+async def get_web_workspace(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> WorkspaceContext:
+    """兼容旧 Web：显式请求头优先，否则使用用户个人工作区。"""
+
+    raw_workspace_id = request.headers.get("X-Workspace-Id")
+    if raw_workspace_id:
+        try:
+            workspace_id = UUID(raw_workspace_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="工作区不存在",
+            ) from exc
+        workspace = await db.get(Workspace, workspace_id)
+    else:
+        workspace = await ensure_personal_workspace(db, current_user)
+
+    if workspace is None or workspace.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="工作区不存在",
+        )
+    membership = await get_workspace_membership(
+        db,
+        workspace_id=workspace.id,
+        user_id=current_user.id,
+    )
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="工作区不存在",
+        )
+    return WorkspaceContext(
+        workspace=workspace,
+        membership=membership,
+        explicit=bool(raw_workspace_id),
+    )
+
+
+def require_workspace_role(*allowed_roles: str):
+    """生成工作区角色依赖。"""
+
+    async def dependency(
+        context: WorkspaceContext = Depends(get_current_workspace),
+    ) -> WorkspaceContext:
+        if context.role not in allowed_roles:
+            raise HTTPException(status_code=403, detail="没有工作区操作权限")
+        return context
+
+    return dependency

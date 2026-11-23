@@ -38,10 +38,22 @@ class Listing(Base):
     __tablename__ = "listings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    owner_id: Mapped[UUID] = mapped_column(
+    owner_id: Mapped[Optional[UUID]] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    workspace_id: Mapped[Optional[UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    created_by_user_id: Mapped[Optional[UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     product_id: Mapped[Optional[UUID]] = mapped_column(
@@ -102,7 +114,7 @@ class Listing(Base):
 
     # --- Relationships ---
     # 旧 Listing 模型只保留正向关系；反向集合统一由新的 ListingDraft 承担。
-    owner = relationship("User")
+    owner = relationship("User", foreign_keys=[owner_id])
     product = relationship("Product")
     variants = relationship(
         "ListingVariant", back_populates="listing", cascade="all, delete-orphan"

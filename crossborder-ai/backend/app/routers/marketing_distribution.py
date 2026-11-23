@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.access_control import check_feature_access
 from app.core.crypto import decrypt_value
 from app.core.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.marketing_copy import MarketingCopyAsset
 from app.models.marketing_distribution import (
     MarketingCampaignPublication,
@@ -57,6 +57,7 @@ from app.services.publication_service import (
     create_publication,
     find_publication_by_idempotency,
 )
+from app.services.workspace_scope import workspace_access_filter
 
 
 router = APIRouter(prefix="/marketing-campaigns", tags=["营销 Agent"])
@@ -182,6 +183,7 @@ async def _owned_copy(
     campaign_id: uuid.UUID,
     copy_id: uuid.UUID,
     user_id,
+    context: WorkspaceContext,
 ) -> MarketingCopyAsset | None:
     return (
         await db.execute(
@@ -189,6 +191,7 @@ async def _owned_copy(
                 MarketingCopyAsset.id == copy_id,
                 MarketingCopyAsset.campaign_id == campaign_id,
                 MarketingCopyAsset.user_id == user_id,
+                workspace_access_filter(MarketingCopyAsset, context),
             )
         )
     ).scalar_one_or_none()
@@ -199,6 +202,7 @@ async def _resolve_metric_copy(
     campaign_id: uuid.UUID,
     copy_id: str | None,
     user_id,
+    context: WorkspaceContext,
 ) -> MarketingCopyAsset | None:
     """校验效果数据绑定的文案必须属于当前活动。"""
     if not copy_id:
@@ -207,7 +211,13 @@ async def _resolve_metric_copy(
         parsed_id = uuid.UUID(copy_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="文案 ID 无效")
-    asset = await _owned_copy(db, campaign_id, parsed_id, user_id)
+    asset = await _owned_copy(
+        db,
+        campaign_id,
+        parsed_id,
+        user_id,
+        context,
+    )
     if asset is None:
         raise HTTPException(status_code=404, detail="文案不存在")
     return asset
@@ -217,9 +227,12 @@ async def _resolve_metric_copy(
 async def list_campaign_publications(
     campaign_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    campaign = await get_owned_campaign(
+        db, current_user.id, campaign_id, context
+    )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
     records = (
@@ -228,6 +241,10 @@ async def list_campaign_publications(
             .where(
                 MarketingCampaignPublication.user_id == current_user.id,
                 MarketingCampaignPublication.campaign_id == campaign.id,
+                workspace_access_filter(
+                    MarketingCampaignPublication,
+                    context,
+                ),
             )
             .order_by(desc(MarketingCampaignPublication.created_at))
             .limit(100)
@@ -244,12 +261,15 @@ async def publish_campaign_copy(
     campaign_id: str,
     payload: CampaignPublicationRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
     idempotency_key: str = Header(default="", alias="Idempotency-Key"),
 ):
     if not check_feature_access(current_user, "shopify_publish"):
         raise HTTPException(status_code=403, detail="活动发布仅限 Standard 及以上套餐使用")
-    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    campaign = await get_owned_campaign(
+        db, current_user.id, campaign_id, context
+    )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
     platform = payload.platform.strip().lower()
@@ -262,6 +282,10 @@ async def publish_campaign_copy(
                 select(MarketingCampaignPublication).where(
                     MarketingCampaignPublication.user_id == current_user.id,
                     MarketingCampaignPublication.campaign_id == campaign.id,
+                    workspace_access_filter(
+                        MarketingCampaignPublication,
+                        context,
+                    ),
                     MarketingCampaignPublication.platform == platform,
                     MarketingCampaignPublication.idempotency_key == idempotency_key,
                 )
@@ -290,6 +314,7 @@ async def publish_campaign_copy(
             campaign.id,
             copy_uuid,
             current_user.id,
+            context,
         )
         if copy_asset is None:
             raise HTTPException(status_code=404, detail="文案不存在")
@@ -412,6 +437,7 @@ async def publish_campaign_copy(
             if not payload.preview:
                 record = MarketingCampaignPublication(
                     user_id=current_user.id,
+                    workspace_id=context.workspace.id,
                     campaign_id=campaign.id,
                     copy_id=copy_asset.id,
                     listing_id=listing.id,
@@ -446,6 +472,7 @@ async def publish_campaign_copy(
             error = "Amazon Listing 校验未通过"
             record = MarketingCampaignPublication(
                 user_id=current_user.id,
+                workspace_id=context.workspace.id,
                 campaign_id=campaign.id,
                 copy_id=copy_asset.id,
                 listing_id=listing.id,
@@ -482,6 +509,7 @@ async def publish_campaign_copy(
         listing.published_at = datetime.now(timezone.utc)
         record = MarketingCampaignPublication(
             user_id=current_user.id,
+            workspace_id=context.workspace.id,
             campaign_id=campaign.id,
             copy_id=copy_asset.id,
             listing_id=listing.id,
@@ -509,6 +537,7 @@ async def publish_campaign_copy(
         campaign.id,
         copy_id,
         current_user.id,
+        context,
     )
     if copy_asset is None:
         raise HTTPException(status_code=404, detail="文案不存在")
@@ -574,6 +603,7 @@ async def publish_campaign_copy(
     except ShopifyPublishError as exc:
         record = MarketingCampaignPublication(
             user_id=current_user.id,
+            workspace_id=context.workspace.id,
             campaign_id=campaign.id,
             copy_id=copy_asset.id,
             listing_id=listing.id,
@@ -590,6 +620,7 @@ async def publish_campaign_copy(
     publication = result.publication
     record = MarketingCampaignPublication(
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
         campaign_id=campaign.id,
         copy_id=copy_asset.id,
         listing_id=listing.id,
@@ -612,9 +643,12 @@ async def import_campaign_metrics(
     campaign_id: str,
     payload: PerformanceImportRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    campaign = await get_owned_campaign(
+        db, current_user.id, campaign_id, context
+    )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
     items = []
@@ -626,6 +660,10 @@ async def import_campaign_metrics(
                 select(MarketingPerformanceSnapshot).where(
                     MarketingPerformanceSnapshot.user_id == current_user.id,
                     MarketingPerformanceSnapshot.campaign_id == campaign.id,
+                    workspace_access_filter(
+                        MarketingPerformanceSnapshot,
+                        context,
+                    ),
                     MarketingPerformanceSnapshot.platform == value.platform,
                     MarketingPerformanceSnapshot.source == value.source,
                     MarketingPerformanceSnapshot.period_start == value.period_start,
@@ -640,9 +678,11 @@ async def import_campaign_metrics(
             campaign.id,
             value.copy_id,
             current_user.id,
+            context,
         )
         snapshot = existing or MarketingPerformanceSnapshot(
             user_id=current_user.id,
+            workspace_id=context.workspace.id,
             campaign_id=campaign.id,
             platform=value.platform,
             source=value.source,
@@ -664,7 +704,12 @@ async def import_campaign_metrics(
         db.add(snapshot)
         items.append(snapshot)
     await db.flush()
-    if await automation_enabled_for_user(db, current_user, "ab_evaluation"):
+    if await automation_enabled_for_user(
+        db,
+        current_user,
+        "ab_evaluation",
+        workspace_id=context.workspace.id,
+    ):
         await evaluate_campaign_ab_performance(
             db,
             campaign_id=campaign.id,
@@ -673,6 +718,7 @@ async def import_campaign_metrics(
         await record_task_state(
             db,
             user_id=current_user.id,
+            workspace_id=context.workspace.id,
             task="ab_evaluation",
             status="success",
         )
@@ -689,10 +735,13 @@ async def import_campaign_metrics_csv(
     campaign_id: str,
     payload: AdMetricCsvImportRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """导入 Amazon Ads、TikTok Ads 或 Meta Ads 官方导出 CSV。"""
-    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    campaign = await get_owned_campaign(
+        db, current_user.id, campaign_id, context
+    )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
     if payload.period_end < payload.period_start:
@@ -702,6 +751,7 @@ async def import_campaign_metrics_csv(
         campaign.id,
         payload.copy_id,
         current_user.id,
+        context,
     )
     try:
         metrics = parse_ad_metrics_csv(payload.provider, payload.csv_text)
@@ -714,6 +764,10 @@ async def import_campaign_metrics_csv(
             select(MarketingPerformanceSnapshot).where(
                 MarketingPerformanceSnapshot.user_id == current_user.id,
                 MarketingPerformanceSnapshot.campaign_id == campaign.id,
+                workspace_access_filter(
+                    MarketingPerformanceSnapshot,
+                    context,
+                ),
                 MarketingPerformanceSnapshot.platform == metrics.platform,
                 MarketingPerformanceSnapshot.source == metrics.source,
                 MarketingPerformanceSnapshot.period_start == payload.period_start,
@@ -725,6 +779,7 @@ async def import_campaign_metrics_csv(
     if snapshot is None:
         snapshot = MarketingPerformanceSnapshot(
             user_id=current_user.id,
+            workspace_id=context.workspace.id,
             campaign_id=campaign.id,
             platform=metrics.platform,
             source=metrics.source,
@@ -752,7 +807,12 @@ async def import_campaign_metrics_csv(
     )
     db.add(snapshot)
     await db.flush()
-    if await automation_enabled_for_user(db, current_user, "ab_evaluation"):
+    if await automation_enabled_for_user(
+        db,
+        current_user,
+        "ab_evaluation",
+        workspace_id=context.workspace.id,
+    ):
         await evaluate_campaign_ab_performance(
             db,
             campaign_id=campaign.id,
@@ -761,6 +821,7 @@ async def import_campaign_metrics_csv(
         await record_task_state(
             db,
             user_id=current_user.id,
+            workspace_id=context.workspace.id,
             task="ab_evaluation",
             status="success",
         )
@@ -776,9 +837,12 @@ async def import_campaign_metrics_csv(
 async def get_campaign_performance(
     campaign_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    campaign = await get_owned_campaign(
+        db, current_user.id, campaign_id, context
+    )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
     snapshots = (
@@ -787,6 +851,10 @@ async def get_campaign_performance(
             .where(
                 MarketingPerformanceSnapshot.user_id == current_user.id,
                 MarketingPerformanceSnapshot.campaign_id == campaign.id,
+                workspace_access_filter(
+                    MarketingPerformanceSnapshot,
+                    context,
+                ),
             )
             .order_by(desc(MarketingPerformanceSnapshot.period_end))
             .limit(365)
@@ -807,10 +875,13 @@ async def get_campaign_performance(
 async def get_campaign_optimization(
     campaign_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """根据活动汇总数据生成不编造事实的优化建议。"""
-    campaign = await get_owned_campaign(db, current_user.id, campaign_id)
+    campaign = await get_owned_campaign(
+        db, current_user.id, campaign_id, context
+    )
     if campaign is None:
         raise HTTPException(status_code=404, detail="营销活动不存在")
     snapshots = (
@@ -826,6 +897,7 @@ async def get_campaign_optimization(
             select(MarketingCopyAsset).where(
                 MarketingCopyAsset.user_id == current_user.id,
                 MarketingCopyAsset.campaign_id == campaign.id,
+                workspace_access_filter(MarketingCopyAsset, context),
             )
         )
     ).scalars().all()
@@ -834,6 +906,7 @@ async def get_campaign_optimization(
         db,
         current_user,
         "ab_evaluation",
+        workspace_id=context.workspace.id,
     )
     variant_analysis = evaluate_variant_performance(
         list(copies),

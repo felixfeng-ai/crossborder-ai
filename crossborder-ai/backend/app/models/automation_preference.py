@@ -1,4 +1,4 @@
-"""用户级业务自动化开关和最近执行状态。"""
+"""工作区级业务自动化开关和最近执行状态。"""
 
 import uuid
 from datetime import datetime
@@ -11,14 +11,20 @@ from app.core.database import Base
 
 
 class AutomationPreference(Base):
-    """一个用户的四项业务自动化开关。"""
+    """一个工作区的四项业务自动化开关。"""
 
-    __tablename__ = "automation_preferences"
+    __tablename__ = "workspace_automation_preferences"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
         primary_key=True,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     daily_store_check: Mapped[bool] = mapped_column(
         Boolean,
@@ -52,14 +58,20 @@ class AutomationPreference(Base):
 
 
 class AutomationTaskState(Base):
-    """每个用户每项自动化最近一次执行结果。"""
+    """每个工作区每项自动化最近一次执行结果。"""
 
-    __tablename__ = "automation_task_states"
+    __tablename__ = "workspace_automation_task_states"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
         primary_key=True,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     task: Mapped[str] = mapped_column(String(50), primary_key=True)
     last_run_at: Mapped[datetime | None] = mapped_column(

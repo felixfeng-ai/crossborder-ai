@@ -11,6 +11,7 @@
 """
 
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,7 +27,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.rate_limit import RateLimit
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.user import User
 from app.models.image_generation_task import ImageGenerationTask
 from app.models.image_asset import ImageAsset
@@ -62,6 +63,8 @@ from app.services.image_quality import (
 )
 from app.services.image_editing_service import create_image_edit_task
 from app.services.image_provider import list_image_provider_capabilities
+from app.services.media_tokens import media_token_matches, sign_media_path
+from app.services.workspace_scope import workspace_access_filter
 from app.services.marketing_image_suite_service import (
     create_marketing_image_suite,
     normalize_suite_platforms,
@@ -125,6 +128,7 @@ class ImageAssetItem(BaseModel):
     name: str
     kind: str
     image_url: str
+    file_path: str
     width: int
     height: int
     file_size: int
@@ -214,8 +218,48 @@ def _parse_urls(raw: Optional[str]) -> list[str]:
         return []
 
 
-def _asset_image_url(asset_id) -> str:
-    return f"{settings.API_V1_PREFIX}/images/assets/{asset_id}/file"
+def _asset_image_url(asset: ImageAsset) -> str:
+    """生成绑定素材、用户和工作区的短时签名 URL。"""
+
+    return sign_media_path(
+        f"{settings.API_V1_PREFIX}/images/assets/{asset.id}/file",
+        resource_type="image_asset",
+        resource_id=asset.id,
+        user_id=asset.user_id,
+        workspace_id=asset.workspace_id,
+    )
+
+
+def _asset_file_path(asset: ImageAsset) -> str:
+    """返回可持久化的稳定资源路径，查询参数令牌不得写入业务字段。"""
+
+    return f"{settings.API_V1_PREFIX}/images/assets/{asset.id}/file"
+
+
+def _signed_task_image_urls(task: ImageGenerationTask) -> list[str]:
+    """把任务中的本地素材路径转换为短时签名地址。"""
+
+    urls: list[str] = []
+    for value in _parse_urls(task.image_urls):
+        match = re.search(
+            r"/images/assets/([0-9a-fA-F-]{36})/file(?:\?.*)?$",
+            value,
+        )
+        if match is None:
+            urls.append(value)
+            continue
+        resource_id = match.group(1)
+        urls.append(
+            sign_media_path(
+                f"{settings.API_V1_PREFIX}/images/assets/"
+                f"{resource_id}/file",
+                resource_type="image_asset",
+                resource_id=resource_id,
+                user_id=task.user_id,
+                workspace_id=task.workspace_id,
+            )
+        )
+    return urls
 
 
 def _serialize_asset(asset: ImageAsset) -> ImageAssetItem:
@@ -223,7 +267,8 @@ def _serialize_asset(asset: ImageAsset) -> ImageAssetItem:
         id=str(asset.id),
         name=asset.name,
         kind=asset.kind,
-        image_url=_asset_image_url(asset.id),
+        image_url=_asset_image_url(asset),
+        file_path=_asset_file_path(asset),
         width=asset.width,
         height=asset.height,
         file_size=asset.file_size,
@@ -247,7 +292,12 @@ def _asset_path(storage_key: str) -> Path:
     return target
 
 
-async def _get_owned_asset(db: AsyncSession, asset_id: str, user_id) -> ImageAsset:
+async def _get_owned_asset(
+    db: AsyncSession,
+    asset_id: str,
+    user_id,
+    context: WorkspaceContext,
+) -> ImageAsset:
     try:
         parsed_id = uuid.UUID(asset_id)
     except ValueError:
@@ -257,6 +307,7 @@ async def _get_owned_asset(db: AsyncSession, asset_id: str, user_id) -> ImageAss
             select(ImageAsset).where(
                 ImageAsset.id == parsed_id,
                 ImageAsset.user_id == user_id,
+                workspace_access_filter(ImageAsset, context),
             )
         )
     ).scalar_one_or_none()
@@ -287,6 +338,7 @@ async def get_image_capabilities(
 async def create_image_marketing_suite(
     payload: MarketingImageSuiteRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     _ratelimit=Depends(RateLimit("ai_generate")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -306,6 +358,8 @@ async def create_image_marketing_suite(
             quality_tier=payload.quality_tier,
             note=payload.note,
             idempotency_key=payload.idempotency_key,
+            workspace_id=context.workspace.id,
+            include_legacy_workspace=not context.explicit,
         )
         data = await serialize_marketing_image_suite(db, suite)
         await db.commit()
@@ -325,6 +379,7 @@ async def create_image_marketing_suite(
 async def create_image_edit(
     payload: ImageEditRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     _ratelimit=Depends(RateLimit("ai_generate")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -340,12 +395,14 @@ async def create_image_edit(
             aspect_ratio=payload.aspect_ratio,
             scale=payload.scale,
             idempotency_key=payload.idempotency_key,
+            workspace_id=context.workspace.id,
+            include_legacy_workspace=not context.explicit,
         )
         await db.commit()
         return TaskResponse(
             task_id=str(task.id),
             status=task.status,
-            image_urls=_parse_urls(task.image_urls),
+            image_urls=_signed_task_image_urls(task),
             model_used=task.model_used or "",
             error=task.error,
         )
@@ -365,11 +422,13 @@ async def create_image_edit(
 async def list_image_marketing_suites(
     campaign_id: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """按活动列出当前用户的套图摘要。"""
     query = select(MarketingImageSuite).where(
-        MarketingImageSuite.user_id == current_user.id
+        MarketingImageSuite.user_id == current_user.id,
+        workspace_access_filter(MarketingImageSuite, context),
     )
     if campaign_id:
         try:
@@ -393,6 +452,7 @@ async def list_image_marketing_suites(
 async def get_image_marketing_suite(
     suite_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -404,6 +464,7 @@ async def get_image_marketing_suite(
             select(MarketingImageSuite).where(
                 MarketingImageSuite.id == parsed_id,
                 MarketingImageSuite.user_id == current_user.id,
+                workspace_access_filter(MarketingImageSuite, context),
             )
         )
     ).scalar_one_or_none()
@@ -416,6 +477,7 @@ async def get_image_marketing_suite(
 async def upload_image_asset(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """上传商品原图并规范化为无元数据 WebP。"""
@@ -438,6 +500,7 @@ async def upload_image_asset(
     asset = ImageAsset(
         id=asset_id,
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
         name=(Path(file.filename or "商品图片").stem or "商品图片")[:255],
         kind="upload",
         storage_key=storage_key,
@@ -456,10 +519,14 @@ async def upload_image_asset(
 async def list_image_assets(
     kind: Optional[str] = Query(None, pattern="^(upload|processed|generated)$"),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """列出当前用户的上传、白底处理和 AI 生成素材。"""
-    query = select(ImageAsset).where(ImageAsset.user_id == current_user.id)
+    query = select(ImageAsset).where(
+        ImageAsset.user_id == current_user.id,
+        workspace_access_filter(ImageAsset, context),
+    )
     if kind:
         query = query.where(ImageAsset.kind == kind)
     result = await db.execute(
@@ -475,18 +542,29 @@ async def list_image_assets(
 @router.get("/assets/{asset_id}/file")
 async def get_image_asset_file(
     asset_id: str,
+    token: Optional[str] = Query(None, description="短时媒体访问令牌"),
     db: AsyncSession = Depends(get_db),
 ):
-    """通过不可预测 UUID 地址提供图片文件，供 img 标签直接加载。"""
+    """使用短时签名 URL 提供图片文件，匿名 UUID 地址不再可直接读取。"""
     try:
         parsed_id = uuid.UUID(asset_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="素材文件不存在")
+    if not token:
+        raise HTTPException(status_code=401, detail="图片访问令牌缺失或已过期")
     asset = (
         await db.execute(select(ImageAsset).where(ImageAsset.id == parsed_id))
     ).scalar_one_or_none()
     if asset is None:
         raise HTTPException(status_code=404, detail="素材文件不存在")
+    if not media_token_matches(
+        token,
+        resource_type="image_asset",
+        resource_id=asset.id,
+        user_id=asset.user_id,
+        workspace_id=asset.workspace_id,
+    ):
+        raise HTTPException(status_code=401, detail="图片访问令牌无效或已过期")
     path = _asset_path(asset.storage_key)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="素材文件不存在")
@@ -502,10 +580,16 @@ async def process_image_asset(
     asset_id: str,
     payload: ProcessImageRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """按平台预设生成白底适配图。"""
-    source_asset = await _get_owned_asset(db, asset_id, current_user.id)
+    source_asset = await _get_owned_asset(
+        db,
+        asset_id,
+        current_user.id,
+        context,
+    )
     try:
         preset = get_platform_preset(payload.preset_id)
     except ValueError as exc:
@@ -533,6 +617,7 @@ async def process_image_asset(
     asset = ImageAsset(
         id=processed_id,
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
         name=f"{source_asset.name}-{preset['platform']}",
         kind="processed",
         storage_key=storage_key,
@@ -556,10 +641,16 @@ async def rename_image_asset(
     asset_id: str,
     payload: RenameImageAssetRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """重命名当前用户的素材变体。"""
-    asset = await _get_owned_asset(db, asset_id, current_user.id)
+    asset = await _get_owned_asset(
+        db,
+        asset_id,
+        current_user.id,
+        context,
+    )
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="素材名称不能为空")
@@ -572,10 +663,16 @@ async def rename_image_asset(
 async def delete_image_asset(
     asset_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """删除当前用户素材及本地文件。"""
-    asset = await _get_owned_asset(db, asset_id, current_user.id)
+    asset = await _get_owned_asset(
+        db,
+        asset_id,
+        current_user.id,
+        context,
+    )
     path = _asset_path(asset.storage_key)
     generation_task_id = asset.generation_task_id
     await db.delete(asset)
@@ -633,6 +730,7 @@ async def schedule_image_task(
     num_outputs: int = 1,
     campaign_id: Optional[uuid.UUID] = None,
     *,
+    workspace_id=None,
     mode: str = "legacy",
     quality_tier: Optional[str] = None,
     provider: str = "auto",
@@ -655,6 +753,7 @@ async def schedule_image_task(
     )
     task = ImageGenerationTask(
         user_id=user_id,
+        workspace_id=workspace_id,
         campaign_id=campaign_id,
         prompt=prompt,
         num_outputs=num_outputs,
@@ -753,6 +852,7 @@ async def _resolve_reference_assets(
     db: AsyncSession,
     payload: GenerateImageRequest,
     user_id,
+    context: WorkspaceContext,
 ) -> list[ImageAsset]:
     """逐张校验参考图归属；跨用户素材统一返回 404，避免泄露存在性。"""
     if not payload.reference_asset_ids:
@@ -772,6 +872,7 @@ async def _resolve_reference_assets(
             select(ImageAsset).where(
                 ImageAsset.id.in_(parsed_ids),
                 ImageAsset.user_id == user_id,
+                workspace_access_filter(ImageAsset, context),
             )
         )
     ).scalars().all()
@@ -812,6 +913,7 @@ async def generate_image(
     payload: GenerateImageRequest,
     request: Request,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     _ratelimit=Depends(RateLimit("ai_generate")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -833,6 +935,7 @@ async def generate_image(
                 select(ImageGenerationTask).where(
                     ImageGenerationTask.user_id == current_user.id,
                     ImageGenerationTask.idempotency_key == payload.idempotency_key,
+                    workspace_access_filter(ImageGenerationTask, context),
                 )
             )
         ).scalar_one_or_none()
@@ -840,7 +943,7 @@ async def generate_image(
             return TaskResponse(
                 task_id=str(existing.id),
                 status=existing.status,
-                image_urls=_parse_urls(existing.image_urls),
+                image_urls=_signed_task_image_urls(existing),
                 model_used=existing.model_used or "",
                 error=existing.error,
             )
@@ -856,6 +959,7 @@ async def generate_image(
                 select(MarketingCampaign).where(
                     MarketingCampaign.id == campaign_uuid,
                     MarketingCampaign.user_id == current_user.id,
+                    workspace_access_filter(MarketingCampaign, context),
                 )
             )
         ).scalar_one_or_none()
@@ -866,6 +970,7 @@ async def generate_image(
         db,
         payload,
         current_user.id,
+        context,
     )
     effective_mode = effective_image_generation_mode(
         mode,
@@ -944,7 +1049,12 @@ async def generate_image(
         else mode != "free_creation"
     )
     if use_brand_persona:
-        persona = await fetch_persona(db, current_user.id)
+        persona = await fetch_persona(
+            db,
+            current_user.id,
+            context.workspace.id,
+            include_legacy_workspace=not context.explicit,
+        )
         if persona:
             kit = build_persona_kit(persona)
             enhanced_prompt = strip_banned_words(
@@ -968,6 +1078,7 @@ async def generate_image(
         enhanced_prompt,
         payload.num_outputs,
         campaign_uuid,
+        workspace_id=context.workspace.id,
         mode=mode,
         quality_tier=quality_tier,
         provider=payload.provider,
@@ -989,6 +1100,7 @@ async def generate_image(
 async def get_task_status(
     task_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """查询当前用户图片生成任务状态（从库读，不存在/非本人 → 404 中文）"""
@@ -1003,6 +1115,7 @@ async def get_task_status(
         select(ImageGenerationTask).where(
             ImageGenerationTask.id == tid,
             ImageGenerationTask.user_id == current_user.id,
+            workspace_access_filter(ImageGenerationTask, context),
         )
     )
     task = result.scalar_one_or_none()
@@ -1012,7 +1125,7 @@ async def get_task_status(
     return TaskResponse(
         task_id=str(task.id),
         status=task.status,
-        image_urls=_parse_urls(task.image_urls),
+        image_urls=_signed_task_image_urls(task),
         model_used=task.model_used or "",
         error=task.error,
     )
@@ -1022,12 +1135,16 @@ async def get_task_status(
 async def list_history(
     limit: int = Query(20, ge=1, le=100, description="返回条数，默认 20"),
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """获取当前用户最近 N 条图片生成记录（时间倒序），供画廊/仪表盘展示"""
     result = await db.execute(
         select(ImageGenerationTask)
-        .where(ImageGenerationTask.user_id == current_user.id)
+        .where(
+            ImageGenerationTask.user_id == current_user.id,
+            workspace_access_filter(ImageGenerationTask, context),
+        )
         .order_by(desc(ImageGenerationTask.created_at), desc(ImageGenerationTask.id))
         .limit(limit)
     )
@@ -1036,7 +1153,7 @@ async def list_history(
         ImageHistoryItem(
             task_id=str(t.id),
             prompt=t.prompt,
-            image_urls=_parse_urls(t.image_urls),
+            image_urls=_signed_task_image_urls(t),
             model_used=t.model_used or "",
             status=t.status,
             created_at=str(t.created_at),
@@ -1055,6 +1172,7 @@ async def list_history(
 async def materialize_history_images(
     task_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """把已完成的历史生成图补入库，供视频首帧和素材中心复用。"""
@@ -1067,6 +1185,7 @@ async def materialize_history_images(
             select(ImageGenerationTask).where(
                 ImageGenerationTask.id == parsed_id,
                 ImageGenerationTask.user_id == current_user.id,
+                workspace_access_filter(ImageGenerationTask, context),
             )
         )
     ).scalar_one_or_none()
@@ -1081,6 +1200,7 @@ async def materialize_history_images(
     assets = await materialize_image_task_assets(
         db,
         user_id=current_user.id,
+        workspace_id=task.workspace_id or context.workspace.id,
         task_id=task.id,
         prompt=task.prompt,
         image_urls=urls,
@@ -1095,6 +1215,7 @@ async def materialize_history_images(
 async def delete_history_task(
     task_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """删除已完成或失败的 AI 图片生成记录。"""
@@ -1107,6 +1228,7 @@ async def delete_history_task(
             select(ImageGenerationTask).where(
                 ImageGenerationTask.id == parsed_id,
                 ImageGenerationTask.user_id == current_user.id,
+                workspace_access_filter(ImageGenerationTask, context),
             )
         )
     ).scalar_one_or_none()

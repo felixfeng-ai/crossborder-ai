@@ -315,6 +315,7 @@ async def generate_marketing_copy_batch(
     language: str,
     instructions: str = "",
     source: str = "agent",
+    workspace_id: Optional[UUID] = None,
     llm: Optional[DeepSeekService] = None,
 ) -> list[MarketingCopyAsset]:
     """生成并保存批次内所有平台 A/B 文案。"""
@@ -326,13 +327,16 @@ async def generate_marketing_copy_batch(
     if not requested:
         raise ValueError("至少选择一个支持的文案平台")
 
-    campaign = (
-        await db.execute(
-            select(MarketingCampaign).where(
-                MarketingCampaign.id == campaign_id,
-                MarketingCampaign.user_id == user.id,
-            )
+    campaign_query = select(MarketingCampaign).where(
+        MarketingCampaign.id == campaign_id,
+        MarketingCampaign.user_id == user.id,
+    )
+    if workspace_id is not None:
+        campaign_query = campaign_query.where(
+            MarketingCampaign.workspace_id == workspace_id
         )
+    campaign = (
+        await db.execute(campaign_query)
     ).scalar_one_or_none()
     if campaign is None:
         raise ValueError("营销活动不存在")
@@ -373,7 +377,11 @@ async def generate_marketing_copy_batch(
         platforms=requested,
     )
 
-    persona = await fetch_persona(db, user.id)
+    persona = await fetch_persona(
+        db,
+        user.id,
+        workspace_id or campaign.workspace_id,
+    )
     persona_kit = build_persona_kit(persona) if persona else {}
     banned_words = persona_kit.get("banned_words") or []
     batch_id = uuid.uuid4()
@@ -386,6 +394,7 @@ async def generate_marketing_copy_batch(
         asset = MarketingCopyAsset(
             batch_id=batch_id,
             user_id=user.id,
+            workspace_id=workspace_id or campaign.workspace_id,
             campaign_id=campaign.id,
             platform=item["platform"],
             variant_key=item["variant_key"],

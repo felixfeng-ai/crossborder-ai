@@ -8,6 +8,7 @@ import asyncio
 import hashlib
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -32,6 +33,13 @@ class SchedulerService:
             self._cleanup_old_records_locked,
             CronTrigger(hour=3, minute=0),
             id="cleanup_old_records",
+            replace_existing=True,
+        )
+        # 归档工作区保留期结束后独立清理，不混入临时数据保留任务。
+        self.scheduler.add_job(
+            self._purge_archived_workspaces_locked,
+            CronTrigger(hour=3, minute=15),
+            id="purge_archived_workspaces",
             replace_existing=True,
         )
 
@@ -72,6 +80,103 @@ class SchedulerService:
             self._dispatch_agent_tasks,
             IntervalTrigger(seconds=5),
             id="dispatch_agent_tasks",
+            replace_existing=True,
+        )
+
+        # 每 5 秒把未处理的客服工作项写入 AgentTask，真正执行仍由上面的
+        # Agent 任务队列统一抢占，避免值班 Worker 另造并发模型。
+        self.scheduler.add_job(
+            self._enqueue_customer_reply_tasks,
+            IntervalTrigger(seconds=5),
+            id="enqueue_customer_reply_tasks",
+            replace_existing=True,
+        )
+
+        # 每 2 秒执行已确认且已接入适配器的受控领域动作。
+        self.scheduler.add_job(
+            self._dispatch_action_runs,
+            IntervalTrigger(seconds=2),
+            id="dispatch_action_runs",
+            replace_existing=True,
+        )
+
+        # 每 5 分钟收取客服邮箱新增消息，Webhook 不可用时仍能补齐。
+        self.scheduler.add_job(
+            self._sync_customer_inboxes,
+            IntervalTrigger(minutes=5),
+            id="sync_customer_inboxes",
+            replace_existing=True,
+        )
+
+        # 每小时按工作区本地时区生成晨报或日结。
+        self.scheduler.add_job(
+            self._run_daily_plans,
+            CronTrigger(minute=0),
+            id="daily_plan_schedule",
+            replace_existing=True,
+        )
+
+        # 每 5 秒处理持久化通知待发，保证重启和多 worker 下仍可重试。
+        self.scheduler.add_job(
+            self._dispatch_notifications,
+            IntervalTrigger(seconds=5),
+            id="dispatch_notifications",
+            replace_existing=True,
+        )
+
+        # 每 5 分钟增量同步订单信号，Webhook 丢失时由轮询补齐。
+        self.scheduler.add_job(
+            self._sync_shopify_order_signals,
+            IntervalTrigger(minutes=5),
+            id="shopify_order_signal_sync",
+            replace_existing=True,
+        )
+
+        # Amazon Orders 限流很低，按 15 分钟单页监控 FBM 未发货订单。
+        self.scheduler.add_job(
+            self._sync_amazon_order_signals,
+            IntervalTrigger(minutes=15),
+            id="amazon_order_signal_sync",
+            replace_existing=True,
+        )
+
+        # Temu LOCAL/SEMI 订单按 15 分钟巡检，只生成履约关注任务，不执行写操作。
+        self.scheduler.add_job(
+            self._sync_temu_order_signals,
+            IntervalTrigger(minutes=15),
+            id="temu_order_signal_sync",
+            replace_existing=True,
+        )
+
+        # Temu V3 商品提交后按 15 分钟刷新原始平台状态。
+        self.scheduler.add_job(
+            self._sync_temu_listing_statuses,
+            IntervalTrigger(minutes=15),
+            id="temu_listing_status_sync",
+            replace_existing=True,
+        )
+
+        # 每 10 分钟对账 Shopify 库存，只生成/关闭信号，不自动覆盖本地库存。
+        self.scheduler.add_job(
+            self._sync_shopify_inventory_signals,
+            IntervalTrigger(minutes=10),
+            id="shopify_inventory_signal_sync",
+            replace_existing=True,
+        )
+
+        # 每 2 秒消费 Webhook 原始事件，请求线程只负责验签和落库。
+        self.scheduler.add_job(
+            self._process_integration_events,
+            IntervalTrigger(seconds=2),
+            id="process_integration_events",
+            replace_existing=True,
+        )
+
+        # 每 10 秒把已完成的图片/视频任务回写到 ActionRun 和工作项。
+        self.scheduler.add_job(
+            self._sync_media_action_results,
+            IntervalTrigger(seconds=10),
+            id="sync_media_action_results",
             replace_existing=True,
         )
 
@@ -119,6 +224,22 @@ class SchedulerService:
             replace_existing=True,
         )
 
+        # 每 30 分钟对账个人用户账本与个人工作区镜像，默认只报告差异。
+        self.scheduler.add_job(
+            self._reconcile_workspace_billing_locked,
+            IntervalTrigger(minutes=30),
+            id="reconcile_workspace_billing",
+            replace_existing=True,
+        )
+
+        # 月度额度检查完成后生成首个账期观察；默认关闭，切换后显式启用。
+        self.scheduler.add_job(
+            self._record_billing_observation_locked,
+            CronTrigger(hour=3, minute=40),
+            id="record_billing_observation_daily",
+            replace_existing=True,
+        )
+
         self.scheduler.start()
         print("[Scheduler] started with all jobs registered")
 
@@ -157,6 +278,165 @@ class SchedulerService:
     async def _run_store_checks_locked(self):
         """带跨进程锁的定时整店巡检（防 4 worker 重复写巡检记录）。"""
         await self._run_with_lock("store_check_daily", self._run_store_checks)
+
+    async def _dispatch_action_runs(self):
+        """在跨进程锁内分发动作，避免多个 Web 进程重复发布或退款。"""
+
+        async def job():
+            from app.services.action_dispatcher import (
+                dispatch_queued_action_runs,
+            )
+
+            async with async_session_factory() as db:
+                await dispatch_queued_action_runs(db, limit=5)
+
+        await self._run_with_lock("dispatch_action_runs", job)
+
+    async def _enqueue_customer_reply_tasks(self):
+        """在跨进程锁内把客服工作项幂等写入 AgentTask 队列。"""
+
+        async def job():
+            from app.services.customer_reply_worker import (
+                enqueue_customer_reply_tasks,
+            )
+
+            async with async_session_factory() as db:
+                await enqueue_customer_reply_tasks(db)
+                await db.commit()
+
+        await self._run_with_lock("enqueue_customer_reply_tasks", job)
+
+    async def _sync_customer_inboxes(self):
+        """在跨进程锁内同步客服邮箱，避免重复创建工作项。"""
+
+        async def job():
+            from app.services.email_channel_service import (
+                sync_all_customer_inboxes,
+            )
+
+            async with async_session_factory() as db:
+                await sync_all_customer_inboxes(db)
+
+        await self._run_with_lock("sync_customer_inboxes", job)
+
+    async def _run_daily_plans(self):
+        """按每小时本地时间触发各工作区的晨报与日结。"""
+
+        async def job():
+            from app.services.daily_plan import run_scheduled_daily_plans
+
+            async with async_session_factory() as db:
+                await run_scheduled_daily_plans(db)
+
+        await self._run_with_lock("daily_plan_schedule", job)
+
+    async def _dispatch_notifications(self):
+        """在跨进程锁内发送通知，避免同一待发记录重复推送。"""
+
+        async def job():
+            from app.services.notifications import (
+                dispatch_notification_outbox,
+            )
+
+            async with async_session_factory() as db:
+                await dispatch_notification_outbox(db)
+                await db.commit()
+
+        await self._run_with_lock("dispatch_notifications", job)
+
+    async def _sync_shopify_order_signals(self):
+        """在跨进程锁内增量同步订单信号。"""
+
+        async def job():
+            from app.services.shopify_order_signal_sync import (
+                sync_all_shopify_order_signals,
+            )
+
+            async with async_session_factory() as db:
+                await sync_all_shopify_order_signals(db)
+
+        await self._run_with_lock("shopify_order_signal_sync", job)
+
+    async def _sync_amazon_order_signals(self):
+        """在跨进程锁内同步 Amazon FBM 订单状态。"""
+
+        async def job():
+            from app.services.amazon_orders import (
+                sync_all_amazon_order_signals,
+            )
+
+            async with async_session_factory() as db:
+                await sync_all_amazon_order_signals(db)
+
+        await self._run_with_lock("amazon_order_signal_sync", job)
+
+    async def _sync_temu_order_signals(self):
+        """在跨进程锁内巡检 Temu LOCAL/SEMI 履约风险。"""
+
+        async def job():
+            from app.services.temu_order_signal_sync import (
+                sync_all_temu_order_signals,
+            )
+
+            async with async_session_factory() as db:
+                await sync_all_temu_order_signals(db)
+
+        await self._run_with_lock("temu_order_signal_sync", job)
+
+    async def _sync_temu_listing_statuses(self):
+        """在跨进程锁内刷新 Temu 商品原始发布状态。"""
+
+        async def job():
+            from app.services.temu_listing_status_sync import (
+                sync_all_temu_listing_statuses,
+            )
+
+            async with async_session_factory() as db:
+                await sync_all_temu_listing_statuses(db)
+                await db.commit()
+
+        await self._run_with_lock("temu_listing_status_sync", job)
+
+    async def _sync_shopify_inventory_signals(self):
+        """在跨进程锁内对账库存，冲突留给用户确认。"""
+
+        async def job():
+            from app.services.shopify_inventory_signal_sync import (
+                sync_all_shopify_inventory_signals,
+            )
+
+            async with async_session_factory() as db:
+                await sync_all_shopify_inventory_signals(db)
+
+        await self._run_with_lock("shopify_inventory_signal_sync", job)
+
+    async def _process_integration_events(self):
+        """在跨进程锁内消费原始 Webhook 事件。"""
+
+        async def job():
+            from app.services.integration_events import (
+                process_pending_integration_events,
+            )
+
+            async with async_session_factory() as db:
+                await process_pending_integration_events(db)
+                await db.commit()
+
+        await self._run_with_lock("process_integration_events", job)
+
+    async def _sync_media_action_results(self):
+        """在跨进程锁内同步媒体动作终态。"""
+
+        async def job():
+            from app.services.media_action_results import (
+                sync_media_action_results,
+            )
+
+            async with async_session_factory() as db:
+                await sync_media_action_results(db)
+                await db.commit()
+
+        await self._run_with_lock("sync_media_action_results", job)
 
     async def _run_operations_monitor_locked(self):
         """带跨进程锁的每日运营监控。"""
@@ -235,6 +515,27 @@ class SchedulerService:
             print(
                 "[Scheduler] 数据保留清理完成："
                 f"dry_run={result['dry_run']} deleted={result['deleted']}"
+            )
+
+    async def _purge_archived_workspaces_locked(self):
+        """归档工作区物理清理使用独立锁，避免多 Worker 重复删除。"""
+
+        await self._run_with_lock(
+            "purge_archived_workspaces",
+            self._purge_archived_workspaces,
+        )
+
+    async def _purge_archived_workspaces(self):
+        """清理保留期结束的归档工作区。"""
+
+        from app.services.user_lifecycle import purge_expired_workspaces
+
+        async with async_session_factory() as db:
+            result = await purge_expired_workspaces(db)
+            await db.commit()
+            print(
+                "[Scheduler] 归档工作区清理完成："
+                f"{result['purged_count']} 个"
             )
 
     async def _process_pending_generations(self):
@@ -457,3 +758,129 @@ class SchedulerService:
             expired = await expire_due_subscriptions(db)
             await db.commit()
             print(f"[Scheduler] 套餐到期检查完成：降级 {expired} 个账号")
+
+    async def _reconcile_workspace_billing_locked(self):
+        """多 Worker 下只允许一个实例执行个人账务对账。"""
+        await self._run_with_lock(
+            "reconcile_workspace_billing",
+            self._reconcile_workspace_billing,
+        )
+
+    async def _reconcile_workspace_billing(self):
+        """对账个人钱包和订阅，不在定时任务中自动修改账务。"""
+        from app.core.observability import emit_alert
+        from app.services.workspace_billing_reconciliation import (
+            reconcile_personal_workspace_billing,
+        )
+
+        async with async_session_factory() as db:
+            result = await reconcile_personal_workspace_billing(
+                db,
+                record_cases=True,
+            )
+            # 案件记录是止付依据，必须在告警前持久化。
+            await db.commit()
+            ledger = result["ledger"]
+            mismatch_count = (
+                result["wallets"]["mismatched"]
+                + result["subscriptions"]["mismatched"]
+            )
+            if mismatch_count or ledger["requires_attention"]:
+                emit_alert(
+                    "个人工作区账务对账发现差异",
+                    context={
+                        "wallet_mismatches": result["summary"][
+                            "wallet_mismatches"
+                        ],
+                        "subscription_mismatches": result["summary"][
+                            "subscription_mismatches"
+                        ],
+                        "workspace_count": result["summary"][
+                            "workspace_count"
+                        ],
+                        "unassigned_transaction_count": ledger[
+                            "unassigned_transaction_count"
+                        ],
+                        "unassigned_delta": ledger["unassigned_delta"],
+                        "plan_credit_delta": ledger["plan_credit_delta"],
+                        "purchased_credit_delta": ledger[
+                            "purchased_credit_delta"
+                        ],
+                        "total_credit_delta": ledger["total_credit_delta"],
+                    },
+                )
+            else:
+                print(
+                    "[Scheduler] 个人工作区账务对账完成：无差异"
+                )
+
+    async def _record_billing_observation_locked(self):
+        """首个账期观察使用独立锁，避免多 Worker 重复写同一天文件。"""
+
+        await self._run_with_lock(
+            "record_billing_observation",
+            self._record_billing_observation,
+        )
+
+    async def _record_billing_observation(self):
+        """生成每日只读快照；失败必须告警并保留异常。"""
+
+        if not settings.BILLING_OBSERVATION_ENABLED:
+            print("[Scheduler] 首个账期观察未启用")
+            return
+
+        from app.core.observability import emit_alert
+        from app.services.billing_observation import (
+            collect_billing_observation,
+            latest_observation_before,
+            persist_billing_observation,
+            read_observation_files,
+        )
+
+        directory = Path(settings.BILLING_OBSERVATION_DIR)
+        observed_at = datetime.now(timezone.utc)
+        since = observed_at.replace(
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        try:
+            existing = read_observation_files(directory)
+            async with async_session_factory() as db:
+                observation = await collect_billing_observation(
+                    db,
+                    observed_at=observed_at,
+                    since=since,
+                    previous=latest_observation_before(
+                        existing,
+                        observed_at,
+                    ),
+                    allow_sqlite=settings.USE_SQLITE,
+                    batch_size=settings.BILLING_OBSERVATION_BATCH_SIZE,
+                )
+            stored = persist_billing_observation(directory, observation)
+            if observation["status"] != "passed":
+                emit_alert(
+                    "首个账期账务观察失败",
+                    context={
+                        "issues": observation["issues"],
+                        "snapshot": observation["snapshot"],
+                        "observation_file": str(stored["path"]),
+                    },
+                )
+            else:
+                print(
+                    "[Scheduler] 首个账期观察通过："
+                    f"连续 {stored['history']['consecutive_passed_days']} 天"
+                )
+        except Exception as exc:
+            emit_alert(
+                "首个账期账务观察执行失败",
+                context={
+                    "error": str(exc),
+                    "observation_dir": str(directory),
+                },
+            )
+            raise

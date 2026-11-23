@@ -28,16 +28,23 @@ class ImageGenerationTask(Base):
     __tablename__ = "image_generation_tasks"
     __table_args__ = (
         UniqueConstraint(
+            "workspace_id",
             "user_id",
             "idempotency_key",
-            name="uq_image_generation_tasks_user_idempotency",
+            name="uq_image_generation_tasks_workspace_idempotency",
         ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
     # 空值表示素材来自普通工作台；有值时必须归属当前营销活动。
     campaign_id: Mapped[uuid.UUID | None] = mapped_column(

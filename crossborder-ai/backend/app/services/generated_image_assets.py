@@ -61,6 +61,7 @@ async def materialize_image_task_assets(
     db: AsyncSession,
     *,
     user_id: UUID,
+    workspace_id: UUID | None = None,
     task_id: UUID,
     prompt: str,
     image_urls: list[str],
@@ -102,6 +103,7 @@ async def materialize_image_task_assets(
 
         asset = ImageAsset(
             user_id=user_id,
+            workspace_id=workspace_id,
             name=f"AI 生成 · {prompt[:80]} · {variant_index + 1}"[:255],
             kind="generated",
             storage_key=storage_key,
@@ -123,6 +125,7 @@ async def materialize_image_bytes(
     db: AsyncSession,
     *,
     user_id: UUID,
+    workspace_id: UUID | None = None,
     task_id: UUID,
     prompt: str,
     images: list[bytes],
@@ -153,6 +156,7 @@ async def materialize_image_bytes(
         )
         asset = ImageAsset(
             user_id=user_id,
+            workspace_id=workspace_id,
             name=f"AI 图片编辑 · {prompt[:80]} · {variant_index + 1}"[:255],
             kind="generated",
             storage_key=storage_key,

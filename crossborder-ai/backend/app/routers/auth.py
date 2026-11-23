@@ -19,31 +19,109 @@
 """
 
 from datetime import datetime, timezone
-from typing import Optional
+import re
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import RateLimit
 from app.core.security import (
-    create_access_token,
     hash_password,
     verify_password,
 )
 from app.dependencies import get_current_user
 from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse, TokenResponse
+from app.schemas.user import (
+    ChangePasswordRequest,
+    RefreshTokenRequest,
+    TokenResponse,
+    UserCreate,
+    UserResponse,
+)
+from app.services.auth_sessions import (
+    RefreshTokenRejected,
+    create_user_session,
+    list_active_sessions,
+    revoke_all_sessions,
+    revoke_session,
+    rotate_refresh_token,
+)
 from app.services.credit_service import apply_monthly_allowance
+from app.services.user_lifecycle import delete_user_account
+from app.services.user_profiles import build_user_response
+from app.services.workspaces import ensure_personal_workspace
 
 # ── 创建路由实例 ──────────────────────────────────────────────
 # prefix="/auth" 表示这个路由下的所有接口都以 /api/v1/auth 开头
 # （main.py 中设置了 API_PREFIX="/api/v1"+ prefix）
 # tags 用于 API 文档（/docs）的分组
 router = APIRouter(prefix="/auth", tags=["用户认证"])
+USERNAME_PATTERN = re.compile(r"^[\u4e00-\u9fffA-Za-z0-9_]{4,12}$")
+
+
+def _device_metadata(request: Request) -> dict[str, str | None]:
+    """记录可展示的设备信息，不接受可执行指纹或隐私字段。"""
+
+    return {
+        "device_name": request.headers.get("X-Device-Name"),
+        "platform": request.headers.get("X-Device-Platform"),
+        "client_version": request.headers.get("X-Client-Version"),
+    }
+
+
+async def _issue_session(db, request: Request, user: User) -> TokenResponse:
+    payload = await create_user_session(
+        db,
+        user,
+        **_device_metadata(request),
+    )
+    return TokenResponse(**payload)
+
+
+class AccountDeletionRequest(BaseModel):
+    password: str = Field(..., min_length=6, max_length=128)
+    confirmation: Literal["注销账号"]
+
+
+class UsernameAvailabilityResponse(BaseModel):
+    username: str
+    available: bool
+
+
+@router.get(
+    "/username-availability",
+    response_model=UsernameAvailabilityResponse,
+)
+async def username_availability(
+    username: str = Query(..., min_length=1, max_length=32),
+    _ratelimit=Depends(RateLimit("auth")),
+    db: AsyncSession = Depends(get_db),
+):
+    """检查注册用户名是否可用，不返回其他账号信息。"""
+
+    normalized = username.strip()
+    if USERNAME_PATTERN.fullmatch(normalized) is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="称呼需为 4–12 位中文、字母、数字或下划线",
+        )
+    result = await db.execute(
+        select(User.id)
+        .where(
+            func.lower(User.username) == normalized.lower(),
+            User.deleted_at.is_(None),
+        )
+        .limit(1)
+    )
+    return UsernameAvailabilityResponse(
+        username=normalized,
+        available=result.scalar_one_or_none() is None,
+    )
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -93,6 +171,22 @@ async def register(
             detail="该邮箱已被注册",
         )
 
+    if payload.username:
+        normalized_username = payload.username.strip()
+        username_result = await db.execute(
+            select(User.id)
+            .where(
+                func.lower(User.username) == normalized_username.lower(),
+                User.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+        if username_result.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="这个称呼已经被用了",
+            )
+
     # ── Step 2: INSERT 创建新用户 ───────────────────────────
     # 1. 创建 User 对象（内存中）
     # 2. db.add() 加入会话跟踪
@@ -111,16 +205,9 @@ async def register(
     db.add(user)
     await db.flush()
     await apply_monthly_allowance(db, user)
+    await ensure_personal_workspace(db, user)
 
-    # ── Step 3: 签发 JWT ───────────────────────────────────
-    # 注册成功后直接返回 token，用户不需要再登录一次
-    # 这是一个好的用户体验设计
-    access_token = create_access_token(subject=str(user.id))
-
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-    )
+    return await _issue_session(db, request, user)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -156,19 +243,179 @@ async def login(
     # 为什么不直接告诉用户"邮箱不存在"或"密码错误"？
     # 安全考虑：防止攻击者枚举哪个邮箱已注册
     # 统一返回"邮箱或密码错误"让攻击者无法区分
-    if not user or not verify_password(payload.password, user.password_hash):
+    if (
+        not user
+        or user.deleted_at is not None
+        or not verify_password(payload.password, user.password_hash)
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="邮箱或密码错误",
         )
 
-    # ── 签发 token ─────────────────────────────────────────
-    access_token = create_access_token(subject=str(user.id))
+    await ensure_personal_workspace(db, user)
 
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
+    return await _issue_session(db, request, user)
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_access_token(
+    payload: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """一次性刷新令牌轮换；重放会撤销整个设备会话。"""
+
+    try:
+        tokens = await rotate_refresh_token(db, payload.refresh_token)
+        await db.commit()
+        return TokenResponse(**tokens)
+    except RefreshTokenRejected as exc:
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout_current_session(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """只撤销当前设备会话。"""
+
+    await revoke_session(
+        db,
+        session_id=request.state.auth_session_id,
+        user_id=current_user.id,
+        reason="user_logout",
     )
+    await db.commit()
+    return None
+
+
+@router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
+async def logout_all_sessions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """撤销当前用户全部设备会话。"""
+
+    await revoke_all_sessions(
+        db,
+        user_id=current_user.id,
+        reason="user_logout_all",
+    )
+    await db.commit()
+    return None
+
+
+@router.get("/sessions")
+async def get_active_sessions(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出当前账号仍有效的设备会话。"""
+
+    sessions = await list_active_sessions(db, user_id=current_user.id)
+    current_id = request.state.auth_session_id
+    return {
+        "items": [
+            {
+                "id": str(session.id),
+                "device_name": session.device_name,
+                "platform": session.platform,
+                "client_version": session.client_version,
+                "created_at": str(session.created_at),
+                "last_used_at": str(session.last_used_at),
+                "expires_at": str(session.expires_at),
+                "current": session.id == current_id,
+            }
+            for session in sessions
+        ]
+    }
+
+
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_specific_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """撤销当前用户的指定设备；其他用户会话统一 404。"""
+
+    from uuid import UUID
+
+    try:
+        parsed_id = UUID(session_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="设备会话不存在",
+        ) from exc
+    revoked = await revoke_session(
+        db,
+        session_id=parsed_id,
+        user_id=current_user.id,
+        reason="user_revoked_device",
+    )
+    if not revoked:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="设备会话不存在",
+        )
+    await db.commit()
+    return None
+
+
+@router.post("/change-password", response_model=TokenResponse)
+async def change_password(
+    payload: ChangePasswordRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """改密后撤销全部旧会话，并给当前设备签发新会话。"""
+
+    if not verify_password(
+        payload.current_password,
+        current_user.password_hash,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="当前密码错误",
+        )
+    current_user.password_hash = hash_password(payload.new_password)
+    await revoke_all_sessions(
+        db,
+        user_id=current_user.id,
+        reason="password_changed",
+    )
+    return await _issue_session(db, request, current_user)
+
+
+@router.post("/delete-account")
+async def delete_account(
+    payload: AccountDeletionRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """校验密码后逻辑注销账号，并保留工作区业务数据。"""
+
+    if not verify_password(payload.password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="密码错误，未执行注销",
+        )
+    result = await delete_user_account(
+        db,
+        user_id=current_user.id,
+        reason="user_requested",
+    )
+    await db.commit()
+    return result
 
 
 @router.get("/me", response_model=UserResponse)
@@ -204,15 +451,7 @@ async def get_me(
         await db.commit()
         await db.refresh(current_user)
 
-    return UserResponse(
-        id=current_user.id,
-        email=current_user.email,
-        username=current_user.username,
-        credits=current_user.credits,
-        plan=current_user.plan,
-        created_at=current_user.created_at,
-        is_admin=current_user.email.lower() in {e.lower() for e in settings.ADMIN_EMAILS},
-    )
+    return build_user_response(current_user)
 
 
 class WeChatLoginRequest(BaseModel):
@@ -222,6 +461,7 @@ class WeChatLoginRequest(BaseModel):
 @router.post("/wx-login", response_model=TokenResponse)
 async def wechat_login(
     payload: WeChatLoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """微信小程序登录
@@ -270,5 +510,5 @@ async def wechat_login(
         db.add(user)
         await db.flush()
 
-    access_token = create_access_token(subject=str(user.id))
-    return TokenResponse(access_token=access_token, token_type="bearer")
+    await ensure_personal_workspace(db, user)
+    return await _issue_session(db, request, user)

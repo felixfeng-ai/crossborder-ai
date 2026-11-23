@@ -10,10 +10,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import WorkspaceContext, get_current_user, get_web_workspace
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.user import User
+from app.services.product_workspace_scope import (
+    ensure_product_writer,
+    product_workspace_scope,
+    variant_workspace_scope,
+)
 
 
 router = APIRouter(prefix="/products", tags=["Product Variants"])
@@ -82,7 +87,8 @@ def _serialize_variant(variant: ProductVariant) -> dict:
 async def _owned_product(
     db: AsyncSession,
     product_id: str,
-    user_id: UUID,
+    context: WorkspaceContext,
+    current_user: User,
 ) -> Product:
     try:
         pid = UUID(product_id)
@@ -90,10 +96,9 @@ async def _owned_product(
         raise HTTPException(status_code=400, detail="无效的商品 ID")
     product = (
         await db.execute(
-            select(Product).where(
-                Product.id == pid,
-                Product.user_id == user_id,
-            )
+            select(Product)
+            .where(Product.id == pid)
+            .where(product_workspace_scope(context, current_user))
         )
     ).scalar_one_or_none()
     if product is None:
@@ -105,16 +110,20 @@ async def _owned_product(
 async def list_variants(
     product_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """查询当前用户商品的全部 SKU 变体。"""
-    product = await _owned_product(db, product_id, current_user.id)
+    product = await _owned_product(
+        db,
+        product_id,
+        context,
+        current_user,
+    )
     result = await db.execute(
         select(ProductVariant)
-        .where(
-            ProductVariant.product_id == product.id,
-            ProductVariant.user_id == current_user.id,
-        )
+        .where(ProductVariant.product_id == product.id)
+        .where(variant_workspace_scope(context, current_user))
         .order_by(ProductVariant.created_at)
     )
     variants = result.scalars().all()
@@ -129,16 +138,22 @@ async def create_variant(
     product_id: str,
     payload: VariantCreateRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """创建商品 SKU 变体，SKU 在当前用户范围内唯一。"""
-    product = await _owned_product(db, product_id, current_user.id)
+    ensure_product_writer(context)
+    product = await _owned_product(
+        db,
+        product_id,
+        context,
+        current_user,
+    )
     exists = (
         await db.execute(
-            select(ProductVariant.id).where(
-                ProductVariant.user_id == current_user.id,
-                ProductVariant.sku == payload.sku,
-            )
+            select(ProductVariant.id)
+            .where(ProductVariant.sku == payload.sku)
+            .where(variant_workspace_scope(context, current_user))
         )
     ).scalar_one_or_none()
     if exists is not None:
@@ -146,6 +161,8 @@ async def create_variant(
 
     variant = ProductVariant(
         user_id=current_user.id,
+        workspace_id=context.workspace.id,
+        created_by_user_id=current_user.id,
         product_id=product.id,
         sku=payload.sku.strip(),
         name=payload.name,
@@ -169,10 +186,17 @@ async def update_variant(
     variant_id: str,
     payload: VariantUpdateRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """更新变体价格、库存、属性和启用状态。"""
-    product = await _owned_product(db, product_id, current_user.id)
+    ensure_product_writer(context)
+    product = await _owned_product(
+        db,
+        product_id,
+        context,
+        current_user,
+    )
     try:
         vid = UUID(variant_id)
     except ValueError:
@@ -182,8 +206,8 @@ async def update_variant(
             select(ProductVariant).where(
                 ProductVariant.id == vid,
                 ProductVariant.product_id == product.id,
-                ProductVariant.user_id == current_user.id,
             )
+            .where(variant_workspace_scope(context, current_user))
         )
     ).scalar_one_or_none()
     if variant is None:
@@ -193,10 +217,10 @@ async def update_variant(
         duplicate = (
             await db.execute(
                 select(ProductVariant.id).where(
-                    ProductVariant.user_id == current_user.id,
                     ProductVariant.sku == payload.sku,
                     ProductVariant.id != variant.id,
                 )
+                .where(variant_workspace_scope(context, current_user))
             )
         ).scalar_one_or_none()
         if duplicate is not None:
@@ -229,10 +253,17 @@ async def delete_variant(
     product_id: str,
     variant_id: str,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """删除当前用户商品下的变体。"""
-    product = await _owned_product(db, product_id, current_user.id)
+    ensure_product_writer(context)
+    product = await _owned_product(
+        db,
+        product_id,
+        context,
+        current_user,
+    )
     try:
         vid = UUID(variant_id)
     except ValueError:
@@ -242,8 +273,8 @@ async def delete_variant(
             select(ProductVariant).where(
                 ProductVariant.id == vid,
                 ProductVariant.product_id == product.id,
-                ProductVariant.user_id == current_user.id,
             )
+            .where(variant_workspace_scope(context, current_user))
         )
     ).scalar_one_or_none()
     if variant is None:
@@ -258,6 +289,7 @@ async def batch_update_variant_stock(
     product_id: str,
     payload: VariantBatchStockRequest,
     current_user: User = Depends(get_current_user),
+    context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """原子更新多个 SKU 库存。
@@ -265,7 +297,13 @@ async def batch_update_variant_stock(
     在执行任何写入前先校验整批变体归属，避免请求中混入其他商品或其他用户的
     SKU 时出现部分成功。重复 ID 也会直接拒绝，保证每个变体只有一个目标库存。
     """
-    product = await _owned_product(db, product_id, current_user.id)
+    ensure_product_writer(context)
+    product = await _owned_product(
+        db,
+        product_id,
+        context,
+        current_user,
+    )
     variant_ids = [item.variant_id for item in payload.items]
     if len(set(variant_ids)) != len(variant_ids):
         raise HTTPException(status_code=422, detail="批量库存请求不能包含重复变体")
@@ -275,8 +313,8 @@ async def batch_update_variant_stock(
             select(ProductVariant).where(
                 ProductVariant.id.in_(variant_ids),
                 ProductVariant.product_id == product.id,
-                ProductVariant.user_id == current_user.id,
             )
+            .where(variant_workspace_scope(context, current_user))
         )
     ).scalars().all()
     variants_by_id = {variant.id: variant for variant in variants}

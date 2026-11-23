@@ -287,7 +287,12 @@ async def start_marketing_project(
             select(User).where(User.id == user.id).with_for_update()
         )
     ).scalar_one()
-    if locked_user.credits < project.credits_estimated:
+    from app.services.personal_billing import get_personal_billing_balance
+
+    if (
+        await get_personal_billing_balance(db, locked_user)
+        < project.credits_estimated
+    ):
         raise InsufficientCreditsError(
             f"积分不足，本次营销视频需要 {project.credits_estimated} 积分"
         )
@@ -309,6 +314,7 @@ async def start_marketing_project(
         for shot in shots:
             task = VideoGenerationTask(
                 user_id=project.user_id,
+                workspace_id=project.workspace_id,
                 source_asset_id=project.source_asset_id,
                 reference_assets_json=project.reference_assets_json,
                 quality_tier=project.quality_tier,

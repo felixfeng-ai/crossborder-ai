@@ -23,6 +23,7 @@ from app.services.automation_settings import (
     automation_enabled_for_user,
     record_task_state,
 )
+from app.services.workspaces import ensure_personal_workspace
 
 
 class ShopifyOperationsSyncError(Exception):
@@ -400,7 +401,16 @@ async def sync_all_shopify_operations(
                 }
             )
             continue
-        if not await automation_enabled_for_user(db, user, "shopify_sync"):
+        workspace_id = (
+            channel.workspace_id
+            or (await ensure_personal_workspace(db, user)).id
+        )
+        if not await automation_enabled_for_user(
+            db,
+            user,
+            "shopify_sync",
+            workspace_id=workspace_id,
+        ):
             summary["channels_skipped"] += 1
             continue
         try:
@@ -413,6 +423,7 @@ async def sync_all_shopify_operations(
             await record_task_state(
                 db,
                 user_id=user_id,
+                workspace_id=workspace_id,
                 task="shopify_sync",
                 status="success",
             )
@@ -430,6 +441,7 @@ async def sync_all_shopify_operations(
             await record_task_state(
                 db,
                 user_id=user_id,
+                workspace_id=workspace_id,
                 task="shopify_sync",
                 status="failed",
                 error=str(exc),

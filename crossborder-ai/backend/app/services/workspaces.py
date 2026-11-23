@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
@@ -33,27 +34,65 @@ async def ensure_personal_workspace(
     if existing is not None:
         return existing
 
-    workspace = Workspace(
-        name=f"{_display_name(user)}的工作区",
-        slug=f"personal-{user.id.hex[:12]}",
-        type="personal",
-        owner_user_id=user.id,
-        status="active",
-        settings_json="{}",
-    )
-    db.add(workspace)
-    await db.flush()
+    try:
+        # 唯一约束是并发下的最终仲裁者，两个请求同时首次登录也只能创建一个工作区。
+        async with db.begin_nested():
+            workspace = Workspace(
+                name=f"{_display_name(user)}的工作区",
+                slug=f"personal-{user.id.hex[:12]}",
+                type="personal",
+                owner_user_id=user.id,
+                status="active",
+                settings_json="{}",
+            )
+            db.add(workspace)
+            await db.flush()
+            db.add(
+                WorkspaceMember(
+                    workspace_id=workspace.id,
+                    user_id=user.id,
+                    role="owner",
+                    status="active",
+                )
+            )
+            await db.flush()
+        return workspace
+    except IntegrityError:
+        existing = (
+            await db.execute(
+                select(Workspace).where(
+                    Workspace.owner_user_id == user.id,
+                    Workspace.type == "personal",
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            raise
 
-    db.add(
-        WorkspaceMember(
-            workspace_id=workspace.id,
-            user_id=user.id,
-            role="owner",
-            status="active",
+    membership = (
+        await db.execute(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == existing.id,
+                WorkspaceMember.user_id == user.id,
+            )
         )
-    )
-    await db.flush()
-    return workspace
+    ).scalar_one_or_none()
+    if membership is None:
+        try:
+            async with db.begin_nested():
+                db.add(
+                    WorkspaceMember(
+                        workspace_id=existing.id,
+                        user_id=user.id,
+                        role="owner",
+                        status="active",
+                    )
+                )
+                await db.flush()
+        except IntegrityError:
+            # 另一并发请求已补上成员关系，保留其唯一记录。
+            pass
+    return existing
 
 
 async def get_workspace_membership(

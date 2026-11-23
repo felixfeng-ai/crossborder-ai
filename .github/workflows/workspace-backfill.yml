@@ -11,6 +11,12 @@ on:
         options:
           - dry-run
           - apply
+          - verify
+      email:
+        description: "verify 模式下只读检查的账号邮箱"
+        required: false
+        default: "admin@veyaship.com"
+        type: string
 
 concurrency:
   group: workspace-backfill-production
@@ -29,11 +35,12 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           BACKFILL_MODE: ${{ inputs.mode }}
+          VERIFY_EMAIL: ${{ inputs.email }}
         with:
           host: ${{ secrets.VEYASHIP_HOST }}
           username: root
           key: ${{ secrets.VEYASHIP_SSH_KEY }}
-          envs: BACKFILL_MODE
+          envs: BACKFILL_MODE,VERIFY_EMAIL
           command_timeout: 25m
           script: |
             set -euo pipefail
@@ -44,6 +51,125 @@ jobs:
               echo "未找到生产后端虚拟环境"
               exit 1
             fi
+
+            if [ "$BACKFILL_MODE" = "verify" ]; then
+              cd "$BACKEND_DIR"
+              ./venv/bin/python - "$VERIFY_EMAIL" <<'PY'
+            import asyncio
+            import json
+            import sys
+
+            from sqlalchemy import func, select
+
+            from app.core.database import async_session_factory
+            from app.models.agent_task import AgentTask
+            from app.models.image_asset import ImageAsset
+            from app.models.listing_draft import ListingDraft
+            from app.models.product import Product
+            from app.models.shopify_channel import ShopifyChannel
+            from app.models.user import User
+            from app.models.video_generation_task import VideoGenerationTask
+            from app.models.workspace import Workspace
+
+
+            async def main(email: str) -> int:
+                async with async_session_factory() as db:
+                    user = (
+                        await db.execute(
+                            select(User).where(
+                                func.lower(User.email) == email.lower(),
+                                User.deleted_at.is_(None),
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if user is None:
+                        print(json.dumps({"status": "user_not_found"}))
+                        return 1
+                    workspace = (
+                        await db.execute(
+                            select(Workspace).where(
+                                Workspace.owner_user_id == user.id,
+                                Workspace.type == "personal",
+                                Workspace.status == "active",
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if workspace is None:
+                        print(json.dumps({"status": "personal_workspace_missing"}))
+                        return 1
+
+                    checks = {}
+                    models = {
+                        "products": (Product, Product.user_id),
+                        "image_assets": (ImageAsset, ImageAsset.user_id),
+                        "agent_tasks": (AgentTask, AgentTask.user_id),
+                        "video_generation_tasks": (
+                            VideoGenerationTask,
+                            VideoGenerationTask.user_id,
+                        ),
+                        "listing_drafts": (ListingDraft, ListingDraft.user_id),
+                    }
+                    for name, (model, owner_column) in models.items():
+                        restored = await db.scalar(
+                            select(func.count())
+                            .select_from(model)
+                            .where(
+                                owner_column == user.id,
+                                model.workspace_id == workspace.id,
+                            )
+                        )
+                        legacy = await db.scalar(
+                            select(func.count())
+                            .select_from(model)
+                            .where(
+                                owner_column == user.id,
+                                model.workspace_id.is_(None),
+                            )
+                        )
+                        checks[name] = {
+                            "restored": int(restored or 0),
+                            "legacy_hidden": int(legacy or 0),
+                        }
+
+                    restored_channels = await db.scalar(
+                        select(func.count())
+                        .select_from(ShopifyChannel)
+                        .where(
+                            ShopifyChannel.user_id == user.id,
+                            ShopifyChannel.workspace_id == workspace.id,
+                            ShopifyChannel.is_active.is_(True),
+                        )
+                    )
+                    legacy_channels = await db.scalar(
+                        select(func.count())
+                        .select_from(ShopifyChannel)
+                        .where(
+                            ShopifyChannel.user_id == user.id,
+                            ShopifyChannel.workspace_id.is_(None),
+                        )
+                    )
+                    payload = {
+                        "status": (
+                            "ok"
+                            if int(restored_channels or 0) > 0
+                            and int(legacy_channels or 0) == 0
+                            else "needs_attention"
+                        ),
+                        "shopify_channels": {
+                            "restored": int(restored_channels or 0),
+                            "legacy_hidden": int(legacy_channels or 0),
+                        },
+                        "records": checks,
+                    }
+                    print(json.dumps(payload, ensure_ascii=False, indent=2))
+                    return 0 if payload["status"] == "ok" else 2
+
+
+            raise SystemExit(asyncio.run(main(sys.argv[1])))
+            PY
+              exit $?
+            fi
+
             BACKUP_DIR=/var/backups/veyaship/workspace-backfill
             mkdir -p "$BACKUP_DIR"
 

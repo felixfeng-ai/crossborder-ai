@@ -175,19 +175,12 @@ print_step "启动服务"
 # 停止旧容器（保留数据卷）
 docker compose -f docker-compose.prod.yml down --remove-orphans
 
-# 构建并启动
+# 构建镜像并先启动数据库
 print_info "构建镜像..."
 docker compose -f docker-compose.prod.yml build
 
-print_info "启动所有服务..."
-docker compose -f docker-compose.prod.yml up -d
-
-print_ok "所有服务已启动"
-
-# ════════════════════════════════════════════════════════════════
-# 第六步 B：数据库迁移
-# ════════════════════════════════════════════════════════════════
-print_step "数据库初始化"
+print_info "启动数据库..."
+docker compose -f docker-compose.prod.yml up -d postgres qdrant
 
 # 等待数据库就绪
 print_info "等待 PostgreSQL 就绪..."
@@ -203,31 +196,13 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
-# 生产环境数据库策略：
-# ────────────────────────────────────────
-# 首次部署：
-#   app 启动时 init_db() 自动调用 create_all
-#   create_all 是幂等的（只创建不存在的表）
-#   所以不需要手动执行任何迁移
-#
-# 后续改模型后：
-#   1. 在开发环境生成迁移：alembic revision --autogenerate -m "描述"
-#   2. 生成的迁移文件提交到 git
-#   3. 部署时手动运行：docker compose exec backend alembic upgrade head
-#
-# alembic stamp head 的作用：
-#   标记当前数据库状态为"已是最新"
-#   这样未来 alembic upgrade head 时不会重复执行已存在的迁移
-print_info "检查数据库迁移状态..."
-if docker compose -f docker-compose.prod.yml exec -T backend \
-    alembic current 2>/dev/null | grep -q "003"; then
-    print_ok "数据库已初始化（版本 003）"
-else
-    print_info "首次部署，标记数据库为最新版本..."
-    docker compose -f docker-compose.prod.yml exec -T backend alembic stamp head 2>/dev/null && \
-        print_ok "数据库版本已标记" || \
-        print_info "提示：init_db() 已自动创建表结构，无需额外操作"
-fi
+# 迁移必须先于应用启动；失败时直接阻断发布，避免 schema 漂移。
+print_step "数据库迁移"
+docker compose -f docker-compose.prod.yml run --rm --no-deps backend alembic upgrade head
+
+print_info "启动所有服务..."
+docker compose -f docker-compose.prod.yml up -d
+print_ok "所有服务已启动"
 
 # ════════════════════════════════════════════════════════════════
 # 第七步：健康检查

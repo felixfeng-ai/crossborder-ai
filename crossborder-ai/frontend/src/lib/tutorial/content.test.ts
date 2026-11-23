@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  TUTORIAL_APP_MODE_POINTS,
   TUTORIAL_QUICK_LINKS,
   TUTORIAL_SHORTCUTS,
   TUTORIAL_STEPS,
@@ -36,5 +37,14 @@ describe('tutorial content', () => {
       keys: 'Alt + A',
       description: '在当前页面打开或关闭 AI 决策助手',
     })
+  })
+
+  it('covers the shared Web and App Agent workspace', () => {
+    expect(TUTORIAL_APP_MODE_POINTS).toHaveLength(3)
+    const assistantStep = TUTORIAL_STEPS.find((step) => step.id === 'assistant')
+    const text = assistantStep?.outcomes.join(' ') ?? ''
+    expect(text).toContain('同一账号')
+    expect(text).toContain('语音或拍照')
+    expect(text).toContain('当天待办')
   })
 })

@@ -33,6 +33,11 @@ export interface LandingCreditPack {
   trial_once?: boolean
 }
 
+export interface LandingAppModePoint {
+  title: string
+  desc: string
+}
+
 export const SUPPORTED_COPY_PLATFORMS = [
   'Amazon',
   'Shopify',
@@ -45,6 +50,21 @@ export const SUPPORTED_COPY_PLATFORMS = [
   'Walmart',
   'Shopee',
   'Lazada',
+]
+
+export const LANDING_APP_MODE_POINTS: LandingAppModePoint[] = [
+  {
+    title: '同一工作区',
+    desc: '账号、店铺、今日计划和 Agent 任务在 Web 与 App 间持续同步。',
+  },
+  {
+    title: '语音或拍照开始',
+    desc: '离开电脑后，用一句话、订单截图或商品照片继续下发工作。',
+  },
+  {
+    title: '今天的工作随身',
+    desc: '订单、客服、通知和待办由 Agent 接住，结果回到同一任务链路。',
+  },
 ]
 
 export const LANDING_FEATURES: LandingFeature[] = [

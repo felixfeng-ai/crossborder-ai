@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   FALLBACK_CREDIT_PACKS,
   FALLBACK_PLANS,
+  LANDING_APP_MODE_POINTS,
   LANDING_FEATURES,
   LANDING_STATS,
   LANDING_VIDEO_MODES,
@@ -31,6 +32,17 @@ describe('landing content facts', () => {
     expect(text).toContain('页面上下文')
     expect(text).toContain('IP')
     expect(text).toContain('政策')
+  })
+
+  it('说明 App 作为随身 Agent 工作模式', () => {
+    const text = LANDING_APP_MODE_POINTS
+      .map((item) => `${item.title} ${item.desc}`)
+      .join(' ')
+    expect(text).toContain('同一工作区')
+    expect(text).toContain('语音或拍照')
+    expect(text).toContain('订单')
+    expect(text).toContain('客服')
+    expect(text).toContain('Agent')
   })
 
   it('首页使用当前真实工具数量', () => {

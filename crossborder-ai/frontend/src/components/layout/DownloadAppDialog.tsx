@@ -15,20 +15,34 @@ const APP_POINTS = [
   '与 Web 工作台使用同一账号和店铺权限',
 ]
 
-export function DownloadAppDialog() {
+interface DownloadAppDialogProps {
+  triggerLabel?: string
+  triggerClassName?: string
+  triggerVariant?: 'default' | 'outline' | 'ghost'
+}
+
+export function DownloadAppDialog({
+  triggerLabel,
+  triggerClassName,
+  triggerVariant = 'outline',
+}: DownloadAppDialogProps) {
+  const resolvedLabel = triggerLabel ?? '下载 App'
+
   return (
     <Dialog.Root>
       <Dialog.Trigger asChild>
         <Button
           type="button"
-          variant="outline"
+          variant={triggerVariant}
           size="sm"
-          className="gap-1.5 px-2.5 text-foreground"
-          aria-label="下载手机 App"
-          title="下载手机 App"
+          className={triggerClassName ?? 'gap-1.5 px-2.5 text-foreground'}
+          aria-label={resolvedLabel}
+          title={resolvedLabel}
         >
           <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
-          <span className="hidden xl:inline">下载 App</span>
+          <span className={triggerLabel ? undefined : 'hidden xl:inline'}>
+            {resolvedLabel}
+          </span>
         </Button>
       </Dialog.Trigger>
 

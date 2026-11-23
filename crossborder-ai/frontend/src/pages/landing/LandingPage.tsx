@@ -5,8 +5,7 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   Sparkles, ShoppingBag, Bot, DollarSign, ShieldCheck, TrendingUp, ImageIcon,
   ArrowRight, CheckCircle2, Zap, MessageSquareQuote, Clapperboard, FolderOpen,
-  Play, Video,
-  BookOpenText, PanelRightOpen,
+  Play, Video, BookOpenText, PanelRightOpen, Smartphone, Mic, RefreshCw,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { BrandMark } from '@/components/brand/BrandMark'
@@ -14,11 +13,14 @@ import { AssistantMark } from '@/components/brand/AssistantMark'
 import PublicLegalFooter from '@/components/legal/PublicLegalFooter'
 import { LandingDecisionPreview } from '@/components/landing/LandingDecisionPreview'
 import { LandingPlatformStrip } from '@/components/landing/LandingPlatformStrip'
+import { DownloadAppDialog } from '@/components/layout/DownloadAppDialog'
 import { ThemeSwitcher } from '@/components/theme/ThemeSwitcher'
 import apiClient from '@/api/client'
+import { MOBILE_APP_BUILD_LABEL } from '@/lib/mobileDownload'
 import {
   FALLBACK_CREDIT_PACKS,
   FALLBACK_PLANS,
+  LANDING_APP_MODE_POINTS,
   LANDING_ASSISTANT_CONTEXT,
   LANDING_AGENT_EXAMPLES,
   LANDING_FEATURES,
@@ -51,6 +53,8 @@ const FLOW_ICONS: LucideIcon[] = [
   Clapperboard,
   ShoppingBag,
 ]
+
+const APP_MODE_ICONS: LucideIcon[] = [Smartphone, Mic, RefreshCw]
 
 export default function LandingPage() {
   const navigate = useNavigate()
@@ -123,9 +127,15 @@ export default function LandingPage() {
               <span className="sm:hidden">教程</span>
               <span className="hidden sm:inline">使用教程</span>
             </Button>
+            <div className="hidden sm:block">
+              <DownloadAppDialog />
+            </div>
             <ThemeSwitcher />
             {isLoggedIn ? (
-              <Button size="sm" onClick={() => navigate('/app/dashboard')}>进入应用</Button>
+              <Button size="sm" onClick={() => navigate('/app/dashboard')}>
+                <span className="sm:hidden">工作台</span>
+                <span className="hidden sm:inline">进入 Web 工作台</span>
+              </Button>
             ) : (
               <>
                 <Button variant="ghost" size="sm" onClick={() => navigate('/login')}>登录</Button>
@@ -146,7 +156,7 @@ export default function LandingPage() {
                 <span className="block text-[var(--factory-accent)]">让 AI 跑完整条运营链路</span>
               </h1>
               <p className="mt-6 max-w-xl text-base leading-7 text-muted-foreground">
-                输入商品链接、品类或买家评论，自动完成市场判断、利润测算、Listing、合规、图片视频与渠道发布。
+                输入商品链接、品类或买家评论，自动完成市场判断、利润测算、Listing、合规、图片视频与渠道发布。复杂配置留在 Web，手机 App 接住当天的订单、客服、内容与 Agent 待办。
               </p>
 
               <div className="mt-7 flex max-w-xl items-center gap-2 border border-[var(--factory-line-strong)] bg-[var(--factory-panel)] p-2">
@@ -195,6 +205,98 @@ export default function LandingPage() {
         </section>
 
         <LandingPlatformStrip />
+
+        {/* ── App 随身模式 ───────────────────────────────── */}
+        <section
+          className="deferred-section border-b border-border bg-[var(--factory-side)]"
+          data-landing-app-mode
+        >
+          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)] lg:items-center lg:py-14">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-medium text-[var(--factory-accent)]">
+                <Smartphone className="h-4 w-4" />
+                App 模式
+              </div>
+              <h2 className="mt-3 max-w-xl text-2xl font-semibold leading-tight sm:text-3xl">
+                复杂配置留在电脑，今天的工作跟着手机走
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+                VeyaShip App 是随身 Agent 工作入口。商品、内容和渠道配置在 Web 完成；离开电脑后，手机继续承接今日计划、订单、客服、通知和未完成的任务。
+              </p>
+
+              <div className="mt-6 grid gap-4 border-t border-border pt-5 sm:grid-cols-3">
+                {LANDING_APP_MODE_POINTS.map((point, index) => {
+                  const Icon = APP_MODE_ICONS[index]
+                  return (
+                    <div key={point.title} className="min-w-0">
+                      <Icon className="h-4 w-4 text-[var(--factory-accent)]" />
+                      <h3 className="mt-3 text-sm font-medium text-foreground">
+                        {point.title}
+                      </h3>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {point.desc}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <DownloadAppDialog
+                  triggerLabel="下载 Android 内测版"
+                  triggerClassName="h-10 gap-2 px-4"
+                  triggerVariant="default"
+                />
+                <Button
+                  variant="outline"
+                  onClick={openTutorial}
+                  className="h-10 gap-2"
+                >
+                  <BookOpenText className="h-3.5 w-3.5" />
+                  查看 App 工作方式
+                </Button>
+                <span className="text-[11px] text-muted-foreground">
+                  {MOBILE_APP_BUILD_LABEL}
+                </span>
+              </div>
+            </div>
+
+            <div className="border border-border bg-[var(--factory-panel)] p-5 sm:p-6">
+              <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
+                <div>
+                  <p className="text-sm font-medium">随身 Agent</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    今天的工作不会只留在电脑
+                  </p>
+                </div>
+                <span className="border border-[var(--factory-line-strong)] px-2 py-1 font-mono text-[10px] text-[var(--factory-accent)]">
+                  APP
+                </span>
+              </div>
+
+              <div>
+                {[
+                  ['今日计划', '接住未完成的工作，按优先级继续推进'],
+                  ['店铺消息', '先拟回复并等待确认，再回到同一任务'],
+                  ['语音指令', '拍照或说话开始处理，结果自动回传'],
+                ].map(([title, desc]) => (
+                  <div
+                    key={title}
+                    className="grid gap-1.5 border-b border-border py-4 last:border-b-0 sm:grid-cols-[88px_minmax(0,1fr)] sm:gap-3"
+                  >
+                    <p className="text-xs font-medium text-foreground">{title}</p>
+                    <p className="text-xs leading-5 text-muted-foreground">{desc}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex items-center gap-2 text-[11px] text-muted-foreground">
+                <Smartphone className="h-3.5 w-3.5 text-[var(--factory-success)]" />
+                Web 与 App 使用同一账号、工作区和店铺权限
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* ── 全局 AI 侧栏 ───────────────────────────────── */}
         <section className="deferred-section border-y border-border bg-[var(--factory-side)]">
@@ -538,7 +640,7 @@ export default function LandingPage() {
                   className="w-full mt-6"
                 >
                   {isLoggedIn
-                    ? plan.id === 'free' ? '进入应用' : `选择 ${plan.name}`
+                    ? plan.id === 'free' ? '进入 Web 工作台' : `选择 ${plan.name}`
                     : plan.id === 'free' ? '免费开始' : `选择 ${plan.name}`}
                 </Button>
               </div>
@@ -587,7 +689,7 @@ export default function LandingPage() {
             <h2 className="text-lg font-semibold text-foreground">开始免费使用</h2>
             <p className="text-sm text-muted-foreground">无需信用卡，无需配置 API Key</p>
             <Button size="lg" onClick={() => navigate(isLoggedIn ? '/app/dashboard' : '/register')} className="h-11 px-6 text-sm gap-1.5 shadow-sm">
-              {isLoggedIn ? '进入应用' : '创建免费账号'} <ArrowRight className="h-3.5 w-3.5" />
+              {isLoggedIn ? '进入 Web 工作台' : '创建免费账号'} <ArrowRight className="h-3.5 w-3.5" />
             </Button>
             <Button variant="outline" size="sm" onClick={openTutorial} className="gap-1.5">
               <BookOpenText className="h-3.5 w-3.5" />

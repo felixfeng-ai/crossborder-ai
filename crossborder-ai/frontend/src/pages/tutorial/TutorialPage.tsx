@@ -10,10 +10,14 @@ import {
   ListChecks,
   Package,
   Rocket,
+  Smartphone,
   Store,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DownloadAppDialog } from '@/components/layout/DownloadAppDialog'
+import { MOBILE_APP_BUILD_LABEL } from '@/lib/mobileDownload'
 import {
+  TUTORIAL_APP_MODE_POINTS,
   TUTORIAL_QUICK_LINKS,
   TUTORIAL_SHORTCUTS,
   TUTORIAL_STEPS,
@@ -42,12 +46,12 @@ export default function TutorialPage() {
       <header className="border-b border-border pb-8">
         <div className="flex items-center gap-2 text-xs font-medium text-[var(--factory-accent)]">
           <BookOpenText className="h-4 w-4" />
-          Getting started · 6 steps
+          Web + App / 6 steps
         </div>
         <h1 className="page-title mt-3">VeyaShip 使用教程</h1>
         <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
           从商品事实开始，依次完成 AI 判断、Listing 与合规、图片视频、素材沉淀和渠道发布。
-          右下角“问 AI”会在任何页面跟随当前任务提供帮助。
+          复杂配置在 Web 完成，离开电脑后由 App 接住今日计划、语音指令和未完成任务。
         </p>
         <div className="mt-6 flex flex-wrap gap-2">
           <Button onClick={() => navigate('/app/products')} className="h-10 gap-2">
@@ -62,8 +66,55 @@ export default function TutorialPage() {
             <Bot className="h-4 w-4" />
             打开 AI 决策助手
           </Button>
+          <DownloadAppDialog
+            triggerLabel="下载 Android 内测版"
+            triggerClassName="h-10 gap-2 px-4"
+          />
         </div>
       </header>
+
+      <section
+        className="grid gap-6 border border-border bg-[var(--factory-panel)] p-5 md:grid-cols-[minmax(0,1fr)_240px] md:p-6"
+        aria-labelledby="tutorial-app-mode"
+      >
+        <div>
+          <div className="flex items-center gap-2 text-xs font-medium text-[var(--factory-accent)]">
+            <Smartphone className="h-4 w-4" />
+            App 模式
+          </div>
+          <h2 id="tutorial-app-mode" className="mt-2 text-lg font-semibold">
+            把今天的 Agent 工作带离电脑
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+            App 不是 Web 后台的缩小版。手机聚焦当天要完成的动作；需要批量导入、复杂配置或查看完整表格时，再回到 Web 工作台。
+          </p>
+          <ul className="mt-5 grid gap-3 border-t border-border pt-4 sm:grid-cols-3">
+            {TUTORIAL_APP_MODE_POINTS.map((point) => (
+              <li key={point} className="flex items-start gap-2 text-xs leading-5 text-muted-foreground">
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--factory-mint)]" />
+                <span>{point}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="flex flex-col justify-between gap-5 border-t border-border pt-5 md:border-l md:border-t-0 md:pl-6 md:pt-0">
+          <div>
+            <p className="text-[11px] font-medium text-muted-foreground">当前内测包</p>
+            <p className="mt-1 text-sm font-medium text-foreground">
+              {MOBILE_APP_BUILD_LABEL}
+            </p>
+            <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+              Android 手机扫码或直接下载安装；iOS 版本仍在准备中。
+            </p>
+          </div>
+          <DownloadAppDialog
+            triggerLabel="打开下载二维码"
+            triggerClassName="h-11 w-full gap-2 px-4"
+            triggerVariant="default"
+          />
+        </div>
+      </section>
 
       <section aria-labelledby="tutorial-quick-start">
         <div className="mb-3 flex items-end justify-between gap-4">

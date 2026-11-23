@@ -27,6 +27,12 @@ export interface TutorialQuickLink {
   description: string
 }
 
+export const TUTORIAL_APP_MODE_POINTS = [
+  'Web 与 App 共用账号、工作区、店铺权限和 Agent 任务进度',
+  '手机首页承接今日计划、订单、客服、通知和待办',
+  '语音或拍照下发指令，结果回到同一工作区继续复核',
+] as const
+
 export const TUTORIAL_QUICK_LINKS: TutorialQuickLink[] = [
   {
     label: '录入第一个商品',
@@ -73,14 +79,17 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'assistant',
     step: '02',
-    title: '在任何工作台随时问 AI',
+    title: '在任何工作台问 AI，手机继续推进',
     summary:
-      '右下角“问 AI”会在当前页面打开 AI 决策助手，不需要离开图片台或视频台。侧栏会带入当前页面、素材和视频模式。',
+      'Web 的“问 AI”会带入当前页面上下文。离开电脑后，手机 App 会接住今日计划、语音指令和未完成任务，结果仍回到同一工作区。',
     outcomes: [
       '桌面快捷键 Alt + A 可以打开或关闭侧栏',
       '图片工作台会带入当前素材和平台预设',
       '视频工作台会带入营销成片、专业分镜或商品图生视频模式',
       '关闭侧栏不会取消正在执行的 Agent 任务，重新打开可继续查看',
+      'App 与 Web 共用同一账号、工作区、店铺权限和 Agent 任务进度',
+      '离开电脑后可以用语音或拍照下发指令，结果回到同一工作区',
+      '复杂导入、渠道配置和批量处理仍在 Web 完成，手机聚焦当天待办',
     ],
     actions: [
       {

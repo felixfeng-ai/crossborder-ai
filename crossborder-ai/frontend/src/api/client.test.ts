@@ -124,8 +124,8 @@ describe('authentication refresh', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const responses = await Promise.all([
-      apiClient.get<{ ok: boolean }>('/protected/a'),
-      apiClient.get<{ ok: boolean }>('/protected/b'),
+      apiClient.get<{ ok: boolean }>('/billing/wallet'),
+      apiClient.get<{ ok: boolean }>('/billing/wallet'),
     ])
 
     expect(responses.map((response) => response.data.ok)).toEqual([true, true])
@@ -163,7 +163,7 @@ describe('authentication refresh', () => {
       )
     }
 
-    await expect(apiClient.get('/protected')).rejects.toBeTruthy()
+    await expect(apiClient.get('/billing/wallet')).rejects.toBeTruthy()
 
     const [, options] = fetchMock.mock.calls[0] as unknown as [
       string,
@@ -199,7 +199,7 @@ describe('authentication refresh', () => {
     const fetchMock = vi.fn(async () => refreshResponse)
     vi.stubGlobal('fetch', fetchMock)
 
-    const request = apiClient.get('/protected')
+    const request = apiClient.get('/billing/wallet')
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     clearStoredAuthTokens()
     resolveRefresh?.({

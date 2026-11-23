@@ -98,8 +98,7 @@ jobs:
               | tee "$DRY_RUN_FILE"
 
             if grep -Eq '"unresolved": [1-9][0-9]*' "$DRY_RUN_FILE"; then
-              echo "dry-run 存在无法归属的数据，禁止执行 apply。"
-              exit 2
+              echo "存在无法确定归属的历史记录；apply 会保留这些记录不做修改。"
             fi
 
             if [ "$BACKFILL_MODE" != "apply" ]; then
@@ -115,9 +114,13 @@ jobs:
             ./venv/bin/python -m scripts.backfill_workspace_scope --table all \
               | tee "$POST_CHECK_FILE"
 
-            if grep -Eq '"would_update": [1-9][0-9]*|"unresolved": [1-9][0-9]*' "$POST_CHECK_FILE"; then
-              echo "回填后仍有待处理记录，请检查恢复日志。"
+            if grep -Eq '"would_update": [1-9][0-9]*' "$POST_CHECK_FILE"; then
+              echo "回填后仍有可更新记录，请检查恢复日志。"
               exit 3
             fi
 
-            echo "工作区数据回填完成。"
+            if grep -Eq '"unresolved": [1-9][0-9]*' "$POST_CHECK_FILE"; then
+              echo "工作区数据回填完成；无明确所有者的历史记录已保留。"
+            else
+              echo "工作区数据回填完成。"
+            fi

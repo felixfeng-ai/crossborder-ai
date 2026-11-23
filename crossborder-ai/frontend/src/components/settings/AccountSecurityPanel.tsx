@@ -63,6 +63,7 @@ export function AccountSecurityPanel() {
   const fileInput = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState('')
   const [avatarError, setAvatarError] = useState('')
+  const [securityError, setSecurityError] = useState('')
   const [confirmLogoutAll, setConfirmLogoutAll] = useState(false)
   const displayUser =
     user ??
@@ -101,8 +102,14 @@ export function AccountSecurityPanel() {
   }
 
   const handleLogoutAll = async () => {
-    await logoutAll.mutateAsync()
-    logout()
+    setSecurityError('')
+    try {
+      await logoutAll.mutateAsync()
+      logout()
+    } catch {
+      setSecurityError('没有退出全部设备，请检查网络后重试')
+      setConfirmLogoutAll(false)
+    }
   }
 
   return (
@@ -218,6 +225,7 @@ export function AccountSecurityPanel() {
                 !canControl ||
                 control.isLoading ||
                 control.isError ||
+                setPaused.isError ||
                 setPaused.isPending
               }
               onClick={() =>
@@ -236,7 +244,7 @@ export function AccountSecurityPanel() {
               />
             </button>
           </div>
-          {control.isError && (
+          {(control.isError || setPaused.isError) && (
             <p className="mt-3 text-xs text-[var(--factory-coral)]">
               Agent 值守状态暂时无法同步，当前不会允许修改。
             </p>
@@ -312,6 +320,11 @@ export function AccountSecurityPanel() {
             <LogOut className="mr-2 h-4 w-4" />
             退出全部设备
           </Button>
+          {securityError && (
+            <p className="text-xs text-[var(--factory-coral)]">
+              {securityError}
+            </p>
+          )}
         </CardContent>
       </Card>
 

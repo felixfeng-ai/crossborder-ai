@@ -9,6 +9,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -45,6 +46,7 @@ export default function ActivityPage() {
   const query = useNotificationsQuery(workspaceId)
   const markAll = useMarkAllNotificationsReadMutation(workspaceId)
   const markOne = useMarkNotificationReadMutation(workspaceId)
+  const [actionError, setActionError] = useState('')
   const notifications = query.data ?? []
   const unreadCount = unreadNotificationCount(notifications)
   const groups = groupNotificationsByDay(notifications)
@@ -63,6 +65,15 @@ export default function ActivityPage() {
       return
     }
     navigate(href)
+  }
+
+  const markAllRead = async () => {
+    setActionError('')
+    try {
+      await markAll.mutateAsync()
+    } catch {
+      setActionError('没有全部标记为已读，请稍后重试')
+    }
   }
 
   if (query.isLoading && !query.data) {
@@ -109,7 +120,7 @@ export default function ActivityPage() {
           <Button
             variant="outline"
             disabled={!unreadCount || markAll.isPending}
-            onClick={() => void markAll.mutateAsync()}
+            onClick={() => void markAllRead()}
           >
             {markAll.isPending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -131,6 +142,12 @@ export default function ActivityPage() {
           </Button>
         </div>
       </header>
+
+      {actionError && (
+        <p className="border border-[color:rgba(217,139,112,0.3)] bg-[color:rgba(217,139,112,0.08)] px-4 py-3 text-sm text-[var(--factory-coral)]">
+          {actionError}
+        </p>
+      )}
 
       {notifications.length === 0 ? (
         <div className="border border-border bg-[var(--factory-panel)] py-20 text-center">

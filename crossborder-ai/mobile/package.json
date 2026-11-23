@@ -57,6 +57,7 @@
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
     "lint": "eslint .",
+    "check:api": "node scripts/check-production-api.mjs",
     "legal:sync": "node ../scripts/generate-mobile-legal-content.mjs"
   },
   "private": true

@@ -137,8 +137,9 @@ export default function ActivityScreen() {
           onBack={() => router.back()}
         />
         <QueryErrorState
+          error={notifications.error}
           title="通知暂时无法同步"
-          description="请恢复网络后重试，当前不会把请求失败显示成暂无通知。"
+          description="当前不会把请求失败显示成暂无通知。"
           onRetry={() => void notifications.refetch()}
         />
       </SafeAreaView>

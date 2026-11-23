@@ -237,8 +237,9 @@ export default function WorkItemScreen() {
           onBack={() => router.back()}
         />
         <QueryErrorState
+          error={detail.error}
           title="任务暂时无法同步"
-          description="当前没有把网络失败当成任务失效，请恢复网络后重试。"
+          description="当前没有把请求失败当成任务失效。"
           onRetry={() => void detail.refetch()}
         />
       </SafeAreaView>

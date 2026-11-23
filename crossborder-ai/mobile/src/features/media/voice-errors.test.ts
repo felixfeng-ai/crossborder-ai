@@ -22,4 +22,9 @@ describe("voice failure recovery", () => {
     expect(describeVoiceFailure(new TypeError("Network request failed")))
       .toContain("检查网络");
   });
+
+  it("不把未部署的语音接口误报成用户网络问题", () => {
+    expect(describeVoiceFailure({ status: 404, message: "Not Found" }))
+      .toContain("版本不一致");
+  });
 });

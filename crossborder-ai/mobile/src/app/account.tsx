@@ -1,8 +1,11 @@
-import { router, type Href } from "expo-router";
 import Constants from "expo-constants";
+import { useQueryClient } from "@tanstack/react-query";
+import * as ImagePicker from "expo-image-picker";
+import { router, type Href } from "expo-router";
 import {
   Building2,
   BellRing,
+  Camera,
   Check,
   ChevronRight,
   LogOut,
@@ -15,6 +18,7 @@ import {
 } from "lucide-react-native";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -24,7 +28,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { PREVIEW_MODE } from "@/api/client";
+import { PREVIEW_MODE, uploadUserAvatar } from "@/api/client";
 import {
   useAgentControlQuery,
   useBootstrapQuery,
@@ -37,7 +41,9 @@ import {
   workspaceRoleLabel,
   workspaceTypeLabel,
 } from "@/features/account/account-labels";
+import { clearUserRuntimeState } from "@/features/auth/session-scope";
 import { LEGAL_CENTER_PATH } from "@/features/legal/documents";
+import { useAgentComposerStore } from "@/stores/agentComposer";
 import { useAuthStore } from "@/stores/auth";
 import { useWorkspaceStore } from "@/stores/workspace";
 
@@ -46,6 +52,7 @@ function RowIcon({ children }: { children: React.ReactNode }) {
 }
 
 export default function AccountScreen() {
+  const queryClient = useQueryClient();
   const token = useAuthStore((state) => state.token);
   const logout = useAuthStore((state) => state.logout);
   const logoutAll = useAuthStore((state) => state.logoutAll);
@@ -53,11 +60,14 @@ export default function AccountScreen() {
     (state) => state.activeWorkspaceId,
   );
   const clearWorkspace = useWorkspaceStore((state) => state.clear);
+  const resetComposer = useAgentComposerStore((state) => state.reset);
   const setActiveWorkspace = useWorkspaceStore(
     (state) => state.setActiveWorkspace,
   );
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [switchAccountOpen, setSwitchAccountOpen] = useState(false);
+  const [avatarPending, setAvatarPending] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
   const bootstrap = useBootstrapQuery(PREVIEW_MODE ? "preview" : token);
   const activeWorkspace =
     bootstrap.data?.workspaces.find(
@@ -74,10 +84,22 @@ export default function AccountScreen() {
   const canControlAgent =
     activeWorkspace?.role === "owner" ||
     activeWorkspace?.role === "admin";
+  const avatarHeaders =
+    token && !PREVIEW_MODE
+      ? { Authorization: `Bearer ${token}` }
+      : undefined;
+
+  const clearRuntimeState = () =>
+    clearUserRuntimeState({
+      cancelQueries: () => queryClient.cancelQueries(),
+      clearQueries: () => queryClient.clear(),
+      clearWorkspace,
+      resetComposer,
+    });
 
   const signOut = async () => {
     await logout();
-    await clearWorkspace();
+    await clearRuntimeState();
     router.replace("/sign-in");
   };
   const confirmSwitchAccount = () => {
@@ -85,8 +107,51 @@ export default function AccountScreen() {
   };
   const signOutAll = async () => {
     await logoutAll();
-    await clearWorkspace();
+    await clearRuntimeState();
     router.replace("/sign-in");
+  };
+
+  const chooseAvatar = async () => {
+    if (PREVIEW_MODE) {
+      setAvatarError("预览模式不会上传头像，请在内测包中操作。");
+      return;
+    }
+    if (!token || avatarPending) return;
+    setAvatarPending(true);
+    setAvatarError("");
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setAvatarError("需要相册权限才能选择头像");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      const asset = result.assets[0];
+      await uploadUserAvatar(token, {
+        uri: asset.uri,
+        name: asset.fileName || "avatar.jpg",
+        type: asset.mimeType || "image/jpeg",
+        file: asset.file,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["mobile", "bootstrap", token],
+      });
+    } catch (reason) {
+      setAvatarError(
+        reason instanceof Error
+          ? reason.message
+          : "头像上传失败，请稍后重试",
+      );
+    } finally {
+      setAvatarPending(false);
+    }
   };
 
   return (
@@ -104,7 +169,29 @@ export default function AccountScreen() {
       >
         <View style={styles.card}>
           <View style={styles.profile}>
-            <AgentAvatar size={44} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="更换头像"
+              disabled={avatarPending}
+              onPress={() => void chooseAvatar()}
+              style={({ pressed }) => [
+                styles.avatarButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <AgentAvatar
+                size={56}
+                uri={bootstrap.data?.avatar_url}
+                headers={avatarHeaders}
+              />
+              <View style={styles.avatarBadge}>
+                {avatarPending ? (
+                  <ActivityIndicator color={colors.white} size="small" />
+                ) : (
+                  <Camera color={colors.white} size={12} strokeWidth={2} />
+                )}
+              </View>
+            </Pressable>
             <View style={styles.profileCopy}>
               <Text style={styles.name}>{bootstrap.data?.display_name}</Text>
               <Text style={styles.workspace} numberOfLines={1}>
@@ -125,6 +212,11 @@ export default function AccountScreen() {
               <Text style={styles.switchAccountText}>切换账号</Text>
             </Pressable>
           </View>
+          {!!avatarError && (
+            <Text accessibilityLiveRegion="polite" style={styles.avatarError}>
+              {avatarError}
+            </Text>
+          )}
         </View>
 
         <View style={styles.card}>
@@ -490,6 +582,31 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 4,
+  },
+  avatarButton: {
+    width: 56,
+    height: 56,
+  },
+  avatarBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: colors.card,
+    borderRadius: 11,
+    backgroundColor: colors.ink,
+  },
+  avatarError: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    color: colors.danger,
+    fontFamily: fonts.medium,
+    fontSize: typeScale.caption,
+    lineHeight: 18,
   },
   switchAccount: {
     minHeight: 44,

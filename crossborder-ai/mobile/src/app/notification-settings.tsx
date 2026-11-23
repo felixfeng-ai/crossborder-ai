@@ -171,6 +171,7 @@ export default function NotificationSettingsScreen() {
           onBack={() => router.back()}
         />
         <QueryErrorState
+          error={preferences.error}
           title="通知偏好暂时无法同步"
           onRetry={() => void preferences.refetch()}
         />

@@ -10,8 +10,11 @@ export function describeVoiceFailure(reason: unknown) {
       : {};
   const message = String(failure.message ?? "");
 
-  if (failure.status === 401) {
+  if (failure.status === 401 || failure.status === 403) {
     return "登录状态已过期，请重新登录后再试。";
+  }
+  if (failure.status === 404) {
+    return "语音服务与当前 App 版本不一致，请更新服务后重试。";
   }
   if (failure.status === 400) {
     return "录音格式无法识别，请重新录制一段语音。";

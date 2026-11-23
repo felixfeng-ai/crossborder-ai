@@ -8,6 +8,7 @@ module.exports = defineConfig([
     ignores: [
       'node_modules/*',
       '.expo/*',
+      '.tmp/*',
       '.chrome-preview/*',
       'artifacts/*',
       'dist/*',

@@ -296,8 +296,9 @@ export default function AssetsScreen() {
       <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
         <ModalScreenHeader title="素材库" onBack={() => router.back()} />
         <QueryErrorState
+          error={assets.error}
           title="素材库暂时无法同步"
-          description="请恢复网络后重试，当前不会把请求失败显示成空素材库。"
+          description="当前不会把请求失败显示成空素材库。"
           onRetry={() => void assets.refetch()}
         />
       </SafeAreaView>

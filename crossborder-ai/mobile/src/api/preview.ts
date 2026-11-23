@@ -74,6 +74,7 @@ export function getPreviewBootstrap(): BootstrapResponse {
   return {
     user_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     display_name: "Felix",
+    avatar_url: null,
     contract_version: "1",
     workspaces: [
       {

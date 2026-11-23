@@ -5,9 +5,21 @@ export type WorkspaceSummary = {
   role: "owner" | "admin" | "operator" | "viewer";
 };
 
+export type UserProfile = {
+  id: string;
+  email: string;
+  username: string | null;
+  credits: number;
+  plan: string;
+  created_at: string;
+  avatar_url: string | null;
+  is_admin: boolean;
+};
+
 export type BootstrapResponse = {
   user_id: string;
   display_name: string;
+  avatar_url: string | null;
   workspaces: WorkspaceSummary[];
   contract_version: string;
 };

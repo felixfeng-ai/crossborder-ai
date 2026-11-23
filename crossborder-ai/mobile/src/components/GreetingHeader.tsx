@@ -6,18 +6,22 @@ import { colors, fonts } from "@/design/tokens";
 
 type Props = {
   displayName: string;
+  avatarUri?: string | null;
+  avatarHeaders?: Record<string, string>;
   agentState?: string;
   onOpenNotifications: () => void;
 };
 
 export function GreetingHeader({
   displayName,
+  avatarUri,
+  avatarHeaders,
   agentState = "小 Veya 在线",
   onOpenNotifications,
 }: Props) {
   return (
     <View style={styles.row}>
-      <AgentAvatar />
+      <AgentAvatar uri={avatarUri} headers={avatarHeaders} />
       <View style={styles.copy}>
         <Text style={styles.title} numberOfLines={1}>
           早上好，{displayName}

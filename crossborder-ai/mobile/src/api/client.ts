@@ -19,6 +19,7 @@ import type {
   TimelineResponse,
   VoiceTranscriptionResponse,
   WorkItemDetail,
+  UserProfile,
 } from "./types";
 
 const configuredUrl = String(
@@ -133,6 +134,33 @@ export async function register(
 export async function checkUsernameAvailability(username: string) {
   return request<{ username: string; available: boolean }>(
     `/api/v1/auth/username-availability?username=${encodeURIComponent(username)}`,
+  );
+}
+
+export async function uploadUserAvatar(
+  token: string,
+  source: UploadImageSource,
+) {
+  const form = new FormData();
+  if (source.file) {
+    form.append("file", source.file as Blob);
+  } else {
+    form.append(
+      "file",
+      {
+        uri: source.uri,
+        name: source.name,
+        type: source.type,
+      } as unknown as Blob,
+    );
+  }
+  return request<UserProfile>(
+    "/api/v1/users/me/avatar",
+    {
+      method: "PUT",
+      body: form,
+    },
+    token,
   );
 }
 

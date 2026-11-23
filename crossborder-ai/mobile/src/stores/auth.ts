@@ -77,24 +77,25 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   logout: async () => {
     const token = useAuthStore.getState().token;
+    // 先清本地凭据，避免服务端登出请求超时后继续展示旧账号数据。
+    await Promise.all([
+      deleteSecureItem(ACCESS_TOKEN_KEY),
+      deleteSecureItem(REFRESH_TOKEN_KEY),
+    ]);
+    set({ token: null, refreshToken: null, hydrated: true });
     if (token) {
       await logoutSession(token).catch(() => undefined);
     }
-    await Promise.all([
-      deleteSecureItem(ACCESS_TOKEN_KEY),
-      deleteSecureItem(REFRESH_TOKEN_KEY),
-    ]);
-    set({ token: null, refreshToken: null, hydrated: true });
   },
   logoutAll: async () => {
     const token = useAuthStore.getState().token;
-    if (token) {
-      await logoutAllSessions(token).catch(() => undefined);
-    }
     await Promise.all([
       deleteSecureItem(ACCESS_TOKEN_KEY),
       deleteSecureItem(REFRESH_TOKEN_KEY),
     ]);
     set({ token: null, refreshToken: null, hydrated: true });
+    if (token) {
+      await logoutAllSessions(token).catch(() => undefined);
+    }
   },
 }));

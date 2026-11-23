@@ -1,5 +1,6 @@
 import { Image } from "expo-image";
 import { router, type Href } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   ChevronRight,
@@ -52,7 +53,10 @@ import {
   type LegalDocumentId,
   validateRegistrationConsent,
 } from "@/features/legal/documents";
+import { clearUserRuntimeState } from "@/features/auth/session-scope";
+import { useAgentComposerStore } from "@/stores/agentComposer";
 import { useAuthStore } from "@/stores/auth";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 type Mode = "login" | "register";
 
@@ -62,7 +66,10 @@ const webInputStyle =
     : undefined;
 
 export default function SignInScreen() {
+  const queryClient = useQueryClient();
   const setSession = useAuthStore((state) => state.setSession);
+  const clearWorkspace = useWorkspaceStore((state) => state.clear);
+  const resetComposer = useAgentComposerStore((state) => state.reset);
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
   const [usernameError, setUsernameError] = useState("");
@@ -201,6 +208,19 @@ export default function SignInScreen() {
           ? reason.message
           : "无法连接服务，请检查网络后重试",
       );
+      setPending(false);
+      return;
+    }
+
+    try {
+      await clearUserRuntimeState({
+        cancelQueries: () => queryClient.cancelQueries(),
+        clearQueries: () => queryClient.clear(),
+        clearWorkspace,
+        resetComposer,
+      });
+    } catch {
+      setError("无法清理上一个账号的本地数据，请重启应用后重试");
       setPending(false);
       return;
     }

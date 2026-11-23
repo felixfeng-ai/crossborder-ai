@@ -56,6 +56,7 @@ import {
 } from "@/design/tokens";
 import { useAuthStore } from "@/stores/auth";
 import { useAgentComposerStore } from "@/stores/agentComposer";
+import { describeQueryError } from "@/features/query-state/query-error";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 /**
@@ -178,8 +179,9 @@ export default function HomeScreen() {
           workItemId: turn.created_work_item_ids[0] ?? "",
         },
       });
-    } catch {
-      Alert.alert("发送失败", "网络恢复后重试，不会重复创建任务。");
+    } catch (reason) {
+      const copy = describeQueryError(reason);
+      Alert.alert(copy.title, `${copy.description} 不会重复创建任务。`);
     }
   };
 
@@ -210,8 +212,9 @@ export default function HomeScreen() {
           workItemId: turn.created_work_item_ids[0] ?? "",
         },
       });
-    } catch {
-      Alert.alert("图片发送失败", "请检查网络后重试，已上传素材不会重复扣费。");
+    } catch (reason) {
+      const copy = describeQueryError(reason);
+      Alert.alert(copy.title, `${copy.description} 已上传素材不会重复扣费。`);
     } finally {
       setUploadingImage(false);
     }
@@ -307,6 +310,12 @@ export default function HomeScreen() {
             displayName={formatGreetingName(
               bootstrap.data?.display_name ?? "Felix",
             )}
+            avatarUri={bootstrap.data?.avatar_url}
+            avatarHeaders={
+              effectiveToken && !PREVIEW_MODE
+                ? { Authorization: `Bearer ${effectiveToken}` }
+                : undefined
+            }
             onOpenNotifications={() => router.push("/activity")}
           />
         </View>
@@ -321,9 +330,12 @@ export default function HomeScreen() {
         >
           {timeline.isError && (
             <View style={styles.notice}>
-              <Text style={styles.noticeTitle}>暂时无法同步</Text>
+              <Text style={styles.noticeTitle}>
+                {describeQueryError(timeline.error).title}
+              </Text>
               <Text style={styles.noticeText}>
-                已保留最后一次结果，恢复网络后会继续同步。
+                {describeQueryError(timeline.error).description}
+                已保留最后一次结果。
               </Text>
             </View>
           )}
@@ -531,7 +543,7 @@ export default function HomeScreen() {
           </Pressable>
           {commerceStores.isError && (
             <Text style={styles.storeError}>
-              店铺列表暂时无法同步，请稍后重试。
+              {describeQueryError(commerceStores.error).description}
             </Text>
           )}
         </SafeAreaView>

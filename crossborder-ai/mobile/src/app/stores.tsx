@@ -144,6 +144,7 @@ export default function StoresScreen() {
         </View>
       ) : stores.isError ? (
         <QueryErrorState
+          error={stores.error}
           title="店铺暂时无法同步"
           description="请检查网络后重试，当前不会把失败显示成没有店铺。"
           onRetry={() => void stores.refetch()}

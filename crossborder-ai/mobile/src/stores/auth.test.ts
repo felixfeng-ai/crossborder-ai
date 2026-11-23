@@ -112,4 +112,26 @@ describe("mobile auth session store", () => {
     expect(useAuthStore.getState().token).toBeNull();
     expect(useAuthStore.getState().refreshToken).toBeNull();
   });
+
+  it("clears the local session before a slow logout request finishes", async () => {
+    await useAuthStore.getState().setSession(firstTokens);
+    let finishLogout: (() => void) | undefined;
+    authApi.logoutSession.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishLogout = resolve;
+        }),
+    );
+
+    const pending = useAuthStore.getState().logout();
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().token).toBeNull();
+    });
+    expect(secure.deleteSecureItem).toHaveBeenCalledWith(
+      "veyaship.mobile.access_token",
+    );
+
+    finishLogout?.();
+    await pending;
+  });
 });

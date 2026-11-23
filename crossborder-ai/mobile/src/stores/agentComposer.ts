@@ -9,6 +9,7 @@ type AgentComposerState = {
   draft: ComposerDraft | null;
   requestDraft: (text: string) => void;
   consumeDraft: (id: number) => void;
+  reset: () => void;
 };
 
 let draftSequence = 0;
@@ -21,4 +22,5 @@ export const useAgentComposerStore = create<AgentComposerState>((set) => ({
   },
   consumeDraft: (id) =>
     set((state) => (state.draft?.id === id ? { draft: null } : state)),
+  reset: () => set({ draft: null }),
 }));

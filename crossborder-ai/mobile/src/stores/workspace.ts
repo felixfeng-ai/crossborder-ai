@@ -70,10 +70,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     }
   },
   clear: async () => {
+    // 内存状态必须先失效，存储删除失败时也不能继续使用旧账号工作区。
+    set({ activeWorkspaceId: null, activeChannel: null });
     await Promise.all([
       deleteSecureItem(WORKSPACE_KEY),
       deleteSecureItem(CHANNEL_KEY),
     ]);
-    set({ activeWorkspaceId: null, activeChannel: null });
   },
 }));

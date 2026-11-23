@@ -1,26 +1,51 @@
-import { RefreshCw, WifiOff } from "lucide-react-native";
+import {
+  KeyRound,
+  PlugZap,
+  RefreshCw,
+  ServerCrash,
+  WifiOff,
+} from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, fonts, radii, type as typeScale } from "@/design/tokens";
+import {
+  describeQueryError,
+  type QueryErrorKind,
+} from "@/features/query-state/query-error";
 
 type Props = {
+  error?: unknown;
   title?: string;
   description?: string;
   onRetry: () => void;
 };
 
+const errorIcons = {
+  offline: WifiOff,
+  auth: KeyRound,
+  contract: PlugZap,
+  server: ServerCrash,
+  request: ServerCrash,
+  unknown: WifiOff,
+} as const;
+
 export function QueryErrorState({
+  error,
   title = "暂时无法同步",
   description = "请检查网络后重试，当前页面不会用空数据替代真实状态。",
   onRetry,
 }: Props) {
+  const copy = error ? describeQueryError(error) : null;
+  const kind: QueryErrorKind = copy?.kind ?? "unknown";
+  const Icon = errorIcons[kind];
+
   return (
     <View style={styles.container}>
       <View style={styles.icon}>
-        <WifiOff color={colors.mutedStrong} size={22} strokeWidth={1.7} />
+        <Icon color={colors.mutedStrong} size={22} strokeWidth={1.7} />
       </View>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.description}>{description}</Text>
+      <Text style={styles.title}>{copy?.title ?? title}</Text>
+      <Text style={styles.description}>{copy?.description ?? description}</Text>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="重新加载"

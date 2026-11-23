@@ -86,8 +86,9 @@ export default function AgentTurnScreen() {
       <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
         <ModalScreenHeader title="执行结果" onBack={() => router.back()} />
         <QueryErrorState
+          error={detail.error}
           title="执行结果暂时无法同步"
-          description="请恢复网络后重试，当前不会把请求失败当成 Agent 仍在处理。"
+          description="当前不会把请求失败当成 Agent 仍在处理。"
           onRetry={() => void detail.refetch()}
         />
       </SafeAreaView>

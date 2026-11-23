@@ -1,20 +1,20 @@
 export const SIGN_IN_COLORS = {
   background: "#F7F8F9",
   ink: "#111213",
-  secondary: "#7A8590",
-  placeholder: "#9AA4AE",
-  border: "#E6E9EC",
+  secondary: "#66717C",
+  placeholder: "#68707C",
+  border: "#DDE2E6",
   focusedBorder: "#111213",
   white: "#FFFFFF",
   logo: "#0B0C0E",
-  createAccountMuted: "#8A939D",
+  createAccountMuted: "#66717C",
   // 主按钮反相纯黑卡：与工作台黑卡同一种材质，不再使用渐变。
   button: "#111315",
 } as const;
 
 export const SIGN_IN_TYPE = {
   wordmark: 44,
-  tagline: 15,
+  tagline: 14,
   input: 15,
   button: 17,
   legal: 12,

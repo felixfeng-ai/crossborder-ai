@@ -233,7 +233,7 @@ export default function SignInScreen() {
             />
 
             <View style={styles.wordmark}>
-              <VeyaShipWordmark width={168} />
+              <VeyaShipWordmark width={160} />
             </View>
 
             <Text style={styles.tagline}>
@@ -560,9 +560,9 @@ const styles = StyleSheet.create({
     color: SIGN_IN_COLORS.secondary,
     fontFamily: fonts.regular,
     fontSize: SIGN_IN_TYPE.tagline,
-    fontWeight: "400",
-    letterSpacing: 0.3,
-    lineHeight: 21,
+    fontWeight: "500",
+    letterSpacing: 0.2,
+    lineHeight: 20,
     textAlign: "center",
   },
   fields: {
@@ -695,17 +695,17 @@ const styles = StyleSheet.create({
     rowGap: 2,
   },
   legalText: {
-    color: SIGN_IN_COLORS.placeholder,
+    color: SIGN_IN_COLORS.secondary,
     fontFamily: fonts.regular,
     fontSize: SIGN_IN_TYPE.legal,
     fontWeight: "400",
     lineHeight: 18,
   },
   legalLink: {
-    color: SIGN_IN_COLORS.placeholder,
-    fontFamily: fonts.regular,
+    color: SIGN_IN_COLORS.secondary,
+    fontFamily: fonts.medium,
     fontSize: SIGN_IN_TYPE.legal,
-    fontWeight: "400",
+    fontWeight: "500",
     lineHeight: 18,
   },
   legalError: {

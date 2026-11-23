@@ -37,15 +37,15 @@ describe("sign-in design contract", () => {
     expect(SIGN_IN_COLORS).toMatchObject({
       background: "#F7F8F9",
       ink: "#111213",
-      secondary: "#7A8590",
-      placeholder: "#9AA4AE",
-      border: "#E6E9EC",
+      secondary: "#66717C",
+      placeholder: "#68707C",
+      border: "#DDE2E6",
       focusedBorder: "#111213",
       button: "#111315",
     });
     expect(SIGN_IN_TYPE).toMatchObject({
       wordmark: 44,
-      tagline: 15,
+      tagline: 14,
       input: 15,
       button: 17,
       legal: 12,

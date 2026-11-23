@@ -5,19 +5,69 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.product import Product
-from app.models.product_variant import ProductVariant
+from app.models.agent_task import AgentTask
+from app.models.batch_job import BatchJob
+from app.models.content import ContentGeneration
+from app.models.conversation import Conversation
+from app.models.image_asset import ImageAsset
+from app.models.image_generation_task import ImageGenerationTask
 from app.models.listing import Listing
 from app.models.listing_draft import ListingDraft
+from app.models.marketing_campaign import MarketingCampaign
+from app.models.marketing_copy import MarketingCopyAsset
+from app.models.marketing_distribution import (
+    MarketingCampaignPublication,
+    MarketingPerformanceSnapshot,
+)
+from app.models.marketing_image_suite import MarketingImageSuite
+from app.models.marketing_video import MarketingVideoProject
+from app.models.operation_alert import OperationAlert
+from app.models.persona import Persona
+from app.models.product import Product
+from app.models.product_variant import ProductVariant
+from app.models.publication import Publication
+from app.models.shopify_channel import ShopifyChannel
+from app.models.store_check_log import StoreCheckLog
+from app.models.variant_snapshot import VariantSnapshot
+from app.models.video_generation_task import VideoGenerationTask
+from app.models.voc import VocAnalysis
 from app.models.workspace import Workspace
 
 
 SCOPED_MODELS = {
+    "agent_tasks": (AgentTask, "user_id"),
+    "batch_jobs": (BatchJob, "user_id"),
+    "content_generations": (ContentGeneration, "user_id"),
+    "conversations": (Conversation, "user_id"),
+    "image_assets": (ImageAsset, "user_id"),
+    "image_generation_tasks": (ImageGenerationTask, "user_id"),
+    "marketing_campaign_publications": (
+        MarketingCampaignPublication,
+        "user_id",
+    ),
+    "marketing_campaigns": (MarketingCampaign, "user_id"),
+    "marketing_copy_assets": (MarketingCopyAsset, "user_id"),
+    "marketing_image_suites": (MarketingImageSuite, "user_id"),
+    "marketing_performance_snapshots": (
+        MarketingPerformanceSnapshot,
+        "user_id",
+    ),
+    "marketing_video_projects": (MarketingVideoProject, "user_id"),
+    "operation_alerts": (OperationAlert, "user_id"),
+    "personas": (Persona, "user_id"),
     "products": (Product, "user_id"),
     "product_variants": (ProductVariant, "user_id"),
+    "publications": (Publication, "user_id"),
+    "shopify_channels": (ShopifyChannel, "user_id"),
+    "store_check_logs": (StoreCheckLog, "user_id"),
+    "variant_snapshots": (VariantSnapshot, "user_id"),
+    "video_generation_tasks": (VideoGenerationTask, "user_id"),
+    "voc_analyses": (VocAnalysis, "user_id"),
     "listing_drafts": (ListingDraft, "user_id"),
     "listings": (Listing, "owner_id"),
 }
+
+
 async def _backfill_table(
     db: AsyncSession,
     *,
@@ -81,9 +131,10 @@ async def _backfill_table(
             if dry_run:
                 continue
             row.workspace_id = workspace.id
-            row.created_by_user_id = (
-                row.created_by_user_id or owner_id
-            )
+            if hasattr(model, "created_by_user_id"):
+                row.created_by_user_id = (
+                    row.created_by_user_id or owner_id
+                )
 
         if not dry_run:
             await db.flush()

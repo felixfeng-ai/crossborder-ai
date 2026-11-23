@@ -8,7 +8,11 @@
 //     （超时意味着任务确实没跑完，连接失败则可回退轮询）
 // ============================================================================
 
-import { API_BASE } from './client'
+import {
+  ACCESS_TOKEN_STORAGE_KEY,
+  API_BASE,
+  refreshAccessToken,
+} from './client'
 
 export interface SseEvent {
   event: string
@@ -27,7 +31,7 @@ export async function readSseUntil(
   {
     onEvent,
     timeoutMs,
-    token = localStorage.getItem('access_token') || '',
+    token = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) || '',
   }: {
     onEvent: (ev: SseEvent) => boolean | void
     timeoutMs: number
@@ -38,13 +42,20 @@ export async function readSseUntil(
   const timer = window.setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const resp = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'text/event-stream',
-      },
-      signal: controller.signal,
-    })
+    const connect = (accessToken: string) =>
+      fetch(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'text/event-stream',
+        },
+        signal: controller.signal,
+      })
+
+    let resp = await connect(token)
+    if (resp.status === 401) {
+      const refreshedToken = await refreshAccessToken()
+      if (refreshedToken) resp = await connect(refreshedToken)
+    }
     if (!resp.ok || !resp.body) {
       throw new Error(`SSE 连接失败（HTTP ${resp.status}）`)
     }

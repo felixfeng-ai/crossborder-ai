@@ -39,7 +39,10 @@ export interface RegisterRequest {
 
 export interface TokenResponse {
   access_token: string
-  token_type: string
+  refresh_token?: string
+  token_type?: string
+  expires_in?: number
+  session_id?: string
 }
 
 export interface AuthState {

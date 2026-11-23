@@ -1,0 +1,95 @@
+name: Workspace Data Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run 只检查；apply 会先备份并在 unresolved=0 后写库"
+        required: true
+        default: "dry-run"
+        type: choice
+        options:
+          - dry-run
+          - apply
+
+concurrency:
+  group: workspace-backfill-production
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    name: Production workspace backfill
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Backup, audit, and optionally apply
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          BACKFILL_MODE: ${{ inputs.mode }}
+        with:
+          host: ${{ secrets.VEYASHIP_HOST }}
+          username: root
+          key: ${{ secrets.VEYASHIP_SSH_KEY }}
+          envs: BACKFILL_MODE
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+
+            COMPOSE_FILE=$(find /opt/veyaship -maxdepth 4 -name docker-compose.prod.yml -print -quit)
+            if [ -z "$COMPOSE_FILE" ]; then
+              echo "未找到生产 docker-compose.prod.yml"
+              exit 1
+            fi
+            PROJECT_DIR=$(dirname "$COMPOSE_FILE")
+            BACKUP_DIR="$PROJECT_DIR/backups/workspace-backfill"
+            mkdir -p "$BACKUP_DIR"
+
+            STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+            BACKUP_FILE="$BACKUP_DIR/crossborder_ai_${STAMP}.dump"
+            LATEST_BACKUP="$BACKUP_DIR/crossborder_ai_latest.dump"
+            DRY_RUN_FILE="$BACKUP_DIR/dry-run-${STAMP}.json"
+            APPLY_FILE="$BACKUP_DIR/apply-${STAMP}.json"
+            POST_CHECK_FILE="$BACKUP_DIR/post-check-${STAMP}.json"
+
+            echo "创建生产数据库备份：$BACKUP_FILE"
+            docker compose -f "$COMPOSE_FILE" exec -T postgres \
+              sh -lc 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
+              > "$BACKUP_FILE"
+            test -s "$BACKUP_FILE"
+            cp "$BACKUP_FILE" "$LATEST_BACKUP"
+            sha256sum "$BACKUP_FILE" | tee "$BACKUP_FILE.sha256"
+
+            echo "执行工作区数据 dry-run"
+            docker compose -f "$COMPOSE_FILE" run --rm --no-deps backend \
+              python -m scripts.backfill_workspace_scope --table all \
+              | tee "$DRY_RUN_FILE"
+
+            if grep -Eq '"unresolved": [1-9][0-9]*' "$DRY_RUN_FILE"; then
+              echo "dry-run 存在无法归属的数据，禁止执行 apply。"
+              exit 2
+            fi
+
+            if [ "$BACKFILL_MODE" != "apply" ]; then
+              echo "dry-run 完成；未写入生产数据。"
+              exit 0
+            fi
+
+            echo "执行工作区数据正式回填"
+            docker compose -f "$COMPOSE_FILE" run --rm --no-deps backend \
+              python -m scripts.backfill_workspace_scope --table all --apply \
+              | tee "$APPLY_FILE"
+
+            echo "执行回填后检查"
+            docker compose -f "$COMPOSE_FILE" run --rm --no-deps backend \
+              python -m scripts.backfill_workspace_scope --table all \
+              | tee "$POST_CHECK_FILE"
+
+            if grep -Eq '"would_update": [1-9][0-9]*|"unresolved": [1-9][0-9]*' "$POST_CHECK_FILE"; then
+              echo "回填后仍有待处理记录，请检查恢复日志。"
+              exit 3
+            fi
+
+            echo "工作区数据回填完成。"

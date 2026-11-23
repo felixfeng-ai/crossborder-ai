@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Building2,
@@ -6,12 +7,18 @@ import {
   ChevronDown,
   CreditCard,
   Globe,
+  Languages,
   LogOut,
   Menu,
   MessageSquareText,
+  Monitor,
+  Moon,
+  MoreHorizontal,
   Settings,
   ShieldCheck,
   Store,
+  Sun,
+  Waves,
 } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -21,16 +28,17 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/authStore'
 import { useStoreStore } from '@/stores/storeStore'
-import { Badge } from '@/components/ui/badge'
 import apiClient from '@/api/client'
 import { getHeaderContext } from '@/lib/navigation'
 import { normalizeLanguageCode } from '@/i18n/language'
-import { ThemeSwitcher } from '@/components/theme/ThemeSwitcher'
 import { DownloadAppDialog } from '@/components/layout/DownloadAppDialog'
 import { useWorkspaceContextStore } from '@/features/workspace-context/workspace-context-store'
 import { workspaceTypeLabel } from '@/features/workspace-context/workspace-context'
@@ -38,6 +46,8 @@ import { useNotificationsQuery } from '@/features/notifications/queries'
 import { unreadNotificationCount } from '@/features/notifications/notifications'
 import { UserAvatar } from '@/components/account/UserAvatar'
 import { appQueryClient } from '@/lib/queryClient'
+import { useThemeStore } from '@/stores/themeStore'
+import { THEME_OPTIONS, type ThemeMode } from '@/utils/themes'
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -51,6 +61,13 @@ const LANGUAGES = [
   { code: 'ru', label: 'Русский' },
 ]
 
+const THEME_ICONS = {
+  graphite: Moon,
+  paper: Sun,
+  harbor: Waves,
+  system: Monitor,
+} satisfies Record<ThemeMode, typeof Moon>
+
 interface BillingWalletSummary {
   plan_credits: number
   purchased_credits: number
@@ -62,6 +79,8 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { t, i18n } = useTranslation()
+  const [downloadOpen, setDownloadOpen] = useState(false)
+  const { mode: themeMode, setMode: setThemeMode } = useThemeStore()
   const { stores, currentStoreId, setStores, setCurrentStore } = useStoreStore()
   const workspaces = useWorkspaceContextStore((state) => state.workspaces)
   const activeWorkspaceId = useWorkspaceContextStore(
@@ -86,7 +105,7 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
 
   // 加载店铺列表
   useQuery({
-    queryKey: ['header-shopify-channels'],
+    queryKey: ['header-shopify-channels', activeWorkspaceId],
     queryFn: async () => {
       const r = await apiClient.get('/shopify/channels')
       const channels = (r.data || []).map((c: any) => ({
@@ -94,10 +113,11 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
         name: c.shop_name,
         platform: 'shopify' as const,
       }))
-      if (channels.length > 0) setStores(channels)
+      // 空结果也必须覆盖旧缓存，避免切换工作区后继续显示上一工作区的店铺。
+      setStores(channels)
       return channels
     },
-    enabled: !!user,
+    enabled: Boolean(user && activeWorkspaceId),
     retry: false,
   })
 
@@ -106,6 +126,10 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
     LANGUAGES.find((language) => language.code === currentLanguageCode) ||
     LANGUAGES.find((language) => language.code === 'zh') ||
     LANGUAGES[0]
+  const currentTheme =
+    THEME_OPTIONS.find((theme) => theme.value === themeMode) ??
+    THEME_OPTIONS[0]
+  const CurrentThemeIcon = THEME_ICONS[currentTheme.value]
   const walletQuery = useQuery<BillingWalletSummary>({
     queryKey: ['header-billing-wallet'],
     queryFn: async () => {
@@ -244,79 +268,130 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
           )}
         </Button>
 
-        {/* Language Switcher */}
+        {/* App 下载是增长入口，保留在顶栏；低频设置收进工具菜单。 */}
+        <DownloadAppDialog
+          open={downloadOpen}
+          onOpenChange={setDownloadOpen}
+          triggerClassName="gap-1.5 px-3 text-foreground"
+        />
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="flex items-center gap-1.5 px-2 text-muted-foreground">
-              <Globe className="h-4 w-4" />
-              <span className="hidden text-xs md:inline-block">{currentLang.label}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="工具与偏好"
+              title="工具与偏好"
+            >
+              <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuLabel className="text-xs text-muted-foreground">
-              {t('common.language')}
+              工具与偏好
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {LANGUAGES.map((lang) => (
+            {user && (
               <DropdownMenuItem
-                key={lang.code}
-                className={i18n.language === lang.code ? 'bg-accent font-medium' : ''}
-                onClick={() => switchLanguage(lang.code)}
+                className="justify-between gap-3"
+                onClick={() => navigate('/app/billing')}
+                title={creditTitle}
               >
-                {lang.label}
+                <span className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-muted-foreground" />
+                  积分与账单
+                </span>
+                <span className="metric-number text-xs font-medium">
+                  {displayedCredits.toLocaleString('zh-CN')}
+                </span>
               </DropdownMenuItem>
-            ))}
+            )}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="gap-2">
+                <Languages className="h-4 w-4 text-muted-foreground" />
+                <span className="flex-1">语言</span>
+                <span className="text-xs text-muted-foreground">
+                  {currentLang.label}
+                </span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-44">
+                {LANGUAGES.map((lang) => (
+                  <DropdownMenuItem
+                    key={lang.code}
+                    className="justify-between"
+                    onClick={() => switchLanguage(lang.code)}
+                  >
+                    {lang.label}
+                    {currentLanguageCode === lang.code && (
+                      <Check className="h-3.5 w-3.5 text-[var(--factory-accent)]" />
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="gap-2">
+                <CurrentThemeIcon className="h-4 w-4 text-muted-foreground" />
+                <span className="flex-1">界面主题</span>
+                <span className="text-xs text-muted-foreground">
+                  {currentTheme.label}
+                </span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-52">
+                {THEME_OPTIONS.map((theme) => {
+                  const Icon = THEME_ICONS[theme.value]
+                  return (
+                    <DropdownMenuItem
+                      key={theme.value}
+                      className="gap-2"
+                      onClick={() => setThemeMode(theme.value)}
+                    >
+                      <Icon className="h-4 w-4 text-muted-foreground" />
+                      <span className="flex-1">{theme.label}</span>
+                      {themeMode === theme.value && (
+                        <Check className="h-3.5 w-3.5 text-[var(--factory-accent)]" />
+                      )}
+                    </DropdownMenuItem>
+                  )
+                })}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            {stores.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="gap-2">
+                  <Store className="h-4 w-4 text-muted-foreground" />
+                  <span className="flex-1">当前店铺</span>
+                  <span className="max-w-24 truncate text-xs text-muted-foreground">
+                    {stores.find((store) => store.id === currentStoreId)?.name ||
+                      '选择店铺'}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-56">
+                  {stores.map((store) => (
+                    <DropdownMenuItem
+                      key={store.id}
+                      className="justify-between gap-2"
+                      onClick={() => setCurrentStore(store.id)}
+                    >
+                      <span className="truncate">{store.name}</span>
+                      {currentStoreId === store.id && (
+                        <Check className="h-3.5 w-3.5 text-[var(--factory-accent)]" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="gap-2"
+              onClick={() => navigate('/app/tutorial')}
+            >
+              <Globe className="h-4 w-4 text-muted-foreground" />
+              使用教程
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-
-        <ThemeSwitcher />
-
-        <DownloadAppDialog />
-
-        {/* 店铺切换 */}
-        {stores.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="flex items-center gap-1.5 px-2 text-muted-foreground">
-                <Store className="h-4 w-4" />
-                <span className="hidden text-xs md:inline-block">
-                  {stores.find(s => s.id === currentStoreId)?.name || '选择店铺'}
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuLabel className="text-xs text-muted-foreground">切换店铺</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {stores.map((s) => (
-                <DropdownMenuItem
-                  key={s.id}
-                  className={currentStoreId === s.id ? 'bg-accent font-medium' : ''}
-                  onClick={() => setCurrentStore(s.id)}
-                >
-                  <Store className="mr-2 h-3.5 w-3.5" />
-                  {s.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-
-        {/* Credits badge */}
-        {user && (
-          <button
-            type="button"
-            onClick={() => navigate('/app/billing')}
-            title={creditTitle}
-            aria-label={`${displayedCredits} 积分，${creditTitle}`}
-            className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Badge variant="secondary" className="metric-number gap-1 px-2 py-1 text-xs">
-              <CreditCard className="h-3 w-3" />
-              <span>{displayedCredits.toLocaleString('zh-CN')}</span>
-              <span className="hidden sm:inline">{t('header.credits')}</span>
-            </Badge>
-          </button>
-        )}
 
         {/* User menu */}
         <DropdownMenu>
@@ -326,7 +401,7 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
               <span className="hidden text-sm font-medium md:inline-block max-w-[120px] truncate">
                 {displayName}
               </span>
-              <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+              <ChevronDown className="hidden h-3 w-3 text-muted-foreground sm:block shrink-0" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">

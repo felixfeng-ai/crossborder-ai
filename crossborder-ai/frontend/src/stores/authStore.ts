@@ -5,6 +5,11 @@
 import { create } from 'zustand'
 import type { User } from '@/types'
 import { authApi } from '@/api/auth'
+import {
+  ACCESS_TOKEN_STORAGE_KEY,
+  REFRESH_TOKEN_STORAGE_KEY,
+  clearStoredAuthTokens,
+} from '@/api/client'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { clearSessionRuntime } from '@/lib/session-runtime'
 
@@ -40,7 +45,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const response = await authApi.login({ email, password })
       await clearSessionRuntime()
-      localStorage.setItem('access_token', response.access_token)
+      clearStoredAuthTokens()
+      localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, response.access_token)
+      if (response.refresh_token) {
+        localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, response.refresh_token)
+      }
       set({
         token: response.access_token,
         isAuthenticated: true,
@@ -59,7 +68,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const response = await authApi.register(data)
       await clearSessionRuntime()
-      localStorage.setItem('access_token', response.access_token)
+      clearStoredAuthTokens()
+      localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, response.access_token)
+      if (response.refresh_token) {
+        localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, response.refresh_token)
+      }
       set({
         token: response.access_token,
         isAuthenticated: true,
@@ -74,8 +87,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   logout: () => {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
+    const currentAccessToken = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+    const currentRefreshToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)
+    if (currentAccessToken) {
+      void authApi.logout(currentAccessToken, currentRefreshToken).catch(() => {
+        // 本地会话必须立即退出；服务端轮换令牌会按过期策略自然失效。
+      })
+    }
+    clearStoredAuthTokens()
     void clearSessionRuntime()
     set({
       user: null,
@@ -104,3 +123,15 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   clearError: () => set({ error: null }),
 }))
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('veyaship:session-refreshed', (event) => {
+    const accessToken = (event as CustomEvent<{ accessToken?: string }>).detail
+      ?.accessToken
+    if (!accessToken) return
+    useAuthStore.setState({
+      token: accessToken,
+      isAuthenticated: true,
+    })
+  })
+}

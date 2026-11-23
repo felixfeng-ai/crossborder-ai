@@ -26,12 +26,14 @@ describe('多主题与首页结构契约', () => {
     expect(css).toContain('color-scheme: light')
   })
 
-  it('语言按钮旁提供主题菜单', () => {
+  it('顶栏更多菜单提供主题选项', () => {
     const header = readSource('src/components/layout/header.tsx')
     const switcher = readSource('src/components/theme/ThemeSwitcher.tsx')
     const themes = readSource('src/utils/themes.ts')
 
-    expect(header).toContain('<ThemeSwitcher')
+    expect(header).toContain('THEME_OPTIONS')
+    expect(header).toContain('界面主题')
+    expect(header).not.toContain('<ThemeSwitcher')
     expect(switcher).toContain('THEME_OPTIONS')
     expect(themes).toContain('石墨琥珀')
     expect(themes).toContain('纯白纸张')

@@ -38,13 +38,13 @@ jobs:
           script: |
             set -euo pipefail
 
-            COMPOSE_FILE=$(find /opt/veyaship -maxdepth 4 -name docker-compose.prod.yml -print -quit)
-            if [ -z "$COMPOSE_FILE" ]; then
-              echo "未找到生产 docker-compose.prod.yml"
+            PROJECT_DIR=/opt/veyaship/crossborder-ai
+            BACKEND_DIR="$PROJECT_DIR/backend"
+            if [ ! -x "$BACKEND_DIR/venv/bin/python" ]; then
+              echo "未找到生产后端虚拟环境"
               exit 1
             fi
-            PROJECT_DIR=$(dirname "$COMPOSE_FILE")
-            BACKUP_DIR="$PROJECT_DIR/backups/workspace-backfill"
+            BACKUP_DIR=/var/backups/veyaship/workspace-backfill
             mkdir -p "$BACKUP_DIR"
 
             STAMP=$(date -u +%Y%m%dT%H%M%SZ)
@@ -54,17 +54,47 @@ jobs:
             APPLY_FILE="$BACKUP_DIR/apply-${STAMP}.json"
             POST_CHECK_FILE="$BACKUP_DIR/post-check-${STAMP}.json"
 
+            cd "$BACKEND_DIR"
+            DATABASE_URL=$(
+              ./venv/bin/python - <<'PY'
+            from app.core.config import settings
+
+            print(
+                str(settings.DATABASE_URL).replace(
+                    "postgresql+asyncpg://",
+                    "postgresql://",
+                )
+            )
+            PY
+            )
+            if [ -z "$DATABASE_URL" ]; then
+              echo "未读取到生产 DATABASE_URL"
+              exit 1
+            fi
+
             echo "创建生产数据库备份：$BACKUP_FILE"
-            docker compose -f "$COMPOSE_FILE" exec -T postgres \
-              sh -lc 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
-              > "$BACKUP_FILE"
+            if command -v pg_dump >/dev/null 2>&1; then
+              pg_dump \
+                --dbname="$DATABASE_URL" \
+                --format=custom \
+                --no-owner \
+                --no-acl \
+                > "$BACKUP_FILE"
+            else
+              docker run --rm --network host postgres:15-alpine \
+                pg_dump \
+                --dbname="$DATABASE_URL" \
+                --format=custom \
+                --no-owner \
+                --no-acl \
+                > "$BACKUP_FILE"
+            fi
             test -s "$BACKUP_FILE"
             cp "$BACKUP_FILE" "$LATEST_BACKUP"
             sha256sum "$BACKUP_FILE" | tee "$BACKUP_FILE.sha256"
 
             echo "执行工作区数据 dry-run"
-            docker compose -f "$COMPOSE_FILE" run --rm --no-deps backend \
-              python -m scripts.backfill_workspace_scope --table all \
+            ./venv/bin/python -m scripts.backfill_workspace_scope --table all \
               | tee "$DRY_RUN_FILE"
 
             if grep -Eq '"unresolved": [1-9][0-9]*' "$DRY_RUN_FILE"; then
@@ -78,13 +108,11 @@ jobs:
             fi
 
             echo "执行工作区数据正式回填"
-            docker compose -f "$COMPOSE_FILE" run --rm --no-deps backend \
-              python -m scripts.backfill_workspace_scope --table all --apply \
+            ./venv/bin/python -m scripts.backfill_workspace_scope --table all --apply \
               | tee "$APPLY_FILE"
 
             echo "执行回填后检查"
-            docker compose -f "$COMPOSE_FILE" run --rm --no-deps backend \
-              python -m scripts.backfill_workspace_scope --table all \
+            ./venv/bin/python -m scripts.backfill_workspace_scope --table all \
               | tee "$POST_CHECK_FILE"
 
             if grep -Eq '"would_update": [1-9][0-9]*|"unresolved": [1-9][0-9]*' "$POST_CHECK_FILE"; then

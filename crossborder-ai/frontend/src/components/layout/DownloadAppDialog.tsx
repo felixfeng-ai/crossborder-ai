@@ -37,8 +37,8 @@ export function DownloadAppDialog() {
         <Dialog.Content className="fixed left-1/2 top-1/2 z-[81] max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[620px] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-[var(--factory-line-strong)] bg-[var(--factory-panel)] p-0 shadow-2xl outline-none">
           <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-secondary">
-                <BrandMark className="h-6 w-6 text-foreground" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
+                <BrandMark className="h-10 w-10 text-foreground" />
               </div>
               <div className="min-w-0">
                 <Dialog.Title className="text-base font-semibold leading-6">

@@ -51,8 +51,8 @@ export default function LegalPage({ path }: LegalPageProps) {
       <header className="border-b border-border bg-[var(--factory-side)]">
         <div className="mx-auto flex min-h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link to="/" className="flex min-w-0 items-center gap-2.5" aria-label="返回 VeyaShip 首页">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[5px] border border-[var(--factory-line-strong)] bg-[var(--factory-panel)]">
-              <BrandMark className="h-5 w-5" />
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+              <BrandMark className="h-8 w-8" />
             </span>
             <span className="min-w-0">
               <span className="block font-latin text-sm font-semibold leading-5">VeyaShip</span>

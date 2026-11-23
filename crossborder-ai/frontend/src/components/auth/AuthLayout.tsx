@@ -59,8 +59,8 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           className="relative z-10 inline-flex w-fit items-center gap-2.5"
           aria-label="返回 VeyaShip 首页"
         >
-          <span className="flex h-[30px] w-[30px] items-center justify-center rounded-[5px] border border-[var(--factory-line-strong)] bg-[var(--factory-panel)]">
-            <BrandMark className="h-[19px] w-[19px]" />
+          <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full">
+            <BrandMark className="h-[30px] w-[30px]" />
           </span>
           <span>
             <span className="block font-latin text-[15px] font-semibold leading-4">

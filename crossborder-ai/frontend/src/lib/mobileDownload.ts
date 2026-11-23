@@ -4,9 +4,9 @@
  * 避免 EAS 临时构建产物过期后二维码失效。
  */
 export const DEFAULT_MOBILE_APP_DOWNLOAD_URL =
-  'https://expo.dev/artifacts/eas/O84Hy9C9qfqrx9gFbTx8RbkMZEp8DZNtoVE9lcOEY0U.apk'
+  'https://expo.dev/artifacts/eas/bKteV0OXlh1tOtesB0X4C3AEb3qz5P64R0TRCu3FnI8.apk'
 
-export const MOBILE_APP_BUILD_LABEL = 'Android 内测版 · 1.0.0 (14)'
+export const MOBILE_APP_BUILD_LABEL = 'Android 内测版 · 1.0.0 (16)'
 
 export function resolveMobileDownloadUrl(configured?: string): string {
   const value = configured?.trim()

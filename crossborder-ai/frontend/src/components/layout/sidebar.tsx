@@ -16,6 +16,10 @@ import {
   FolderOpen,
   BookOpenText,
   MessageSquareText,
+  CalendarDays,
+  Bell,
+  BellRing,
+  Store,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
@@ -26,6 +30,10 @@ import { NAVIGATION_GROUPS } from '@/lib/navigation'
 
 const NAV_ICONS: Record<string, LucideIcon> = {
   '/app/dashboard': LayoutDashboard,
+  '/app/today': CalendarDays,
+  '/app/activity': Bell,
+  '/app/notification-settings': BellRing,
+  '/app/stores': Store,
   '/app/products': Package,
   '/app/catalog': Layers,
   '/app/agent': Bot,
@@ -103,6 +111,9 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                 const listingRouteActive =
                   item.path === '/app/catalog' &&
                   location.pathname.startsWith('/app/content')
+                const todayRouteActive =
+                  item.path === '/app/today' &&
+                  location.pathname.startsWith('/app/tasks/')
                 return (
                   <NavLink
                     key={item.path}
@@ -112,7 +123,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                     className={({ isActive }) =>
                       cn(
                         'flex min-h-10 items-center gap-3 rounded px-2.5 text-[14px] leading-5',
-                        isActive || listingRouteActive
+                        isActive || listingRouteActive || todayRouteActive
                           ? 'bg-secondary font-medium text-foreground'
                           : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                         collapsed && 'justify-center px-2',

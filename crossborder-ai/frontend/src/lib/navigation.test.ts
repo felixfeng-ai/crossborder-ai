@@ -24,6 +24,14 @@ describe('navigation architecture', () => {
     expect(paths).not.toContain('/app/content')
     expect(paths).toContain('/app/marketing-agent')
     expect(paths).toContain('/app/tutorial')
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        '/app/today',
+        '/app/activity',
+        '/app/notification-settings',
+        '/app/stores',
+      ]),
+    )
     expect(
       NAVIGATION_GROUPS.flatMap((group) => group.items).find(
         (item) => item.path === '/app/agent',
@@ -55,6 +63,14 @@ describe('navigation architecture', () => {
     expect(getHeaderContext('/app/tutorial')).toMatchObject({
       group: '账户',
       title: '使用教程',
+    })
+    expect(getHeaderContext('/app/tasks/work-item-1')).toMatchObject({
+      group: '今日 Agent',
+      title: '任务详情',
+    })
+    expect(getHeaderContext('/app/stores')).toMatchObject({
+      group: '运营',
+      title: '店铺与渠道',
     })
   })
 

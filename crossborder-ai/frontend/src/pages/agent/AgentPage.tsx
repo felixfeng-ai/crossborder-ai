@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   Send,
-  UserRound,
   Loader2,
   Sparkles,
   ShoppingCart,
@@ -26,6 +25,7 @@ import { Badge } from '@/components/ui/badge'
 import Markdown from '@/components/common/Markdown'
 import ProductReportCard from '@/components/agent/ProductReportCard'
 import { AssistantMark } from '@/components/brand/AssistantMark'
+import { UserAvatar as AccountUserAvatar } from '@/components/account/UserAvatar'
 import type { AgentStep } from '@/types'
 import apiClient, { API_BASE } from '@/api/client'
 import { MarketingCampaignBar } from '@/components/agent/MarketingCampaignBar'
@@ -355,7 +355,11 @@ export default function AgentPage({
         className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}
       >
         {/* 用品牌标识和用户首字母替代通用机器人/用户图标。 */}
-        {isUser ? <UserAvatar user={user} /> : <AgentAvatar label={workspace.label} />}
+        {isUser ? (
+          <AccountUserAvatar user={user} className="h-9 w-9 text-xs" />
+        ) : (
+          <AgentAvatar label={workspace.label} />
+        )}
 
         {/* 消息内容 */}
         <div className={`max-w-[80%] space-y-2 ${isUser ? 'items-end' : ''}`}>
@@ -618,27 +622,6 @@ function AgentAvatar({ label }: { label: string }) {
     >
       <AssistantMark className="h-8 w-8" />
       <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--factory-ground)] bg-[var(--factory-mint)]" />
-    </div>
-  )
-}
-
-function UserAvatar({
-  user,
-}: {
-  user: { username?: string | null; full_name?: string | null; email?: string | null } | null
-}) {
-  const name = user?.username || user?.full_name || user?.email || '你'
-  const initial = name.trim().charAt(0).toUpperCase() || '你'
-
-  return (
-    <div
-      className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-[var(--factory-raised)]"
-      aria-label={`${name} 的头像`}
-    >
-      <UserRound className="h-[18px] w-[18px] text-foreground" strokeWidth={1.7} />
-      <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-[var(--factory-ground)] bg-[var(--factory-accent)] text-[7px] font-bold text-[var(--factory-ground)]">
-        {initial}
-      </span>
     </div>
   )
 }

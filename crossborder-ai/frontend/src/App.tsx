@@ -41,6 +41,17 @@ const MaterialsPage = lazyWithRetry(() => import('@/pages/assets/MaterialsPage')
 const CatalogPage = lazyWithRetry(() => import('@/pages/catalog/CatalogPage'))
 const OperationsPage = lazyWithRetry(() => import('@/pages/operations/OperationsPage'))
 const TutorialPage = lazyWithRetry(() => import('@/pages/tutorial/TutorialPage'))
+const TodayPage = lazyWithRetry(() => import('@/pages/agent-work/TodayPage'))
+const WorkItemPage = lazyWithRetry(
+  () => import('@/pages/agent-work/WorkItemPage'),
+)
+const ActivityPage = lazyWithRetry(
+  () => import('@/pages/notifications/ActivityPage'),
+)
+const NotificationSettingsPage = lazyWithRetry(
+  () => import('@/pages/notifications/NotificationSettingsPage'),
+)
+const StoresPage = lazyWithRetry(() => import('@/pages/stores/StoresPage'))
 const LegalDocumentPage = lazyWithRetry(() => import('@/pages/legal/LegalPage'))
 const FeedbackPage = lazyWithRetry(() => import('@/pages/feedback/FeedbackPage'))
 const AdminLayout = lazyWithRetry(() => import('@/pages/admin/AdminLayout'))
@@ -109,6 +120,14 @@ export default function App() {
       >
         <Route index element={<Navigate to="/app/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="today" element={<TodayPage />} />
+        <Route path="tasks/:workItemId" element={<WorkItemPage />} />
+        <Route path="activity" element={<ActivityPage />} />
+        <Route
+          path="notification-settings"
+          element={<NotificationSettingsPage />}
+        />
+        <Route path="stores" element={<StoresPage />} />
         <Route path="agent" element={<AgentPage />} />
         <Route path="marketing-agent" element={<AgentPage mode="marketing" />} />
         <Route path="products" element={<ProductsPage />} />

@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import ConfirmDialog from '@/components/common/ConfirmDialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { WorkspaceImageLibrary } from '@/components/materials/WorkspaceImageLibrary'
 import {
   buildImageMaterials,
   buildVideoMaterials,
@@ -182,6 +183,7 @@ export default function MaterialsPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
             <TabsList>
               <TabsTrigger value="images">图片</TabsTrigger>
+              <TabsTrigger value="workspace">工作区图片</TabsTrigger>
               <TabsTrigger value="videos">视频</TabsTrigger>
             </TabsList>
             <p className="text-xs text-muted-foreground">
@@ -273,6 +275,9 @@ export default function MaterialsPage() {
                     onDelete={setDeleteTarget}
                   />
                 </div>
+              </TabsContent>
+              <TabsContent value="workspace" className="m-0">
+                <WorkspaceImageLibrary />
               </TabsContent>
             </>
           )}

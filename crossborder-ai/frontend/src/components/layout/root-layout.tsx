@@ -1,23 +1,16 @@
 import { Suspense, useState } from 'react'
 import { Outlet, Navigate } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
 import { AgentSidecar } from '@/components/agent/AgentSidecar'
+import { WorkspaceGate } from '@/components/layout/workspace-gate'
 import { useAuthStore } from '@/stores/authStore'
 import { useAgentSidecarStore } from '@/stores/agentSidecarStore'
 import { RouteFallback } from '@/components/common/RouteFallback'
 import { useEffect } from 'react'
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-      staleTime: 5 * 60 * 1000,
-    },
-  },
-})
+import { appQueryClient } from '@/lib/queryClient'
+import { useWorkspaceContextStore } from '@/features/workspace-context/workspace-context-store'
 
 export function RootLayout() {
   const { isAuthenticated, loadUser, isLoading, token } = useAuthStore()
@@ -29,6 +22,16 @@ export function RootLayout() {
       loadUser()
     }
   }, [token, loadUser])
+
+  useEffect(() => {
+    const clearRuntime = () => {
+      useWorkspaceContextStore.getState().clear()
+      appQueryClient.clear()
+    }
+    window.addEventListener('veyaship:session-cleared', clearRuntime)
+    return () =>
+      window.removeEventListener('veyaship:session-cleared', clearRuntime)
+  }, [])
 
   // 移动端导航或 AI 底部抽屉打开时禁止背景滚动。
   useEffect(() => {
@@ -50,11 +53,12 @@ export function RootLayout() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <div
-        data-app-shell="graphite-decision-desk"
-        className="app-canvas flex h-[100dvh] min-h-[100dvh] overflow-hidden"
-      >
+    <QueryClientProvider client={appQueryClient}>
+      <WorkspaceGate>
+        <div
+          data-app-shell="graphite-decision-desk"
+          className="app-canvas flex h-[100dvh] min-h-[100dvh] overflow-hidden"
+        >
       {/* 桌面端侧边栏 */}
       <div className="hidden w-[232px] shrink-0 lg:flex">
         <Sidebar />
@@ -84,8 +88,9 @@ export function RootLayout() {
         </main>
       </div>
 
-        <AgentSidecar />
-      </div>
+          <AgentSidecar />
+        </div>
+      </WorkspaceGate>
     </QueryClientProvider>
   )
 }

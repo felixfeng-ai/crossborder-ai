@@ -1,5 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
-import { LogOut, Settings, CreditCard, ChevronDown, Globe, Store, Menu, ShieldCheck, MessageSquareText } from 'lucide-react'
+import {
+  Building2,
+  Bell,
+  Check,
+  ChevronDown,
+  CreditCard,
+  Globe,
+  LogOut,
+  Menu,
+  MessageSquareText,
+  Settings,
+  ShieldCheck,
+  Store,
+} from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -19,6 +32,12 @@ import { getHeaderContext } from '@/lib/navigation'
 import { normalizeLanguageCode } from '@/i18n/language'
 import { ThemeSwitcher } from '@/components/theme/ThemeSwitcher'
 import { DownloadAppDialog } from '@/components/layout/DownloadAppDialog'
+import { useWorkspaceContextStore } from '@/features/workspace-context/workspace-context-store'
+import { workspaceTypeLabel } from '@/features/workspace-context/workspace-context'
+import { useNotificationsQuery } from '@/features/notifications/queries'
+import { unreadNotificationCount } from '@/features/notifications/notifications'
+import { UserAvatar } from '@/components/account/UserAvatar'
+import { appQueryClient } from '@/lib/queryClient'
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -44,7 +63,26 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
   const location = useLocation()
   const { t, i18n } = useTranslation()
   const { stores, currentStoreId, setStores, setCurrentStore } = useStoreStore()
+  const workspaces = useWorkspaceContextStore((state) => state.workspaces)
+  const activeWorkspaceId = useWorkspaceContextStore(
+    (state) => state.activeWorkspaceId,
+  )
+  const setActiveWorkspace = useWorkspaceContextStore(
+    (state) => state.setActiveWorkspace,
+  )
+  const workspaceDisplayName = useWorkspaceContextStore(
+    (state) => state.displayName,
+  )
+  const workspaceAvatarUrl = useWorkspaceContextStore(
+    (state) => state.avatarUrl,
+  )
+  const notifications = useNotificationsQuery(activeWorkspaceId)
   const headerContext = getHeaderContext(location.pathname)
+  const activeWorkspace =
+    workspaces.find((workspace) => workspace.id === activeWorkspaceId) ??
+    workspaces[0] ??
+    null
+  const unreadNotifications = unreadNotificationCount(notifications.data ?? [])
 
   // 加载店铺列表
   useQuery({
@@ -87,14 +125,33 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
     i18n.changeLanguage(code)
   }
 
+  const switchWorkspace = (workspaceId: string) => {
+    if (!workspaceId || workspaceId === activeWorkspaceId) return
+    setActiveWorkspace(workspaceId)
+    // 工作区切换必须重建所有页面查询，避免旧工作区缓存短暂串入新工作区。
+    appQueryClient.clear()
+    window.location.reload()
+  }
+
   const handleLogout = () => {
     logout()
     navigate('/login')
   }
 
-  // 头像显示优先级：username > full_name > email
-  const displayName = user?.username || user?.full_name || user?.email || 'U'
-  const avatarLetter = displayName.charAt(0).toUpperCase()
+  const displayName =
+    user?.username ||
+    user?.full_name ||
+    user?.email ||
+    workspaceDisplayName ||
+    'U'
+  const avatarUser =
+    user ??
+    (workspaceDisplayName
+      ? {
+          username: workspaceDisplayName,
+          avatar_url: workspaceAvatarUrl,
+        }
+      : null)
 
   return (
     <header className="flex h-[58px] shrink-0 items-center justify-between border-b border-border bg-[var(--factory-side)] px-4 lg:px-6">
@@ -121,6 +178,72 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
 
       {/* Right */}
       <div className="flex items-center gap-2 lg:gap-4">
+        {workspaces.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex items-center gap-1.5 px-2 text-muted-foreground"
+                aria-label={`当前工作区：${activeWorkspace?.name ?? '选择工作区'}`}
+              >
+                <Building2 className="h-4 w-4" />
+                <span className="hidden max-w-[150px] truncate text-xs lg:inline">
+                  {activeWorkspace?.name ?? '选择工作区'}
+                </span>
+                <ChevronDown className="hidden h-3 w-3 lg:block" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="text-xs text-muted-foreground">
+                当前工作区
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {workspaces.map((workspace) => (
+                <DropdownMenuItem
+                  key={workspace.id}
+                  className="items-start gap-2"
+                  onClick={() => switchWorkspace(workspace.id)}
+                >
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                    {workspace.id === activeWorkspaceId && (
+                      <Check className="h-3.5 w-3.5 text-[var(--factory-accent)]" />
+                    )}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm">
+                      {workspace.name}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                      {workspaceTypeLabel(workspace.type)}
+                    </span>
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          aria-label={
+            unreadNotifications
+              ? `通知，${unreadNotifications} 条未读`
+              : '通知'
+          }
+          title="通知"
+          onClick={() => navigate('/app/activity')}
+        >
+          <Bell className="h-4 w-4" />
+          {unreadNotifications > 0 && (
+            <span className="absolute right-1 top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[var(--factory-coral)] px-1 text-[11px] font-semibold leading-4 text-white">
+              {unreadNotifications > 99 ? '99+' : unreadNotifications}
+            </span>
+          )}
+        </Button>
+
         {/* Language Switcher */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -199,9 +322,7 @@ export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">
-              <div className="metric-number flex h-7 w-7 items-center justify-center rounded border border-border bg-secondary text-[11px] font-medium text-foreground">
-                {avatarLetter}
-              </div>
+              <UserAvatar user={avatarUser} className="h-7 w-7 text-[11px]" />
               <span className="hidden text-sm font-medium md:inline-block max-w-[120px] truncate">
                 {displayName}
               </span>

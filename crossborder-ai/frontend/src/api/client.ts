@@ -4,6 +4,11 @@
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import type { ApiError } from '@/types'
+import {
+  buildWorkspaceHeaders,
+  readStoredWorkspaceId,
+} from '@/features/workspace-context/workspace-context'
+import { clearSessionRuntime } from '@/lib/session-runtime'
 
 export const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -31,6 +36,11 @@ apiClient.interceptors.request.use(
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    if (config.headers) {
+      Object.entries(buildWorkspaceHeaders(readStoredWorkspaceId())).forEach(
+        ([key, value]) => config.headers.set(key, value),
+      )
+    }
     return config
   },
   (error) => Promise.reject(error),
@@ -54,6 +64,7 @@ apiClient.interceptors.response.use(
       if (!isAuthEndpoint) {
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
+        void clearSessionRuntime()
         window.location.href = '/login'
       }
     }

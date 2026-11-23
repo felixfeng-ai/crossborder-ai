@@ -31,6 +31,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
     id: 'operate',
     label: '经营',
     items: [
+      { label: '今日 Agent', path: '/app/today' },
       { label: '仪表盘', path: '/app/dashboard' },
       { label: '商品库', path: '/app/products' },
       { label: 'Listing 中心', path: '/app/catalog' },
@@ -52,7 +53,9 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
     label: '运营',
     items: [
       { label: '运营监控', path: '/app/operations' },
+      { label: '店铺与渠道', path: '/app/stores' },
       { label: '渠道发布', path: '/app/shopify' },
+      { label: '通知', path: '/app/activity' },
     ],
   },
   {
@@ -62,6 +65,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
       { label: '使用教程', path: '/app/tutorial' },
       { label: '用户反馈', path: '/app/feedback' },
       { label: '账单', path: '/app/billing' },
+      { label: '通知偏好', path: '/app/notification-settings' },
       { label: '设置', path: '/app/settings' },
     ],
   },
@@ -72,6 +76,11 @@ const HEADER_CONTEXTS: Record<string, HeaderContext> = {
     group: '经营',
     title: '仪表盘',
     description: '经营总览与待处理事项',
+  },
+  '/app/today': {
+    group: '经营',
+    title: '今日 Agent',
+    description: '需要决定、正在执行和需要关注的工作',
   },
   '/app/products': {
     group: '经营',
@@ -118,6 +127,16 @@ const HEADER_CONTEXTS: Record<string, HeaderContext> = {
     title: '运营监控',
     description: 'SKU、库存与经营风险',
   },
+  '/app/activity': {
+    group: '运营',
+    title: '通知',
+    description: '失败、授权与等待确认',
+  },
+  '/app/stores': {
+    group: '运营',
+    title: '店铺与渠道',
+    description: 'Shopify、Amazon 与 Temu 授权状态',
+  },
   '/app/shopify': {
     group: '运营',
     title: '渠道发布',
@@ -127,6 +146,11 @@ const HEADER_CONTEXTS: Record<string, HeaderContext> = {
     group: '账户',
     title: '账单',
     description: '套餐、积分与付款记录',
+  },
+  '/app/notification-settings': {
+    group: '账户',
+    title: '通知偏好',
+    description: '提醒类型、免打扰和时区',
   },
   '/app/tutorial': {
     group: '账户',
@@ -152,6 +176,13 @@ export function getHeaderContext(pathname: string): HeaderContext {
       group: '经营',
       title: '商品详情',
       description: '商品资料、Listing 与渠道状态',
+    }
+  }
+  if (pathname.startsWith('/app/tasks/')) {
+    return {
+      group: '今日 Agent',
+      title: '任务详情',
+      description: '动作预览、确认、执行记录与结果',
     }
   }
   return {

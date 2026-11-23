@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { AccountSecurityPanel } from '@/components/settings/AccountSecurityPanel'
 import apiClient from '@/api/client'
 import {
   AUTOMATION_FIELD_BY_TASK,
@@ -58,6 +59,7 @@ export default function SettingsPage() {
           <TabsTrigger value="persona">品牌调性</TabsTrigger>
           <TabsTrigger value="automation">自动化</TabsTrigger>
           <TabsTrigger value="connections">平台连接</TabsTrigger>
+          <TabsTrigger value="account">账号安全</TabsTrigger>
         </TabsList>
 
         <TabsContent value="persona" className="space-y-4">
@@ -68,6 +70,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="connections" className="space-y-4">
           <PlatformConnections />
+        </TabsContent>
+        <TabsContent value="account" className="space-y-4">
+          <AccountSecurityPanel />
         </TabsContent>
       </Tabs>
     </motion.div>

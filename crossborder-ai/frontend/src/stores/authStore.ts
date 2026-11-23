@@ -6,6 +6,7 @@ import { create } from 'zustand'
 import type { User } from '@/types'
 import { authApi } from '@/api/auth'
 import { toErrorMessage } from '@/utils/errorMessage'
+import { clearSessionRuntime } from '@/lib/session-runtime'
 
 interface AuthStore {
   user: User | null
@@ -38,6 +39,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       const response = await authApi.login({ email, password })
+      await clearSessionRuntime()
       localStorage.setItem('access_token', response.access_token)
       set({
         token: response.access_token,
@@ -56,6 +58,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       const response = await authApi.register(data)
+      await clearSessionRuntime()
       localStorage.setItem('access_token', response.access_token)
       set({
         token: response.access_token,
@@ -72,6 +75,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   logout: () => {
     localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    void clearSessionRuntime()
     set({
       user: null,
       token: null,

@@ -1,4 +1,5 @@
 export const brandMark = require("../../assets/brand/star-ark.png");
+export const splashMark = require("../../assets/splash-icon.png");
 export const signInMark = require("../../assets/brand/sign-in-mark.png");
 export const signInWordmark = require("../../assets/brand/veyaship-wordmark.png");
 

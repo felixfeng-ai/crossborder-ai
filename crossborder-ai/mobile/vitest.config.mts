@@ -13,6 +13,7 @@ export default defineConfig({
         "src/features/activity/notification-groups.ts",
         "src/features/account/account-labels.ts",
         "src/design/auth-layout.ts",
+        "src/design/startup-state.ts",
         "src/features/query-state/query-state.ts",
         "src/features/time/timezone.ts",
         "src/features/commerce/channel-selection.ts",

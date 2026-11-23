@@ -1,13 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { BrandBootScreen } from "@/components/BrandBootScreen";
 import { fontsToLoad } from "@/design/assets";
+import { isStartupReady } from "@/design/startup-state";
 import { colors } from "@/design/tokens";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { WorkspaceEventBridge } from "@/components/WorkspaceEventBridge";
@@ -16,6 +19,12 @@ import { LEGAL_CENTER_PATH } from "@/features/legal/documents";
 import { NotificationBridge } from "@/notifications/NotificationBridge";
 import { useAuthStore } from "@/stores/auth";
 import { useWorkspaceStore } from "@/stores/workspace";
+
+if (Platform.OS !== "web") {
+  // 原生启动图保持到字体和本地状态准备完成，避免露出中间空白页。
+  void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+  SplashScreen.setOptions({ duration: 180, fade: true });
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,17 +41,34 @@ const queryClient = new QueryClient({
 export default function RootLayout() {
   const hydrateAuth = useAuthStore((state) => state.hydrate);
   const hydrateWorkspace = useWorkspaceStore((state) => state.hydrate);
-  const [fontsLoaded] = useFonts(fontsToLoad);
+  const [coreHydrated, setCoreHydrated] = useState(false);
+  const [fontsLoaded, fontError] = useFonts(fontsToLoad);
   const { online, recheck } = useNetworkStatus();
 
   useEffect(() => {
-    void hydrateAuth();
-    void hydrateWorkspace();
+    let mounted = true;
+    void Promise.allSettled([hydrateAuth(), hydrateWorkspace()]).finally(() => {
+      if (mounted) setCoreHydrated(true);
+    });
+
+    return () => {
+      mounted = false;
+    };
   }, [hydrateAuth, hydrateWorkspace]);
 
-  if (!fontsLoaded) {
-    return <View style={styles.loading} />;
-  }
+  const startupReady = isStartupReady({
+    fontsLoaded,
+    fontFailed: Boolean(fontError),
+    coreHydrated,
+  });
+
+  useEffect(() => {
+    if (startupReady && Platform.OS !== "web") {
+      void SplashScreen.hideAsync().catch(() => undefined);
+    }
+  }, [startupReady]);
+
+  if (!startupReady) return <BrandBootScreen />;
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -116,10 +142,6 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   root: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  loading: {
     flex: 1,
     backgroundColor: colors.background,
   },

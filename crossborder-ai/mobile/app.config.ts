@@ -83,6 +83,20 @@ const config: ExpoConfig = {
     "expo-router",
     "expo-asset",
     "expo-font",
+    [
+      "expo-splash-screen",
+      {
+        // 启动画面与应用画布使用同一底色，避免冷启动时出现白色闪屏。
+        backgroundColor: "#F2F3F5",
+        image: "./assets/splash-icon.png",
+        imageWidth: 164,
+        resizeMode: "contain",
+        dark: {
+          backgroundColor: "#F2F3F5",
+          image: "./assets/splash-icon.png",
+        },
+      },
+    ],
     "expo-secure-store",
     "expo-sqlite",
     [

@@ -53,6 +53,18 @@ Amazon 候选商品接入 1688 货源发现与供应商候选。
   - `1440 × 1000` 与 `390 × 844` 均无页面横向溢出；390px 下 Agent 主容器
     `358px`、货源消息行 `268px`。
 
+### 发布
+
+- 运行时代码提交：`a987c7e feat(agent): add 1688 sourcing discovery`。
+- 2026-11-24 21:40 CST 完成生产发布，数据库迁移保持在
+  `082_user_avatar (head)`。
+- GitHub Actions 的 SCP 上传在 `Upload application code` 阶段卡住，已取消；
+  改用仓库既有 SCP 增量上传，并执行 `VEYASHIP_SKIP_SYNC=1` 同源部署脚本。
+- 生产后端服务 `active`，部署后 10 分钟 warning 日志为空；公网 `/health` 返回
+  `200`，Agent 工作流接口返回 `200`，未登录鉴权接口按预期返回 `401`。
+- 生产真实关键词搜索烟测通过：数据源 `justone`、关键词模式、返回 3 个候选、
+  未触发 Onebound 降级。
+
 ### 当前边界
 
 - 图片搜索和商品主图依赖供应商返回，缺失时自动使用关键词。

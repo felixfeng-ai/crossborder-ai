@@ -324,9 +324,9 @@ async def test_mobile_agent_turn_detail_exposes_progress_and_result(
         {"summary": "商品草稿已准备好，等待你确认发布。"},
         ensure_ascii=False,
     )
-    turn = await db_session.get(AgentTurn, turn_id)
-    turn.status = "succeeded"
     await db_session.commit()
+    turn = await db_session.get(AgentTurn, turn_id)
+    assert turn.status == "pending"
 
     detail = await client.get(
         f"/api/mobile/v1/workspaces/{workspace.id}/agent-turns/{turn_id}",

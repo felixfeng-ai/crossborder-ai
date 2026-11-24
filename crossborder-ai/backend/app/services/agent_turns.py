@@ -22,6 +22,59 @@ class AgentTurnAssetError(ValueError):
     """输入素材不属于当前用户或已经失效。"""
 
 
+TURN_STATUS_BY_TASK_STATUS = {
+    "pending": "pending",
+    "running": "running",
+    "succeeded": "succeeded",
+    "partial": "partial",
+    "failed": "failed",
+}
+
+INPUT_STATUS_BY_TASK_STATUS = {
+    "pending": "received",
+    "running": "processing",
+    "succeeded": "completed",
+    "partial": "completed",
+    "failed": "failed",
+}
+
+
+async def sync_agent_turn_status(
+    db: AsyncSession,
+    *,
+    turn: AgentTurn,
+    task_status: str,
+) -> bool:
+    """把后台任务状态同步到移动端 AgentTurn 和输入明细。
+
+    执行器完成时调用一次；详情接口也会调用，用于修复历史任务或进程在提交前中断
+    造成的 pending/running 残留。
+    """
+
+    turn_status = TURN_STATUS_BY_TASK_STATUS.get(task_status)
+    if turn_status is None:
+        return False
+    changed = turn.status != turn_status
+    turn.status = turn_status
+
+    input_status = INPUT_STATUS_BY_TASK_STATUS[task_status]
+    inputs = (
+        await db.execute(
+            select(AgentTurnInput).where(
+                AgentTurnInput.workspace_id == turn.workspace_id,
+                AgentTurnInput.agent_turn_id == turn.id,
+            )
+        )
+    ).scalars().all()
+    for item in inputs:
+        if item.status != input_status:
+            item.status = input_status
+            changed = True
+    if changed:
+        await db.flush()
+    return changed
+
+
 async def create_agent_turn(
     db: AsyncSession,
     *,
@@ -262,6 +315,12 @@ async def get_agent_turn_detail(
             )
         )
     ).scalar_one_or_none()
+    if task is not None and await sync_agent_turn_status(
+        db,
+        turn=turn,
+        task_status=task.status,
+    ):
+        await db.commit()
     work_item = None
     if task is not None:
         work_item = (

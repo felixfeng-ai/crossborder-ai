@@ -26,6 +26,7 @@ from app.services.agent_context import (
     extract_pending_action,
     is_confirmation,
 )
+from app.services.agent_turns import sync_agent_turn_status
 from app.services.work_items import (
     complete_work_item_from_agent_task,
     create_work_items_from_agent_result,
@@ -167,21 +168,30 @@ async def execute_agent_task(task_id) -> None:
             return
         original_task_workspace_id = task.workspace_id
         workspace_id = original_task_workspace_id
+        agent_turn = None
         page_context = params.get("page_context")
         if isinstance(page_context, dict) and page_context.get("agent_turn_id"):
             try:
-                turn = await db.get(
+                agent_turn = await db.get(
                     AgentTurn,
                     UUID(str(page_context["agent_turn_id"])),
                 )
             except (TypeError, ValueError):
-                turn = None
-            if turn is not None:
-                workspace_id = turn.workspace_id
+                agent_turn = None
+            if agent_turn is not None:
+                workspace_id = agent_turn.workspace_id
         if workspace_id is None:
             workspace_id = (await ensure_personal_workspace(db, user)).id
 
         try:
+            if agent_turn is not None:
+                await sync_agent_turn_status(
+                    db,
+                    turn=agent_turn,
+                    task_status="running",
+                )
+                await db.commit()
+
             # 每完成一步 → 把累积 steps 写入任务 progress 列（SSE 端点轮询推流）。
             # 与编排器共用同一会话，commit 同时落中间产物（如已建商品），进程崩溃不丢。
             async def on_step(steps: list[dict]) -> None:
@@ -371,6 +381,12 @@ async def execute_agent_task(task_id) -> None:
                     summary=result.get("summary", ""),
                     error=task.error,
                 )
+                if agent_turn is not None:
+                    await sync_agent_turn_status(
+                        db,
+                        turn=agent_turn,
+                        task_status=result_status,
+                    )
                 await db.commit()
                 logger.info("Agent 任务 %s 结束（%s），未扣积分", task.id, result_status)
                 return
@@ -396,6 +412,12 @@ async def execute_agent_task(task_id) -> None:
                     summary="积分不足，任务未执行",
                     error=str(e),
                 )
+                if agent_turn is not None:
+                    await sync_agent_turn_status(
+                        db,
+                        turn=agent_turn,
+                        task_status="failed",
+                    )
                 await db.commit()
                 return
 
@@ -415,6 +437,12 @@ async def execute_agent_task(task_id) -> None:
                 summary=result.get("summary", ""),
                 error=None,
             )
+            if agent_turn is not None:
+                await sync_agent_turn_status(
+                    db,
+                    turn=agent_turn,
+                    task_status="succeeded",
+                )
             await db.commit()
             logger.info("Agent 任务 %s 执行成功（%s）", task.id, task.task_type)
         except Exception as e:
@@ -428,5 +456,11 @@ async def execute_agent_task(task_id) -> None:
                 summary="Agent 执行失败",
                 error=task.error,
             )
+            if agent_turn is not None:
+                await sync_agent_turn_status(
+                    db,
+                    turn=agent_turn,
+                    task_status="failed",
+                )
             await db.commit()
             logger.warning("Agent 任务 %s 执行失败：%s", task.id, e)

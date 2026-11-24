@@ -4,6 +4,44 @@
 
 # Web 发布记录
 
+## v1.2.8 - 2026-11-24
+
+### 交付主题
+
+修复移动 App Agent 任务已完成但页面永久显示“处理中”。
+
+### 根因
+
+- 生产近期 `agent_tasks` 已在约 1 秒内进入 `succeeded`。
+- 对应 `agent_turns` 没有被执行器更新，仍全部停留在 `pending`。
+- App 执行结果页读取 `agent_turns.status`，因此持续展示“小 Veya 正在处理”。
+
+### 业务变化
+
+- Agent 开始执行时，移动端 AgentTurn 切换为 `running`。
+- 任务成功、部分完成或失败时，AgentTurn 与输入明细同步为对应终态。
+- 查询旧任务详情时会根据 AgentTask 状态自动修复遗留 pending/running 记录。
+- 积分不足和执行异常同样会把移动端输入标记为失败，不再永久处理中。
+
+### 技术变化
+
+- 新增 `sync_agent_turn_status`，统一映射 AgentTask 与 AgentTurn/AgentTurnInput
+  状态。
+- AgentTask 执行器在开始、成功、partial、失败和积分不足路径调用同步。
+- AgentTurn 详情接口在读取时执行幂等对账，兼容修复历史数据。
+
+### 验证
+
+- Agent 执行器测试：`15 passed`
+- 移动 AgentTurn/语音 API 组合：`6 passed`
+- 生产核验证据：近期 AgentTask `succeeded`，对应 AgentTurn 保持 `pending`
+
+### 当前边界
+
+- 不改数据库表结构，不需要迁移。
+- 部署后新任务由执行器实时同步；历史 pending 记录在 App 打开详情时自动修复，
+  并可额外执行一次幂等状态回填。
+
 ## v1.2.7 - 2026-11-24
 
 ### 交付主题

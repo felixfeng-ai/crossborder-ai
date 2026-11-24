@@ -23,12 +23,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base
+from app.models.agent_work import AgentTurn, AgentTurnInput
 from app.models.agent_task import AgentTask
 from app.models.conversation import Conversation, ConversationMessage
 from app.models.marketing_campaign import MarketingCampaign
 from app.models.product import Product
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.services import agent_task_executor as exe
+from app.services.agent_turns import sync_agent_turn_status
 
 
 # ── 工具 ────────────────────────────────────────────────────────
@@ -219,6 +222,147 @@ async def test_execute_agent_task_success(monkeypatch):
             select(ConversationMessage).where(ConversationMessage.conversation_id == conv_id)
         )).scalars().all()
         assert any(m.role == "assistant" and m.content == "可以做" for m in msgs)
+
+
+@pytest.mark.asyncio
+async def test_execute_agent_task_syncs_mobile_turn_to_succeeded(monkeypatch):
+    """移动任务完成后，AgentTurn 和输入状态必须同步为终态。"""
+    engine, factory = _make_static_factory()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    monkeypatch.setattr(exe, "async_session_factory", factory)
+    monkeypatch.setattr(exe, "AgentOrchestrator", _FakeOrchestrator)
+
+    async with factory() as db:
+        user = User(
+            email="task-mobile-sync@test.com",
+            username="taskmobilesync",
+            password_hash="x",
+            credits=30,
+        )
+        db.add(user)
+        await db.flush()
+        workspace = Workspace(
+            name="移动任务工作区",
+            slug="task-mobile-sync",
+            owner_user_id=user.id,
+        )
+        db.add(workspace)
+        await db.flush()
+        turn = AgentTurn(
+            workspace_id=workspace.id,
+            created_by_user_id=user.id,
+            input_type="text",
+            text="帮我上架一个新品",
+            status="pending",
+            idempotency_key="task-mobile-sync-turn",
+        )
+        db.add(turn)
+        await db.flush()
+        turn_input = AgentTurnInput(
+            workspace_id=workspace.id,
+            agent_turn_id=turn.id,
+            input_type="text",
+            text_content=turn.text,
+            status="received",
+        )
+        db.add(turn_input)
+        task = AgentTask(
+            user_id=user.id,
+            workspace_id=workspace.id,
+            task_type="agent_run",
+            status="running",
+            input=json.dumps(
+                {
+                    "instruction": turn.text,
+                    "conversation_id": "",
+                    "workspace": "general",
+                    "page_context": {
+                        "source": "mobile_app",
+                        "agent_turn_id": str(turn.id),
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            idempotency_key=f"mobile:{turn.id}",
+            cost=1,
+        )
+        db.add(task)
+        await db.commit()
+        task_id = task.id
+        turn_id = turn.id
+        turn_input_id = turn_input.id
+
+    await exe.execute_agent_task(task_id)
+
+    async with factory() as db:
+        task_now = await db.get(AgentTask, task_id)
+        turn_now = await db.get(AgentTurn, turn_id)
+        input_now = await db.get(AgentTurnInput, turn_input_id)
+
+    assert task_now.status == "succeeded"
+    assert turn_now.status == "succeeded"
+    assert input_now.status == "completed"
+
+
+@pytest.mark.parametrize(
+    ("task_status", "turn_status", "input_status"),
+    [
+        ("running", "running", "processing"),
+        ("partial", "partial", "completed"),
+        ("failed", "failed", "failed"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_sync_agent_turn_status_maps_task_terminal_states(
+    task_status,
+    turn_status,
+    input_status,
+):
+    """AgentTurn 状态映射必须与 App 的生命周期判断一致。"""
+    engine, factory = _make_static_factory()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with factory() as db:
+        user = User(
+            email=f"turn-map-{task_status}@test.com",
+            username=f"turnmap{task_status}",
+            password_hash="x",
+        )
+        db.add(user)
+        await db.flush()
+        workspace = Workspace(
+            name="状态映射工作区",
+            slug=f"turn-map-{task_status}",
+            owner_user_id=user.id,
+        )
+        db.add(workspace)
+        await db.flush()
+        turn = AgentTurn(
+            workspace_id=workspace.id,
+            created_by_user_id=user.id,
+            input_type="text",
+            text="状态映射",
+            status="pending",
+        )
+        db.add(turn)
+        await db.flush()
+        turn_input = AgentTurnInput(
+            workspace_id=workspace.id,
+            agent_turn_id=turn.id,
+            input_type="text",
+            text_content="状态映射",
+            status="received",
+        )
+        db.add(turn_input)
+        await db.commit()
+
+        await sync_agent_turn_status(db, turn=turn, task_status=task_status)
+        await db.commit()
+
+        assert turn.status == turn_status
+        assert turn_input.status == input_status
 
 
 @pytest.mark.asyncio

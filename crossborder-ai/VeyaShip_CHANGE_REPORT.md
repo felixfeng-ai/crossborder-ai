@@ -45,12 +45,23 @@
 - 新增 TDD 覆盖：工具开始事件、同数量进度更新、`partial` 流关闭、同任务市场复用、
   `finished_at` 真实完成时间
 
+### 发布
+
+- 运行时代码提交：`1a909c8 fix(agent): expose live progress and reuse market data`。
+- 2026-11-24 22:31 CST 完成生产发布，数据库迁移保持在
+  `082_user_avatar (head)`。
+- GitHub Actions 自动 SCP 再次卡在 `Upload application code`，已取消；
+  使用本次 7 个文件的增量上传并执行同一生产部署脚本。
+- 2026-11-24 22:33 CST GitHub CI 通过。
+- 公网 `/health` 返回 `200`，Agent 工作流接口返回 `200`，未登录鉴权接口按预期
+  返回 `401`；生产服务 `active`，部署后 10 分钟 warning 日志为空。
+- 生产文件已确认包含 running 阶段、SSE progress 内容比较和 `v1.3.1` 报告。
+
 ### 当前边界
 
 - 缓存只在一个 Agent 任务内生效，不跨用户或跨任务复用，避免陈旧市场数据影响新决策。
 - 不同关键词仍会分别访问 Amazon 数据供应商。
 - 本次不修改数据库结构，不需要迁移。
-- 当前代码未提交、未推送、未部署。
 
 ## v1.3.0 - 2026-11-24
 

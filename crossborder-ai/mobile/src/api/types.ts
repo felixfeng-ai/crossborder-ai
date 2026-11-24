@@ -288,9 +288,41 @@ export type VoiceTranscriptionResponse = {
   model: string;
 };
 
+export type SourcingSourceItem = {
+  item_id: string;
+  title: string;
+  url: string;
+  image_url?: string | null;
+  price?: string | null;
+  price_min_cny?: number | null;
+  price_max_cny?: number | null;
+  moq?: number | null;
+  sale_quantity?: number | null;
+  shop_name?: string | null;
+  location?: string | null;
+  is_factory?: boolean;
+  factory_inspection?: boolean;
+  service_tags?: string[];
+};
+
+export type SourcingSearchReport = {
+  keyword: string;
+  provider: string;
+  search_mode: "text" | "image";
+  image_search_used: boolean;
+  image_fallback_reason?: string | null;
+  provider_fallback_reason?: string | null;
+  total_count?: number | null;
+  observed_at: string;
+  items: SourcingSourceItem[];
+  limitations: string[];
+};
+
 export type AgentStep = {
   label: string;
   status: string;
+  action?: string | null;
+  structured?: SourcingSearchReport | null;
 };
 
 export type AgentTurnDetail = {

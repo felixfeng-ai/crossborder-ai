@@ -12,7 +12,10 @@ describe('agent page scroll layout', () => {
 
     expect(source).not.toContain('h-[calc(100vh-6rem)]')
     expect(source).toContain(
-      'mx-auto flex h-full min-h-0 max-w-3xl flex-col overflow-hidden',
+      'w-full min-w-0 mx-auto flex h-full min-h-0 max-w-3xl flex-col overflow-hidden',
+    )
+    expect(source).toContain(
+      'min-w-0 flex-1 max-w-[80%] max-md:max-w-[calc(100%-3rem)]',
     )
     expect(source).toContain('min-h-0 flex-1 overflow-y-auto')
     expect(source).toContain('shrink-0 border-t')

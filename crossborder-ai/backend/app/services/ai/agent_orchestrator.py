@@ -69,6 +69,11 @@ from app.services.shopify_operations_sync import (
 from app.services.store_check_service import run_store_check as execute_store_check
 from app.services.ip_risk import screen_product_text
 from app.services.selection_report import normalize_selection_report
+from app.services.source_discovery import (
+    SourceDiscoveryError,
+    SourceDiscoveryInputError,
+    search_1688_sources,
+)
 from app.services.amazon_market_data import (
     AmazonMarketDataNotConfigured,
     AmazonMarketQueryError,
@@ -274,6 +279,50 @@ def _render_report_markdown(structured: dict, keyword: str, mode: str = "select"
     return "\n".join(lines)
 
 
+def _render_sourcing_report(structured: dict[str, Any]) -> str:
+    """把 1688 货源候选渲染成不夸大相似度的可读报告。"""
+
+    items = structured.get("items")
+    if not isinstance(items, list) or not items:
+        return (
+            f"## 「{structured.get('keyword', '')}」1688 货源搜索\n\n"
+            "暂未返回可展示的货源候选，请调整关键词或稍后重试。"
+        )
+    mode = "图片相似搜索" if structured.get("image_search_used") else "关键词搜索"
+    lines = [
+        f"## 「{structured.get('keyword', '')}」1688 货源候选",
+        "",
+        f"- 搜索方式：{mode}",
+        f"- 数据供应商：{structured.get('provider', '')}",
+        "",
+        "| 商品 | 价格 | MOQ | 销量 | 店铺 |",
+        "|---|---:|---:|---:|---|",
+    ]
+    for item in items[:10]:
+        if not isinstance(item, dict):
+            continue
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(item.get("title") or ""),
+                    str(item.get("price") or "-"),
+                    str(item.get("moq") or "-"),
+                    str(item.get("sale_quantity") or "-"),
+                    str(item.get("shop_name") or "-"),
+                ]
+            )
+            + " |"
+        )
+    lines.extend(
+        [
+            "",
+            "> 相似标题或图片不代表同款。采购前必须进入具体 1688 商品页确认 SKU、材质、尺寸、批次和供货稳定性。",
+        ]
+    )
+    return "\n".join(lines)
+
+
 class AgentOrchestrator:
     """AI Agent 编排器 —— 基于 ReAct + Function Calling 的决策 Agent"""
 
@@ -321,6 +370,32 @@ class AgentOrchestrator:
                         "marketplace": {
                             "type": "string",
                             "description": "默认 us，当前只支持 Amazon US",
+                        },
+                    },
+                    "required": ["keyword"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "find_1688_sources",
+                "description": (
+                    "根据具体商品名称、核心规格或公开主图，在 1688 搜索相似货源和供应商候选；"
+                    "不自动询价、加购或下单"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "keyword": {
+                            "type": "string",
+                            "description": (
+                                "简洁中文采购关键词，优先包含品类、材质、功能、尺寸等核心规格"
+                            ),
+                        },
+                        "image_url": {
+                            "type": "string",
+                            "description": "可选商品公开主图 URL，只能使用已返回的真实图片",
                         },
                     },
                     "required": ["keyword"],
@@ -1840,6 +1915,8 @@ class AgentOrchestrator:
 - 如果用户没有明确说要做什么，引导用户使用工具
 - 用户提到分析/市场/能不能做/品类 → 用 analyze_category
 - 用户提到选品/推荐/做点什么/想做XX → 用 select_products
+- 用户提到 1688 货源、找同款、供应商、采购候选 → 用 find_1688_sources
+- 调用 find_1688_sources 时，把 Amazon 英文标题提炼为简洁中文采购关键词；有真实主图时传 image_url
 - 用户提到检查店铺/巡检/看看我的商品 → 用 store_check
 - 用户提到库存/补货/毛利/预警/哪些商品要处理 → 用 monitor_products
 - 用户只问当前经营风险或今天先处理什么 → 用 get_operations_digest
@@ -1874,6 +1951,11 @@ class AgentOrchestrator:
 2. select_products — 选品推荐
    参数: {"keyword": "品类关键词，如宠物用品"}
    输出: 真实样本支持的细分方向、候选商品和数据缺口
+
+2b. find_1688_sources — 1688 货源与供应商候选
+   参数: {"keyword": "中文采购关键词", "image_url": "可选真实商品主图"}
+   输出: 价格、MOQ、销量、店铺、工厂标记、发货地和商品链接
+   注意: 只能称相似货源，不能保证同款；不自动询价、下单或付款
 
 3. analyze_product_decision — 单品决策
    参数: {"url": "1688商品链接", "shipping_cny": 可选单件物流成本}
@@ -2026,6 +2108,8 @@ class AgentOrchestrator:
                 return await self._do_analyze_product_decision(params)
             elif action == "select_products":
                 return await self._do_select_products(params)
+            elif action == "find_1688_sources":
+                return await self._do_find_1688_sources(params)
             elif action == "store_check":
                 return await self._do_store_check(params)
             elif action == "monitor_products":
@@ -2853,6 +2937,75 @@ class AgentOrchestrator:
                 "action": "select_products",
                 "status": "failed",
                 "error": f"Amazon 市场数据分析失败：{exc}",
+            }
+
+    async def _do_find_1688_sources(self, params: dict) -> dict:
+        """在 1688 查找与 Amazon 候选商品相似的货源和供应商。"""
+
+        keyword = str(
+            params.get("keyword")
+            or params.get("query")
+            or params.get("product_name")
+            or ""
+        ).strip()
+        if not keyword:
+            return {
+                "action": "find_1688_sources",
+                "status": "failed",
+                "error": "缺少 1688 货源搜索关键词",
+            }
+        image_url = str(params.get("image_url") or "").strip() or None
+        try:
+            await provider_config.refresh(self.db)
+            structured = await search_1688_sources(
+                keyword,
+                image_url=image_url,
+                justone_token=provider_config.get("justone", "token"),
+                onebound_api_key=provider_config.get("onebound", "api_key"),
+                onebound_api_secret=provider_config.get(
+                    "onebound",
+                    "api_secret",
+                ),
+                limit=10,
+            )
+            items = structured.get("items")
+            count = len(items) if isinstance(items, list) else 0
+            search_mode = (
+                "图片相似搜索"
+                if structured.get("image_search_used")
+                else "关键词搜索"
+            )
+            summary = (
+                f"已在 1688 完成「{keyword}」{search_mode}，"
+                f"返回 {count} 个货源候选"
+            )
+            return {
+                "action": "find_1688_sources",
+                "status": "success",
+                "data": {
+                    "keyword": keyword,
+                    "structured": structured,
+                    "report": _render_sourcing_report(structured),
+                },
+                "summary": summary,
+            }
+        except SourceDiscoveryInputError as exc:
+            return {
+                "action": "find_1688_sources",
+                "status": "failed",
+                "error": str(exc),
+            }
+        except SourceDiscoveryError as exc:
+            return {
+                "action": "find_1688_sources",
+                "status": "failed",
+                "error": str(exc),
+            }
+        except Exception:
+            return {
+                "action": "find_1688_sources",
+                "status": "failed",
+                "error": "1688 货源搜索失败，请稍后重试",
             }
 
     async def _do_analyze_category(self, params: dict) -> dict:

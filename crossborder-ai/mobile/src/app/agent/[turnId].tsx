@@ -21,8 +21,11 @@ import { useAgentTurnQuery, useWorkItemQuery } from "@/api/queries";
 import type { AgentStep } from "@/api/types";
 import { ModalScreenHeader } from "@/components/ModalScreenHeader";
 import { QueryErrorState } from "@/components/QueryErrorState";
+import { SourceSupplierList } from "@/components/SourceSupplierList";
 import { colors, fonts, radii } from "@/design/tokens";
 import { resolveQueryState } from "@/features/query-state/query-state";
+import { buildSourceProfitPrompt } from "@/features/sourcing/prompt";
+import { useAgentComposerStore } from "@/stores/agentComposer";
 import { useAuthStore } from "@/stores/auth";
 import { useWorkspaceStore } from "@/stores/workspace";
 
@@ -49,6 +52,9 @@ export default function AgentTurnScreen() {
     workItemId?: string;
   }>();
   const token = useAuthStore((state) => state.token);
+  const requestComposerDraft = useAgentComposerStore(
+    (state) => state.requestDraft,
+  );
   const storedWorkspaceId = useWorkspaceStore(
     (state) => state.activeWorkspaceId,
   );
@@ -101,6 +107,11 @@ export default function AgentTurnScreen() {
     item?.steps.filter((step) => step.status === "completed").length ?? 0;
   const totalStepCount = item?.steps.length ?? 0;
   const pendingWorkCount = item?.created_work_item_ids.length ?? 0;
+  const sourceReports = ((item?.steps ?? []) as AgentStep[]).flatMap((step) =>
+    step.action === "find_1688_sources" && step.structured
+      ? [step.structured]
+      : [],
+  );
   const failed = item?.status === "failed";
   const resultCopy = isWorking
     ? "小 Veya 正在处理这条指令"
@@ -206,6 +217,17 @@ export default function AgentTurnScreen() {
               </View>
             </View>
           )}
+
+          {sourceReports.map((report, index) => (
+            <SourceSupplierList
+              key={`${report.keyword}-${index}`}
+              report={report}
+              onUseSource={(source) => {
+                requestComposerDraft(buildSourceProfitPrompt(source));
+                router.replace("/");
+              }}
+            />
+          ))}
 
           {item?.error && (
             <View style={styles.error}>

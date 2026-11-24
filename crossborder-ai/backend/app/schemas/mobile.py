@@ -1,7 +1,7 @@
 """移动端聚合接口契约。"""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -448,6 +448,8 @@ class AgentTurnResponse(BaseModel):
 class AgentStepSummary(BaseModel):
     label: str
     status: str
+    action: str | None = None
+    structured: dict[str, Any] | None = None
 
 
 class AgentTurnDetailResponse(BaseModel):

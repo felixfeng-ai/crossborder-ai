@@ -342,6 +342,85 @@ async def test_mobile_agent_turn_detail_exposes_progress_and_result(
 
 
 @pytest.mark.asyncio
+async def test_mobile_agent_turn_detail_exposes_1688_sources(
+    client,
+    db_session,
+):
+    headers, workspace = await _register_and_workspace(
+        client,
+        db_session,
+        email="mobile-agent-sources@example.com",
+        username="mobile-agent-sources",
+    )
+    submitted = await client.post(
+        f"/api/mobile/v1/workspaces/{workspace.id}/agent-turns",
+        headers={**headers, "Idempotency-Key": "agent-source-turn-1"},
+        json={
+            "input_type": "text",
+            "text": "为这个商品找 1688 货源",
+        },
+    )
+    turn_id = UUID(submitted.json()["agent_turn_id"])
+    task = (
+        await db_session.execute(
+            select(AgentTask).where(
+                AgentTask.idempotency_key == f"mobile:{turn_id}",
+            )
+        )
+    ).scalar_one()
+    task.status = "succeeded"
+    task.progress = json.dumps(
+        {
+            "steps": [
+                {
+                    "action": "find_1688_sources",
+                    "label": "1688 找货源",
+                    "status": "success",
+                    "data": {
+                        "structured": {
+                            "keyword": "宠物饮水机",
+                            "provider": "justone",
+                            "search_mode": "image",
+                            "image_search_used": True,
+                            "items": [
+                                {
+                                    "item_id": "628196518518",
+                                    "title": "跨境无线宠物饮水机",
+                                    "url": (
+                                        "https://detail.1688.com/offer/"
+                                        "628196518518.html"
+                                    ),
+                                    "price": "18.50",
+                                    "moq": 2,
+                                }
+                            ],
+                            "limitations": ["相似货源不等于同款"],
+                        }
+                    },
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )
+    task.result = json.dumps(
+        {"summary": "已找到 1 个 1688 货源候选"},
+        ensure_ascii=False,
+    )
+    await db_session.commit()
+
+    detail = await client.get(
+        f"/api/mobile/v1/workspaces/{workspace.id}/agent-turns/{turn_id}",
+        headers=headers,
+    )
+
+    assert detail.status_code == 200
+    step = detail.json()["steps"][0]
+    assert step["action"] == "find_1688_sources"
+    assert step["structured"]["items"][0]["moq"] == 2
+    assert step["structured"]["search_mode"] == "image"
+
+
+@pytest.mark.asyncio
 async def test_mobile_command_confirms_linked_action_run(client, db_session):
     headers, workspace = await _register_and_workspace(
         client,

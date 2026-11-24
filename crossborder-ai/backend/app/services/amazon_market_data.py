@@ -106,6 +106,7 @@ class AmazonProductSample:
     review_titles: list[str] = field(default_factory=list)
     review_comments: list[str] = field(default_factory=list)
     source_provider: str = PROVIDER_NAME
+    image_url: str | None = None
     payload: dict[str, Any] = field(default_factory=dict, compare=False)
 
 
@@ -391,6 +392,20 @@ def _normalize_product_node(node: dict[str, Any]) -> AmazonProductSample | None:
             )
         ),
         url=f"https://www.amazon.com/dp/{asin}",
+        image_url=(
+            str(
+                _first(
+                    attributes,
+                    "product_image",
+                    "main_image",
+                    "image_url",
+                    "image",
+                    "thumbnail",
+                )
+                or ""
+            ).strip()
+            or None
+        ),
         payload=attributes,
     )
 
@@ -786,6 +801,17 @@ class JustOneAmazonProvider:
             is_best_seller=bool(raw.get("is_best_seller")),
             is_amazon_choice=bool(raw.get("is_amazon_choice")),
             source_provider=JUSTONE_PROVIDER_NAME,
+            image_url=(
+                str(
+                    raw.get("product_image")
+                    or raw.get("main_image")
+                    or raw.get("image_url")
+                    or raw.get("image")
+                    or raw.get("thumbnail")
+                    or ""
+                ).strip()
+                or None
+            ),
             payload=raw,
         )
 
@@ -989,6 +1015,21 @@ class JustOneAmazonProvider:
                             purchase_volume["is_lower_bound"]
                         ),
                         source_provider=JUSTONE_PROVIDER_NAME,
+                        image_url=(
+                            str(
+                                _first(
+                                    raw,
+                                    "product_image",
+                                    "main_image",
+                                    "image_url",
+                                    "image",
+                                    "thumbnail",
+                                )
+                                or item.image_url
+                                or ""
+                            ).strip()
+                            or None
+                        ),
                         payload=raw,
                     )
                 )
@@ -1711,6 +1752,7 @@ class AmazonMarketDecisionService:
                     "name": item.title,
                     "asin": item.asin,
                     "url": item.url,
+                    "image_url": item.image_url,
                     "suggested_price_usd": item.price,
                     "observed_price_usd": item.price,
                     "monthly_units": item.monthly_units,

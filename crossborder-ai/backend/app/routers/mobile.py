@@ -2625,10 +2625,21 @@ async def get_turn_detail(
             if isinstance(raw_steps, list):
                 for step in raw_steps:
                     if isinstance(step, dict) and step.get("label"):
+                        action = str(step.get("action") or "").strip() or None
+                        step_data = step.get("data")
+                        structured = (
+                            step_data.get("structured")
+                            if isinstance(step_data, dict)
+                            and action == "find_1688_sources"
+                            and isinstance(step_data.get("structured"), dict)
+                            else None
+                        )
                         steps.append(
                             AgentStepSummary(
                                 label=str(step["label"]),
                                 status=str(step.get("status") or "pending"),
+                                action=action,
+                                structured=structured,
                             )
                         )
         except (TypeError, json.JSONDecodeError):

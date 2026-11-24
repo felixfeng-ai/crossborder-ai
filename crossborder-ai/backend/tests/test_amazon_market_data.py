@@ -353,6 +353,20 @@ async def test_justone_amazon_search_and_detail_use_observed_product_facts():
     assert len(requests) == 3
 
 
+def test_justone_search_preserves_public_product_image():
+    item = JustOneAmazonProvider._normalize_search_product(
+        {
+            "asin": "B000IMAGE1",
+            "product_title": "Wireless Pet Water Fountain",
+            "product_price_value": 39.99,
+            "product_image": "https://m.media-amazon.com/images/I/pet.jpg",
+        }
+    )
+
+    assert item is not None
+    assert item.image_url == "https://m.media-amazon.com/images/I/pet.jpg"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("business_code", "error_type", "message"),

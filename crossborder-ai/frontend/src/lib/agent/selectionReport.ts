@@ -43,7 +43,10 @@ export function normalizeSelectionProduct(value: unknown): ProductCandidate {
 
   return {
     name: typeof nameValue === 'string' ? nameValue.trim() : '',
+    asin: typeof data.asin === 'string' ? data.asin.trim() || null : null,
     url: typeof data.url === 'string' ? data.url : null,
+    image_url:
+      typeof data.image_url === 'string' ? data.image_url.trim() || null : null,
     suggested_price_usd: toNumber(
       firstValue(
         data,

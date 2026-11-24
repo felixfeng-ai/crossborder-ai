@@ -8,13 +8,17 @@ import {
 describe('selection report product normalization', () => {
   it('normalizes title and price aliases from historical reports', () => {
     const product = normalizeSelectionProduct({
+      asin: 'B000IMAGE1',
       title: '圣诞主题陶瓷马克杯礼盒',
+      image_url: 'https://img.example.com/mug.jpg',
       price_usd: 32.99,
       rating: 4.6,
       features: '含杯垫和勺子',
     })
 
     expect(product.name).toBe('圣诞主题陶瓷马克杯礼盒')
+    expect(product.asin).toBe('B000IMAGE1')
+    expect(product.image_url).toBe('https://img.example.com/mug.jpg')
     expect(product.suggested_price_usd).toBe(32.99)
     expect(isDisplayableSelectionProduct(product)).toBe(true)
   })

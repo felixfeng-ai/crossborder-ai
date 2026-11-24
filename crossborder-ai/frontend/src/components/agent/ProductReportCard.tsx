@@ -11,11 +11,13 @@ import {
   AlertTriangle,
   DollarSign,
   ExternalLink,
+  Search,
   type LucideIcon,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import type { SelectionReport } from '@/types'
+import { Button } from '@/components/ui/button'
+import type { ProductCandidate, SelectionReport } from '@/types'
 import { normalizeSelectionProducts } from '@/lib/agent/selectionReport'
 
 /**
@@ -28,9 +30,11 @@ import { normalizeSelectionProducts } from '@/lib/agent/selectionReport'
 export default function ProductReportCard({
   report,
   mode = 'select',
+  onFindSources,
 }: {
   report: SelectionReport
   mode?: 'select' | 'category'
+  onFindSources?: (product: ProductCandidate) => void
 }) {
   const market = report.market
   const products =
@@ -135,6 +139,18 @@ export default function ProductReportCard({
                         </Badge>
                       ))}
                     </div>
+                  )}
+                  {onFindSources && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="mt-2 h-8 gap-1.5 px-2.5 text-[11px]"
+                      onClick={() => onFindSources(p)}
+                    >
+                      <Search className="h-3.5 w-3.5" />
+                      1688 找货源
+                    </Button>
                   )}
                 </div>
               ))}

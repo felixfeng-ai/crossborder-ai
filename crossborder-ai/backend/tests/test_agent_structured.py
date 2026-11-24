@@ -151,6 +151,79 @@ def test_function_calling_tools_cover_full_listing_chain():
     assert "push_to_shopify" in names
 
 
+def test_agent_tools_include_1688_source_discovery():
+    names = {
+        tool["function"]["name"]
+        for tool in AgentOrchestrator.TOOLS
+    }
+
+    assert "find_1688_sources" in names
+
+
+@pytest.mark.asyncio
+async def test_find_1688_sources_returns_supplier_candidates(monkeypatch):
+    """Agent 应把 Amazon 商品关键词转换为 1688 货源候选。"""
+    captured: dict = {}
+
+    async def fake_search(keyword, **kwargs):
+        captured["keyword"] = keyword
+        captured.update(kwargs)
+        return {
+            "keyword": keyword,
+            "provider": "justone",
+            "search_mode": "image",
+            "image_search_used": True,
+            "items": [
+                {
+                    "item_id": "628196518518",
+                    "title": "跨境无线宠物饮水机",
+                    "url": (
+                        "https://detail.1688.com/offer/628196518518.html"
+                    ),
+                    "price": "18.50",
+                    "moq": 2,
+                }
+            ],
+            "limitations": ["相似货源不等于同款"],
+        }
+
+    def fake_get(provider, field, default=None):
+        values = {
+            ("justone", "token"): "justone-token",
+            ("onebound", "api_key"): "onebound-key",
+            ("onebound", "api_secret"): "onebound-secret",
+        }
+        return values.get((provider, field), default or "")
+
+    monkeypatch.setattr(
+        orchestrator_module.provider_config,
+        "refresh",
+        _no_provider_refresh,
+    )
+    monkeypatch.setattr(orchestrator_module.provider_config, "get", fake_get)
+    monkeypatch.setattr(
+        orchestrator_module,
+        "search_1688_sources",
+        fake_search,
+        raising=False,
+    )
+
+    result = await make_orchestrator()._do_find_1688_sources(
+        {
+            "keyword": "宠物饮水机",
+            "image_url": "https://img.example.com/pet.jpg",
+        }
+    )
+
+    assert captured["keyword"] == "宠物饮水机"
+    assert captured["image_url"] == "https://img.example.com/pet.jpg"
+    assert captured["justone_token"] == "justone-token"
+    assert result["action"] == "find_1688_sources"
+    assert result["status"] == "success"
+    assert result["data"]["structured"]["items"][0]["moq"] == 2
+    assert result["data"]["structured"]["search_mode"] == "image"
+
+
 @pytest.mark.asyncio
 async def test_run_react_reports_failed_tool_result(monkeypatch):
     """工具全部失败时，即使模型最后返回文本也不能标记 success。"""

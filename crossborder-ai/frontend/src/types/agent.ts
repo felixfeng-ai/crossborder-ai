@@ -18,7 +18,9 @@ export interface MarketMetrics {
 /** 候选商品 —— 对应 data.structured.products[] */
 export interface ProductCandidate {
   name: string
+  asin?: string | null // Amazon ASIN
   url?: string | null // Amazon 搜索结果链接
+  image_url?: string | null // Amazon 公开主图，可能为空
   suggested_price_usd: number | null // 建议售价（美元）
   cost_cny?: number | null // 1688 采购成本（人民币）
   net_profit_usd: number | null // 单件净利（美元）
@@ -36,6 +38,46 @@ export interface SelectionRecommendation {
   reasons: string[] // 推荐理由
   risks: string[] // 风险
   entry_advice?: string // 切入建议
+}
+
+export interface SourceSupplierItem {
+  item_id: string
+  title: string
+  url: string
+  image_url?: string | null
+  price?: string | null
+  price_min_cny?: number | null
+  price_max_cny?: number | null
+  moq?: number | null
+  sale_quantity?: number | null
+  orders_count?: number | null
+  shop_name?: string | null
+  shop_url?: string | null
+  shop_years?: number | null
+  location?: string | null
+  business_type?: string | null
+  is_factory?: boolean
+  is_super_factory?: boolean
+  factory_inspection?: boolean
+  service_tags?: string[]
+  product_tags?: string[]
+  composite_score?: string | null
+  rating_star?: string | null
+  repurchase_rate?: string | null
+  source_provider?: string
+}
+
+export interface SourcingSearchReport {
+  keyword: string
+  provider: string
+  search_mode: 'text' | 'image'
+  image_search_used: boolean
+  image_fallback_reason?: string | null
+  provider_fallback_reason?: string | null
+  total_count?: number | null
+  observed_at: string
+  items: SourceSupplierItem[]
+  limitations: string[]
 }
 
 /** 统一报告结构 —— select_products 与 analyze_category 共用 */

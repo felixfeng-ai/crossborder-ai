@@ -24,9 +24,15 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Markdown from '@/components/common/Markdown'
 import ProductReportCard from '@/components/agent/ProductReportCard'
+import SourceSupplierCard from '@/components/agent/SourceSupplierCard'
 import { AssistantMark } from '@/components/brand/AssistantMark'
 import { UserAvatar as AccountUserAvatar } from '@/components/account/UserAvatar'
-import type { AgentStep } from '@/types'
+import type {
+  AgentStep,
+  ProductCandidate,
+  SourceSupplierItem,
+  SourcingSearchReport,
+} from '@/types'
 import apiClient, { API_BASE } from '@/api/client'
 import { MarketingCampaignBar } from '@/components/agent/MarketingCampaignBar'
 import { readSseUntil, TaskTimeoutError } from '@/api/sse'
@@ -49,6 +55,10 @@ import {
   type AgentConversationSelection,
 } from './conversation-selection'
 import { useAuthStore } from '@/stores/authStore'
+import {
+  buildFindSourcesPrompt,
+  buildProfitFromSourcePrompt,
+} from '@/lib/agent/sourcing'
 
 /**
  * AgentPage - AI 智能助手聊天页
@@ -340,6 +350,14 @@ export default function AgentPage({
     setInput(prompt)
   }
 
+  const handleFindSources = (product: ProductCandidate) => {
+    setInput(buildFindSourcesPrompt(product))
+  }
+
+  const handleUseSource = (source: SourceSupplierItem) => {
+    setInput(buildProfitFromSourcePrompt(source))
+  }
+
   // 渲染消息
   const renderMessage = (msg: Message, i: number) => {
     const isUser = msg.role === 'user'
@@ -373,7 +391,11 @@ export default function AgentPage({
         )}
 
         {/* 消息内容 */}
-        <div className={`max-w-[80%] space-y-2 ${isUser ? 'items-end' : ''}`}>
+        <div
+          className={`min-w-0 flex-1 max-w-[80%] max-md:max-w-[calc(100%-3rem)] space-y-2 ${
+            isUser ? 'items-end' : ''
+          }`}
+        >
           {collapseText ? (
             // 长报告折叠：独立浅色容器承载文字版，避免灰色气泡上灰上加灰看不清
             <details className="group rounded-xl bg-background border border-primary/10 px-4 py-3">
@@ -397,13 +419,24 @@ export default function AgentPage({
           )}
 
           {/* 结构化报告卡片（品类分析 + 选品可并存，逐张渲染） */}
-          {reportSteps.map((step, idx) => (
-            <ProductReportCard
-              key={idx}
-              report={step.data!.structured!}
-              mode={step.action === 'analyze_category' ? 'category' : 'select'}
-            />
-          ))}
+          {reportSteps.map((step, idx) =>
+            step.action === 'find_1688_sources' ? (
+              <SourceSupplierCard
+                key={idx}
+                report={step.data!.structured as unknown as SourcingSearchReport}
+                onUseSource={handleUseSource}
+              />
+            ) : (
+              <ProductReportCard
+                key={idx}
+                report={step.data!.structured!}
+                mode={
+                  step.action === 'analyze_category' ? 'category' : 'select'
+                }
+                onFindSources={handleFindSources}
+              />
+            ),
+          )}
 
           {policySteps.map((step, idx) => (
             <PolicyEvidenceCard key={idx} step={step} />
@@ -441,7 +474,7 @@ export default function AgentPage({
       className={
         variant === 'sidecar'
           ? 'flex h-full min-h-0 w-full flex-col overflow-hidden'
-          : 'mx-auto flex h-full min-h-0 max-w-3xl flex-col overflow-hidden'
+          : 'w-full min-w-0 mx-auto flex h-full min-h-0 max-w-3xl flex-col overflow-hidden'
       }
       data-agent-layout={variant}
       data-agent-page={pageContext?.route || ''}

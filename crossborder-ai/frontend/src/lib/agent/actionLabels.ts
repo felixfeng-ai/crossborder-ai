@@ -1,5 +1,6 @@
 const ACTION_LABELS: Record<string, string> = {
   scrape_1688: '抓取商品',
+  find_1688_sources: '1688 找货源',
   analyze_product_decision: '商品决策分析',
   create_product: '保存商品',
   generate_listing: '生成 Listing',

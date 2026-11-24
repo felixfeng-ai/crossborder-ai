@@ -140,6 +140,9 @@ def build_system_prompt(workspace: str) -> str:
         "8. 商品图和广告图默认不生成任何文字、数字、水印或字幕\n"
         "9. 标题、卖点、价格和 CTA 使用前端模板后处理，不交给生图模型排版\n"
         "10. 商品主图优先使用带参考图的 generate_image_asset\n"
+        "11. 用户要求找 1688 货源、找同款或供应商时，生成简洁中文采购关键词并调用 "
+        "find_1688_sources；有真实商品主图时可传 image_url\n"
+        "12. 1688 搜索结果只能称为相似货源，不能宣称同款，不得自动询价、加购、下单或付款\n"
     )
     if workspace == "marketing":
         role = (

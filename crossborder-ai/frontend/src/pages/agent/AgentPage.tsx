@@ -43,6 +43,11 @@ import {
   buildSidecarQuickActions,
   type AgentPageContext,
 } from '@/lib/agent/sidecar'
+import {
+  agentConversationScope,
+  resolveAgentConversationId,
+  type AgentConversationSelection,
+} from './conversation-selection'
 import { useAuthStore } from '@/stores/authStore'
 
 /**
@@ -171,7 +176,8 @@ export default function AgentPage({
     },
   ])
   const [input, setInput] = useState(promptFromQuery)
-  const [conversationId, setConversationId] = useState<string>('')
+  const [conversationSelection, setConversationSelection] =
+    useState<AgentConversationSelection>({ scope: '', id: '' })
   const [campaignId, setCampaignId] = useState('')
   const [liveSteps, setLiveSteps] = useState<AgentStep[]>([]) // SSE 实时推进度
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -206,18 +212,14 @@ export default function AgentPage({
     enabled: loadHistory,
   })
 
-  // 如果有对话，加载第一条
-  useEffect(() => {
-    if (
-      !forceNewConversation &&
-      loadHistory &&
-      convList &&
-      convList.length > 0 &&
-      !conversationId
-    ) {
-      setConversationId(convList[0].id)
-    }
-  }, [convList, forceNewConversation, loadHistory])
+  const conversationScope = agentConversationScope(mode, campaignId)
+  const conversationId = resolveAgentConversationId({
+    scope: conversationScope,
+    selection: conversationSelection,
+    recentConversations: convList,
+    loadHistory,
+    forceNewConversation,
+  })
 
   // 加载对话历史消息
   const { data: convData } = useQuery({
@@ -251,9 +253,13 @@ export default function AgentPage({
     if (promptFromQuery) setInput(promptFromQuery)
   }, [promptFromQuery])
 
-  useEffect(() => {
-    if (variant === 'sidecar') return
-    setConversationId('')
+  // 用户主动切换营销活动时才重置消息；页面重新挂载不能再清空已恢复的会话。
+  const handleCampaignChange = (nextCampaignId: string) => {
+    setCampaignId(nextCampaignId)
+    setConversationSelection({
+      scope: agentConversationScope(mode, nextCampaignId),
+      id: '',
+    })
     setMessages([
       {
         role: 'assistant',
@@ -261,7 +267,7 @@ export default function AgentPage({
         timestamp: new Date(),
       },
     ])
-  }, [campaignId, mode, variant, workspace.intro])
+  }
 
   // Agent 执行：POST 提交异步任务（带幂等键防重复扣积分）→ SSE 实时推进度，
   // 连接失败自动回退轮询到 succeeded/failed
@@ -285,7 +291,12 @@ export default function AgentPage({
     },
     onSuccess: (data) => {
       setLiveSteps([]) // 任务结束，实时步骤已落入消息 actionResults
-      if (data.conversation_id) setConversationId(data.conversation_id)
+      if (data.conversation_id) {
+        setConversationSelection({
+          scope: conversationScope,
+          id: data.conversation_id,
+        })
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -429,17 +440,17 @@ export default function AgentPage({
     <div
       className={
         variant === 'sidecar'
-          ? 'flex h-full min-h-0 w-full flex-col'
-          : 'mx-auto flex h-[calc(100vh-6rem)] max-w-3xl flex-col'
+          ? 'flex h-full min-h-0 w-full flex-col overflow-hidden'
+          : 'mx-auto flex h-full min-h-0 max-w-3xl flex-col overflow-hidden'
       }
       data-agent-layout={variant}
       data-agent-page={pageContext?.route || ''}
     >
       {mode === 'marketing' && variant === 'page' && (
-        <>
+        <div className="shrink-0">
           <MarketingCampaignBar
             campaignId={campaignId}
-            onCampaignChange={setCampaignId}
+            onCampaignChange={handleCampaignChange}
           />
           <div className="flex items-center gap-4 overflow-x-auto border-b px-4 py-2 text-[11px] text-muted-foreground">
             <span className="shrink-0 font-medium text-foreground">工作区</span>
@@ -447,11 +458,11 @@ export default function AgentPage({
             <Link to="/app/videos" className="shrink-0 hover:text-foreground">视频工作台</Link>
             <Link to="/app/assets" className="shrink-0 hover:text-foreground">素材中心</Link>
           </div>
-        </>
+        </div>
       )}
 
       {/* ── 聊天消息区 ────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto space-y-4 px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto space-y-4 px-4 py-4">
         <AnimatePresence>
           {messages.map((msg, i) => renderMessage(msg, i))}
         </AnimatePresence>
@@ -500,7 +511,7 @@ export default function AgentPage({
       </div>
 
       {/* 快捷指令独立于消息数量，历史加载或长对话时保持可见。 */}
-      <div className="px-4 pb-2">
+      <div className="shrink-0 px-4 pb-2">
         <div className="flex gap-2 overflow-x-auto pb-1">
           {quickActions.map((action) => {
             const Icon = ACTION_ICONS[action.icon]
@@ -522,7 +533,7 @@ export default function AgentPage({
       </div>
 
       {/* ── 输入框 ────────────────────────────────────────── */}
-      <div className="border-t bg-background px-4 py-3">
+      <div className="shrink-0 border-t bg-background px-4 py-3">
         <div className="flex gap-2">
           <input
             value={input}

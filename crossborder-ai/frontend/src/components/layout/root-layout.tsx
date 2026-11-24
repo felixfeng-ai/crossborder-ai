@@ -1,5 +1,5 @@
 import { Suspense, useState } from 'react'
-import { Outlet, Navigate } from 'react-router-dom'
+import { Outlet, Navigate, useLocation } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
@@ -11,11 +11,19 @@ import { RouteFallback } from '@/components/common/RouteFallback'
 import { useEffect } from 'react'
 import { appQueryClient } from '@/lib/queryClient'
 import { useWorkspaceContextStore } from '@/features/workspace-context/workspace-context-store'
+import { isAgentFullPage } from '@/lib/agent/sidecar'
+
+const DEFAULT_MAIN_CLASS =
+  'flex-1 overflow-y-auto p-4 pb-28 md:p-6 md:pb-28 lg:p-8 lg:pb-28'
+const AGENT_MAIN_CLASS =
+  'flex min-h-0 flex-1 flex-col overflow-hidden p-4 pb-4 md:p-6 md:pb-6 lg:p-8 lg:pb-8'
 
 export function RootLayout() {
+  const location = useLocation()
   const { isAuthenticated, loadUser, isLoading, token } = useAuthStore()
   const [mobileSidebar, setMobileSidebar] = useState(false)
   const agentSidecarOpen = useAgentSidecarStore((state) => state.isOpen)
+  const agentFullPage = isAgentFullPage(location.pathname)
 
   useEffect(() => {
     if (token && !useAuthStore.getState().user) {
@@ -81,7 +89,7 @@ export function RootLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header onOpenMenu={() => setMobileSidebar(true)} />
-        <main className="flex-1 overflow-y-auto p-4 pb-28 md:p-6 md:pb-28 lg:p-8 lg:pb-28">
+        <main className={agentFullPage ? AGENT_MAIN_CLASS : DEFAULT_MAIN_CLASS}>
           <Suspense fallback={<RouteFallback />}>
             <Outlet />
           </Suspense>

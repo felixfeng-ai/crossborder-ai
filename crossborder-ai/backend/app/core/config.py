@@ -1,8 +1,9 @@
-"""VeyaShip - Global Configuration.
+"""全局运行配置：环境变量、安全密钥、外部服务与业务开关。
+
+VeyaShip - Global Configuration.
 
 Centralized settings using Pydantic Settings.
-All environment variables are loaded and validated here.
-"""
+All environment variables are loaded and validated here."""
 
 from typing import List, Optional
 from pydantic_settings import BaseSettings
@@ -176,6 +177,12 @@ class Settings(BaseSettings):
     )
     ALIYUN_ASR_MODEL: str = "qwen3-asr-flash"
     ALIYUN_ASR_TIMEOUT_SECONDS: float = 60.0
+    # 豆包语音识别优先复用即梦 Ark Key；独立 Key 只用于跨项目隔离部署。
+    DOUBAO_ASR_API_KEY: Optional[str] = None
+    DOUBAO_ASR_BASE_URL: str = "https://openspeech.bytedance.com/api/v3"
+    DOUBAO_ASR_RESOURCE_ID: str = "volc.bigasr.auc_turbo"
+    DOUBAO_ASR_TIMEOUT_SECONDS: float = 60.0
+    DOUBAO_ASR_TRANSCODE_TIMEOUT_SECONDS: float = 20.0
     # 商品图片工作台的本地素材目录；上传后统一转码并去除原始元数据。
     IMAGE_STORAGE_DIR: str = "./storage/images"
     MAX_IMAGE_UPLOAD_BYTES: int = 12 * 1024 * 1024

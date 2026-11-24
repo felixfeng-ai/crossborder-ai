@@ -66,6 +66,17 @@ const PROVIDER_GROUPS: ProviderGroup[] = [
         ],
       },
       {
+        id: 'doubao_asr',
+        label: '豆包语音识别',
+        description:
+          '移动端语音优先 Provider；API Key 留空时复用即梦 Ark Key。',
+        fields: [
+          { key: 'api_key', label: 'API Key（可选）', secret: true },
+          { key: 'base_url', label: 'Base URL', secret: false },
+          { key: 'resource_id', label: '资源 ID', secret: false },
+        ],
+      },
+      {
         id: 'replicate',
         label: 'Replicate',
         description: '自由创作与商品参考图生成通道。',

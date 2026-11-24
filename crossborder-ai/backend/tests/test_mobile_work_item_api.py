@@ -556,6 +556,8 @@ async def test_voice_upload_transcribes_audio_idempotently(
     assert first.json()["transcript"] == "帮我把两个订单发货"
     assert first.json()["language"] == "zh"
     assert first.json()["duration_ms"] == 4200
+    assert first.json()["provider"] == "aliyun"
+    assert first.json()["model"] == "qwen3-asr-flash"
     assert calls == 1
 
     asset = await db_session.get(AudioAsset, UUID(first.json()["asset_id"]))

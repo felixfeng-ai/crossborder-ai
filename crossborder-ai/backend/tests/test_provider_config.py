@@ -37,6 +37,29 @@ def test_empty_runtime_value_falls_back_to_environment(
     assert provider_config.get("aliyun", "api_key", "") == "env-dashscope-key"
 
 
+def test_doubao_asr_reuses_jimeng_ark_key(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """豆包语音没有独立 Key 时应复用管理端即梦 Ark Key。"""
+
+    monkeypatch.setattr(
+        provider_config.settings,
+        "DOUBAO_ASR_API_KEY",
+        None,
+    )
+    monkeypatch.setattr(
+        provider_config.settings,
+        "JIMENG_API_KEY",
+        None,
+    )
+    provider_config._cache["jimeng"] = {"api_key": "runtime-ark-key"}
+
+    assert (
+        provider_config.get("doubao_asr", "api_key")
+        == "runtime-ark-key"
+    )
+
+
 async def _register(client: AsyncClient, email: str) -> dict:
     response = await client.post(
         "/api/v1/auth/register",

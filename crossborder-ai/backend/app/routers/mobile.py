@@ -1219,6 +1219,8 @@ async def transcribe_mobile_voice(
             language=existing.detected_language,
             duration_ms=existing.duration_ms,
             expires_at=existing.expires_at,
+            provider=existing.provider,
+            model=existing.model,
         )
 
     try:
@@ -1303,6 +1305,8 @@ async def transcribe_mobile_voice(
             language=existing.detected_language,
             duration_ms=existing.duration_ms,
             expires_at=existing.expires_at,
+            provider=existing.provider,
+            model=existing.model,
         )
     return MobileVoiceTranscriptionResponse(
         asset_id=asset.id,
@@ -1310,6 +1314,8 @@ async def transcribe_mobile_voice(
         language=asset.detected_language,
         duration_ms=asset.duration_ms,
         expires_at=asset.expires_at,
+        provider=asset.provider,
+        model=asset.model,
     )
 
 

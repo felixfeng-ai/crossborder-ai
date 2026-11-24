@@ -283,6 +283,9 @@ export type VoiceTranscriptionResponse = {
   language: string;
   duration_ms: number;
   expires_at: string;
+  // 服务端回传实际转写通道，豆包降级到 Qwen 时可准确排查。
+  provider: string;
+  model: string;
 };
 
 export type AgentStep = {

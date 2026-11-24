@@ -424,6 +424,8 @@ class MobileVoiceTranscriptionResponse(BaseModel):
     language: str
     duration_ms: int
     expires_at: datetime
+    provider: str
+    model: str
 
 
 class AgentTurnRequest(BaseModel):

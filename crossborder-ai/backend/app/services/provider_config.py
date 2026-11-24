@@ -35,6 +35,7 @@ PROVIDER_FIELDS: dict[str, tuple[str, ...]] = {
         "asr_base_url",
         "asr_model",
     ),
+    "doubao_asr": ("api_key", "base_url", "resource_id"),
     "replicate": (
         "api_key",
         "model",
@@ -76,6 +77,11 @@ def _env_fallback(provider: str, field: str) -> str:
         ("aliyun", "embedding_model"): settings.POLICY_EMBEDDING_MODEL,
         ("aliyun", "asr_base_url"): settings.ALIYUN_ASR_BASE_URL,
         ("aliyun", "asr_model"): settings.ALIYUN_ASR_MODEL,
+        ("doubao_asr", "api_key"): (
+            settings.DOUBAO_ASR_API_KEY or settings.JIMENG_API_KEY or ""
+        ),
+        ("doubao_asr", "base_url"): settings.DOUBAO_ASR_BASE_URL,
+        ("doubao_asr", "resource_id"): settings.DOUBAO_ASR_RESOURCE_ID,
         ("replicate", "api_key"): settings.REPLICATE_API_KEY or "",
         ("replicate", "model"): settings.REPLICATE_MODEL,
         ("replicate", "reference_model"): settings.REPLICATE_IMAGE_REFERENCE_MODEL,
@@ -146,6 +152,14 @@ def get(provider: str, field: str, default: str | None = None) -> str:
         seedream_value = _env_fallback("seedream", field)
         if seedream_value:
             return seedream_value
+        jimeng_value = get("jimeng", field, "")
+        if jimeng_value:
+            return jimeng_value
+    # 豆包语音与即梦视频同属火山账号时可复用管理端配置的 Ark Key。
+    if provider == "doubao_asr" and field == "api_key":
+        doubao_value = _env_fallback("doubao_asr", field)
+        if doubao_value:
+            return doubao_value
         jimeng_value = get("jimeng", field, "")
         if jimeng_value:
             return jimeng_value

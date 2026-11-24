@@ -1,7 +1,8 @@
-"""VeyaShip - AI Content Generation Endpoints.
+"""v1 AI 内容生成接口。
 
-Generate, list, and manage AI-generated listing content via DeepSeek.
-"""
+VeyaShip - AI Content Generation Endpoints.
+
+Generate, list, and manage AI-generated listing content via DeepSeek."""
 
 from typing import Optional
 

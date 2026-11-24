@@ -1,8 +1,9 @@
-"""VeyaShip - Task Scheduler.
+"""持久化后台任务调度器：领取、恢复、重试和分发任务。
+
+VeyaShip - Task Scheduler.
 
 APScheduler-based periodic tasks for data synchronization,
-credit management, and cleanup operations.
-"""
+credit management, and cleanup operations."""
 
 import asyncio
 import hashlib

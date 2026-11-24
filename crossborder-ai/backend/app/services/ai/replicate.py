@@ -1,8 +1,9 @@
-"""VeyaShip - Replicate FLUX Image Generation Service.
+"""Replicate FLUX 图片生成适配器。
+
+VeyaShip - Replicate FLUX Image Generation Service.
 
 Integrates with Replicate API to generate product images
-using the black-forest-labs/flux-schnell model.
-"""
+using the black-forest-labs/flux-schnell model."""
 
 import asyncio
 import base64

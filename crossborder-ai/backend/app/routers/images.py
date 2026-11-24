@@ -103,6 +103,8 @@ class GenerateImageRequest(BaseModel):
 
 
 class TaskResponse(BaseModel):
+    """图片生成任务的公开状态，不包含供应商密钥和内部执行参数。"""
+
     task_id: str
     status: str  # pending / processing / completed / failed
     image_urls: list[str] = []
@@ -124,6 +126,8 @@ class ImageHistoryItem(BaseModel):
 
 
 class ImageAssetItem(BaseModel):
+    """图片素材列表项，文件地址使用短时签名 URL。"""
+
     id: str
     name: str
     kind: str
@@ -142,19 +146,27 @@ class ImageAssetItem(BaseModel):
 
 
 class ImageAssetListResponse(BaseModel):
+    """图片素材分页结果。"""
+
     items: list[ImageAssetItem]
     total: int
 
 
 class ProcessImageRequest(BaseModel):
+    """平台白底/尺寸处理请求。"""
+
     preset_id: str = Field(..., min_length=1)
 
 
 class RenameImageAssetRequest(BaseModel):
+    """图片素材重命名请求。"""
+
     name: str = Field(..., min_length=1, max_length=255)
 
 
 class PlatformPresetItem(BaseModel):
+    """平台图片尺寸预设。"""
+
     id: str
     platform: str
     label: str
@@ -263,6 +275,8 @@ def _signed_task_image_urls(task: ImageGenerationTask) -> list[str]:
 
 
 def _serialize_asset(asset: ImageAsset) -> ImageAssetItem:
+    """把数据库素材转换为前端可展示的安全字段。"""
+
     return ImageAssetItem(
         id=str(asset.id),
         name=asset.name,
@@ -298,6 +312,8 @@ async def _get_owned_asset(
     user_id,
     context: WorkspaceContext,
 ) -> ImageAsset:
+    """按用户和当前工作区读取素材，跨用户或跨工作区统一返回不存在。"""
+
     try:
         parsed_id = uuid.UUID(asset_id)
     except ValueError:

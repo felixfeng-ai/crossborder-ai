@@ -1,3 +1,4 @@
+/** 商品参考图角色用于约束模型准确使用正面、细节、包装等事实。 */
 export type ProductReferenceRole =
   | 'front'
   | 'back'
@@ -43,6 +44,7 @@ export function toggleReferenceAsset(
 }
 
 /** 构造后端请求；主图单独发送，避免重复出现在参考图列表。 */
+/** 过滤无效和重复图片，并确保参考图最多 8 张、主图不重复提交。 */
 export function buildReferenceAssetsPayload(
   primaryAssetId: string,
   selectedIds: string[],

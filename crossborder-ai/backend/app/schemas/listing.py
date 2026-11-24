@@ -1,4 +1,6 @@
-"""VeyaShip - Listing Schemas."""
+"""Listing 接口的请求与响应数据结构。
+
+VeyaShip - Listing Schemas."""
 
 from datetime import datetime
 from typing import List, Optional

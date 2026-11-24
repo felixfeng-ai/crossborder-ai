@@ -1,8 +1,9 @@
-"""VeyaShip - Cache Layer.
+"""缓存与限流基础设施：Redis 连接、缓存辅助函数和降级行为。
+
+VeyaShip - Cache Layer.
 
 In-memory cache decorator with TTL support.
-When Redis is available, it will be used instead.
-"""
+When Redis is available, it will be used instead."""
 
 import asyncio
 import functools

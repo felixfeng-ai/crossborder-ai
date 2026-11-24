@@ -1,7 +1,8 @@
-"""VeyaShip - Dependencies for FastAPI.
+"""FastAPI 通用依赖：分页参数与跨路由复用的请求依赖。
 
-Shared dependency injection: DB sessions, current user, pagination.
-"""
+VeyaShip - Dependencies for FastAPI.
+
+Shared dependency injection: DB sessions, current user, pagination."""
 
 from typing import AsyncGenerator, Optional
 

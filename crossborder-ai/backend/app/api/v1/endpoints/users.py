@@ -1,7 +1,8 @@
-"""VeyaShip - User Management Endpoints.
+"""v1 用户资料与账户接口。
 
-Profile retrieval, update, and admin user listing.
-"""
+VeyaShip - User Management Endpoints.
+
+Profile retrieval, update, and admin user listing."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, func

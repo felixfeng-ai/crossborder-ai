@@ -1,7 +1,8 @@
-"""VeyaShip - User Management Routes.
+"""用户资料、头像和账户相关 HTTP 路由。
 
-Credits query and deduction endpoints.
-"""
+VeyaShip - User Management Routes.
+
+Credits query and deduction endpoints."""
 
 from datetime import datetime, timezone
 

@@ -1,3 +1,4 @@
+/** 商品图生视频工作台：锁定商品首帧，生成 9:16 短视频并跟踪任务终态。 */
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -63,6 +64,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
   const [actionError, setActionError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<VideoTask | null>(null)
 
+  // 模型能力以服务端配置为准，页面不硬编码供应商可用性。
   const capabilitiesQuery = useQuery<VideoCapabilities>({
     queryKey: ['video-capabilities'],
     queryFn: async () => {
@@ -80,6 +82,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
   })
 
   const hasActiveTask = (task: VideoTask) => !isVideoTerminal(task.status)
+  // 仅存在活跃任务时每 3 秒刷新，完成后停止轮询。
   const historyQuery = useQuery<VideoTask[]>({
     queryKey: ['video-history'],
     queryFn: async () => {
@@ -109,6 +112,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
     duration,
   )
 
+  // 质量档位或风格被服务端移除时，回退到首个有效选项。
   useEffect(() => {
     if (!capabilities) return
     if (!capabilities.quality_tiers.some((tier) => tier.id === qualityTier)) {
@@ -155,6 +159,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
     }
   }, [history, selectedTaskId])
 
+  // 视频提交使用幂等键，重试不会为同一次点击创建多个计费任务。
   const generateMutation = useMutation({
     mutationFn: async () => {
       if (!selectedAsset) throw new Error('请先选择商品首帧')
@@ -206,6 +211,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
     onError: (error) => setActionError(toErrorMessage(error, '删除视频失败')),
   })
 
+  // 下载通过鉴权接口获取二进制，再在浏览器生成本地对象 URL。
   const downloadVideo = async () => {
     if (!selectedTask || selectedTask.status !== 'succeeded') return
     try {
@@ -579,6 +585,7 @@ export default function VideosPage({ embedded = false }: { embedded?: boolean })
   )
 }
 
+/** 视频预览只在任务成功后渲染，并保留真实播放错误。 */
 function VideoPreview({
   task,
   sourceAsset,

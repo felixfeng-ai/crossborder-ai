@@ -1,7 +1,8 @@
-"""VeyaShip - Payment & Subscription Endpoints.
+"""v1 支付、订阅和计费接口。
 
-Plan management, Creem.io checkout, webhooks, and billing history.
-"""
+VeyaShip - Payment & Subscription Endpoints.
+
+Plan management, Creem.io checkout, webhooks, and billing history."""
 
 from typing import Optional
 

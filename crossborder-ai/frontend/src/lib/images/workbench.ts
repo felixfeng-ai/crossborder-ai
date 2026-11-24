@@ -43,6 +43,7 @@ export interface WorkbenchLibraryItem {
   created_at: string
 }
 
+/** 合并工作区素材和生成历史，供图片工作台统一筛选与预览。 */
 export function buildLibraryItems(
   assets: WorkbenchAsset[],
   history: GeneratedImageHistory[],
@@ -60,6 +61,7 @@ export function buildLibraryItems(
     created_at: asset.created_at,
   }))
 
+  // 已落库的生成变体优先使用本地素材记录，避免历史接口与素材库重复展示。
   const materializedVariants = new Set(
     assets
       .filter((asset) => asset.generation_task_id && asset.variant_index != null)
@@ -90,6 +92,7 @@ export function buildLibraryItems(
   )
 }
 
+/** 把字节数格式化为素材详情中可快速比较的单位。 */
 export function formatFileSize(bytes: number | null | undefined): string {
   if (bytes == null || Number.isNaN(bytes)) return '-'
   if (bytes < 1024) return `${bytes} B`

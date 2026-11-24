@@ -1,8 +1,9 @@
-"""VeyaShip - RAG Service with Qdrant.
+"""政策与知识库 RAG 服务：检索、重排和上下文组装。
+
+VeyaShip - RAG Service with Qdrant.
 
 Vector search for knowledge retrieval to enhance AI content generation.
-Indexes product listings, market research, and brand guidelines.
-"""
+Indexes product listings, market research, and brand guidelines."""
 
 from typing import Any, Dict, List, Optional
 

@@ -1,4 +1,6 @@
-"""VeyaShip - Product Schemas."""
+"""商品接口的请求与响应数据结构。
+
+VeyaShip - Product Schemas."""
 
 from datetime import datetime
 from typing import List, Optional

@@ -1,3 +1,7 @@
+/**
+ * 图片上传前置校验与错误翻译。
+ * 浏览器先拦截明显不合格的文件，服务端仍会执行最终安全检查。
+ */
 import { toErrorMessage } from '@/utils/errorMessage'
 import { API_BASE } from '@/api/client'
 
@@ -22,6 +26,7 @@ interface UploadErrorShape {
   }
 }
 
+/** 校验空文件、大小和浏览器可控的 MIME/扩展名。 */
 export function validateImageUpload(file: UploadCandidate): string | null {
   if (file.size <= 0) return '图片文件为空，请重新选择'
   if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
@@ -33,6 +38,7 @@ export function validateImageUpload(file: UploadCandidate): string | null {
   return null
 }
 
+/** 将 HTTP、网络和超时错误转换为用户能采取动作的中文提示。 */
 export function imageUploadErrorMessage(error: unknown): string {
   const normalized = (error || {}) as UploadErrorShape
   const status = normalized.response?.status
@@ -54,6 +60,9 @@ export function imageUploadErrorMessage(error: unknown): string {
   return toErrorMessage(error, '图片上传失败，请稍后重试')
 }
 
+/**
+ * 使用 XHR 上传以获取真实进度；统一 client 的 Axios 无法提供上传进度事件。
+ */
 export async function uploadImageFile<T>(
   file: File,
   options: { onProgress?: (percent: number) => void } = {},

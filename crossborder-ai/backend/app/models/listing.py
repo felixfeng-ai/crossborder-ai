@@ -1,7 +1,8 @@
-"""VeyaShip - Listing & ListingVariant Models.
+"""Listing 与 Listing 变体持久化模型。
 
-Multi-platform product listings with AI-generated content.
-"""
+VeyaShip - Listing & ListingVariant Models.
+
+Multi-platform product listings with AI-generated content."""
 
 import enum
 from datetime import datetime

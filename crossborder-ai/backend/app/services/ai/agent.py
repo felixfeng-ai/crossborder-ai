@@ -1,11 +1,12 @@
-"""VeyaShip - LangGraph Agent Workflows.
+"""LangGraph Agent 工作流：模型、工具和业务上下文编排。
+
+VeyaShip - LangGraph Agent Workflows.
 
 Multi-step AI agents for complex tasks like:
 - Product research and listing optimization
 - Cross-platform listing adaptation
 - Competitive analysis
-- Bulk content generation with review
-"""
+- Bulk content generation with review"""
 
 from typing import Any, Dict, List, Optional, TypedDict, Annotated, Literal
 

@@ -1,3 +1,4 @@
+/** 图片编辑操作定义蒙版、提示词要求和用户可理解的入口。 */
 export type ImageEditOperation =
   | 'inpaint'
   | 'outpaint'
@@ -32,6 +33,7 @@ export interface ImageEditRequest {
   idempotency_key?: string
 }
 
+/** 每种编辑操作的后端动作与积分成本保持一一对应。 */
 export const IMAGE_EDIT_OPERATIONS: ImageEditOperationOption[] = [
   {
     id: 'inpaint',
@@ -63,6 +65,7 @@ export const IMAGE_EDIT_OPERATIONS: ImageEditOperationOption[] = [
   },
 ]
 
+/** 高清放大属于本地处理，因此成本低于生成式编辑。 */
 const EDIT_CREDITS: Record<ImageEditOperation, number> = {
   inpaint: 6,
   outpaint: 6,
@@ -70,6 +73,7 @@ const EDIT_CREDITS: Record<ImageEditOperation, number> = {
   upscale: 2,
 }
 
+/** 估算一次或多次图片编辑需要消耗的积分。 */
 export function imageEditCredits(
   operation: ImageEditOperation,
   count = 1,
@@ -77,6 +81,7 @@ export function imageEditCredits(
   return EDIT_CREDITS[operation] * Math.max(1, Math.floor(count || 1))
 }
 
+/** 在发起编辑前拦截缺少源图、蒙版或提示词的请求。 */
 export function validateImageEdit(
   draft: Pick<
     ImageEditDraft,
@@ -97,6 +102,7 @@ export function validateImageEdit(
   return ''
 }
 
+/** 构造图片编辑接口请求，并强制高清放大至少为 2 倍。 */
 export function buildImageEditRequest(draft: ImageEditDraft): ImageEditRequest {
   return {
     source_asset_id: draft.sourceAssetId,

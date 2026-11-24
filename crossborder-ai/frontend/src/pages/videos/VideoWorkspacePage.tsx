@@ -1,3 +1,4 @@
+/** 视频工作台入口：在营销成片、专业分镜和商品图生视频之间切换。 */
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Clapperboard } from 'lucide-react'

@@ -1,3 +1,4 @@
+/** 素材中心：聚合图片、单镜视频和营销成片，提供筛选、预览与删除。 */
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -50,6 +51,7 @@ export default function MaterialsPage() {
   const [deleteTarget, setDeleteTarget] = useState<ImageMaterial | VideoMaterial | null>(null)
   const [actionError, setActionError] = useState('')
 
+  // 图片和视频来自三套业务接口，前端只做统一展示，不复制资源事实。
   const assetsQuery = useQuery<ImageAssetInput[]>({
     queryKey: ['material-image-assets'],
     queryFn: async () => {
@@ -82,6 +84,7 @@ export default function MaterialsPage() {
     },
   })
 
+  // 把不同来源映射成统一素材项，并依靠来源字段保留删除与预览语义。
   const images = useMemo(
     () => buildImageMaterials(
       assetsQuery.data || [],
@@ -105,6 +108,7 @@ export default function MaterialsPage() {
   const selectedVideo = videos.find((item) => item.id === selectedVideoId) || null
   const selectedImage = images.find((item) => item.id === selectedImageId) || null
 
+  // 当前选中项可能在刷新后消失，必须回退到仍然存在的素材。
   useEffect(() => {
     if (selectedVideoId && !videos.some((item) => item.id === selectedVideoId)) {
       setSelectedVideoId('')
@@ -121,6 +125,7 @@ export default function MaterialsPage() {
     }
   }, [images, selectedImageId])
 
+  // 删除端点由素材来源提前生成，避免在前端猜测不同类型对应的 API。
   const deleteMutation = useMutation({
     mutationFn: async (target: ImageMaterial | VideoMaterial) => {
       await apiClient.delete(target.deleteEndpoint)
@@ -305,6 +310,7 @@ export default function MaterialsPage() {
 }
 
 
+/** 图片网格负责缩略图选择和来源标签，不直接修改素材。 */
 function ImageGrid({
   items,
   selectedId,
@@ -378,6 +384,7 @@ function ImageGrid({
 }
 
 
+/** 详情区展示可追溯元数据，并提供复制、下载和删除入口。 */
 function ImageDetail({
   material,
   onDelete,
@@ -472,6 +479,7 @@ function ImageDetail({
 }
 
 
+/** 视频行统一展示本地生成和营销成片的来源与状态。 */
 function VideoRow({
   item,
   selected,
@@ -546,6 +554,7 @@ function VideoRow({
 }
 
 
+/** 视频预览区负责鉴权播放、下载和错误提示。 */
 function VideoPreview({
   material,
   onDelete,
@@ -692,6 +701,7 @@ function VideoPreview({
 }
 
 
+/** 来源筛选按钮只改变当前视图，不触发服务端查询。 */
 function FilterButton({
   active,
   onClick,
@@ -716,6 +726,7 @@ function FilterButton({
 }
 
 
+/** 空状态明确当前分类没有素材，而不是把它当成加载失败。 */
 function EmptyMaterials({ label }: { label: string }) {
   return (
     <div className="flex min-h-44 flex-col items-center justify-center text-center">

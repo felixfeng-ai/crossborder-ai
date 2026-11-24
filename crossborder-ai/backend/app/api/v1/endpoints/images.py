@@ -1,7 +1,8 @@
-"""VeyaShip - AI Image Generation Endpoints.
+"""v1 图片生成与历史记录接口。
 
-Generate product images via Replicate FLUX model.
-"""
+VeyaShip - AI Image Generation Endpoints.
+
+Generate product images via Replicate FLUX model."""
 
 from typing import Optional
 

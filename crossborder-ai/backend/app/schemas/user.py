@@ -1,4 +1,6 @@
-"""VeyaShip - User Schemas."""
+"""用户、认证令牌与账户接口的数据结构。
+
+VeyaShip - User Schemas."""
 
 from datetime import datetime
 from typing import Optional

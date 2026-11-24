@@ -1,3 +1,4 @@
+/** 营销视频工作台：从商品参考图和营销 brief 生成方案、分镜与成片。 */
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -91,6 +92,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
   const [stylePreset, setStylePreset] = useState('authentic_lifestyle')
   const [actionError, setActionError] = useState('')
 
+  // 能力、素材和历史独立加载；供应商未配置时仍允许浏览已有项目。
   const capabilitiesQuery = useQuery<MarketingCapabilities>({
     queryKey: ['marketing-video-capabilities'],
     queryFn: async () => {
@@ -107,6 +109,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
     },
   })
 
+  // 只有渲染中的项目需要高频刷新，终态项目停止轮询以节省请求。
   const historyQuery = useQuery<MarketingVideoProject[]>({
     queryKey: ['marketing-video-projects'],
     queryFn: async () => {
@@ -134,6 +137,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
     },
   })
 
+  // 详情轮询到成功态后刷新列表，让项目状态和下载入口保持一致。
   useEffect(() => {
     if (projectQuery.data) {
       setActiveProject(projectQuery.data)
@@ -148,6 +152,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
   const history = historyQuery.data || []
   const project = activeProject || projectQuery.data || null
 
+  // 后端能力可能调整档位、风格和时长，失效选择自动回退到首个可用值。
   useEffect(() => {
     if (projectFromQuery && projectFromQuery !== selectedProjectId) {
       setSelectedProjectId(projectFromQuery)
@@ -206,6 +211,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
     capabilities?.enabled &&
     !historyQuery.isLoading
 
+  // 创建方案携带幂等键，避免双击或网络重试生成重复且重复计费的项目。
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!selectedAsset) throw new Error('请先选择商品首帧')
@@ -242,6 +248,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
     onError: (error) => setActionError(toErrorMessage(error, '营销方案生成失败')),
   })
 
+  // 生成成片是异步动作，接口返回只代表已排队，最终状态继续由详情轮询确认。
   const renderMutation = useMutation({
     mutationFn: async (projectId: string) => {
       const response = await apiClient.post(
@@ -590,6 +597,7 @@ export default function MarketingVideosPage({ embedded = false }: { embedded?: b
 }
 
 
+/** 项目工作区把方案、分镜进度和成片结果组织在同一上下文中。 */
 function ProjectWorkspace({
   project,
   onRender,
@@ -755,6 +763,7 @@ function ProjectWorkspace({
 }
 
 
+/** 营销成片预览供工作台、素材中心和历史项目复用。 */
 export function MarketingVideoPreview({
   project,
   voice,

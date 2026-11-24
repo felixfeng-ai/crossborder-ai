@@ -1,8 +1,9 @@
-"""VeyaShip - Web Scraper Service.
+"""商品网页抓取与结构化提取服务。
+
+VeyaShip - Web Scraper Service.
 
 Competitor analysis, product research, and market data collection
-using httpx, BeautifulSoup, and Playwright for JavaScript-rendered pages.
-"""
+using httpx, BeautifulSoup, and Playwright for JavaScript-rendered pages."""
 
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse

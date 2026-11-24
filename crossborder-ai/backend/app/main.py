@@ -1,4 +1,6 @@
-"""VeyaShip - Main Application Entry Point."""
+"""FastAPI 应用入口：装配路由、中间件、生命周期、静态资源和启动校验。
+
+VeyaShip - Main Application Entry Point."""
 
 import traceback
 import time

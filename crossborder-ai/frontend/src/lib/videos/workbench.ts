@@ -57,6 +57,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const TERMINAL_STATES = new Set(['succeeded', 'failed', 'canceled'])
 
+/** 查找当前模型能力；缺失时由调用方显示不可用或禁用状态。 */
 export function getVideoModel(
   capabilities: VideoCapabilities | undefined,
   modelId: string,
@@ -79,14 +80,17 @@ export function estimateVideoCredits(
   return Math.max(1, Math.ceil(perSecond * duration))
 }
 
+/** 终态用于停止轮询并停止消耗网络请求。 */
 export function isVideoTerminal(status: string): boolean {
   return TERMINAL_STATES.has(status)
 }
 
+/** 未知状态统一显示处理中，不把供应商新增状态误报为成功。 */
 export function videoStatusLabel(status: string): string {
   return STATUS_LABELS[status] || '处理中'
 }
 
+/** 统一视频时长文案，避免页面混用“s”和“秒”。 */
 export function formatVideoDuration(duration: number): string {
   return `${duration} 秒`
 }

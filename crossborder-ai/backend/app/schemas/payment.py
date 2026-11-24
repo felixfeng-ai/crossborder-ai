@@ -1,4 +1,6 @@
-"""VeyaShip - Payment & Subscription Schemas."""
+"""支付与订阅接口的数据结构。
+
+VeyaShip - Payment & Subscription Schemas."""
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional

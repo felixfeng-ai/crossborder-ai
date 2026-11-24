@@ -1,4 +1,4 @@
-"""AI 营销视频 Agent 路由。"""
+"""AI 营销视频路由：生成营销方案、专业分镜、成片、字幕与配音。"""
 
 import json
 import math
@@ -96,12 +96,16 @@ class ProductReferenceAssetInput(BaseModel):
 
 
 class ProductReferenceAssetResponse(BaseModel):
+    """返回给前端的商品参考图与主图标记。"""
+
     asset_id: str
     role: str
     is_primary: bool
 
 
 class CreateMarketingProjectRequest(BaseModel):
+    """创建营销视频方案的参数。"""
+
     source_asset_id: str
     reference_assets: list[ProductReferenceAssetInput] = Field(default_factory=list)
     continuity_mode: Literal["natural"] = "natural"
@@ -119,10 +123,14 @@ class CreateMarketingProjectRequest(BaseModel):
 
 
 class StoryboardPreviewRequest(BaseModel):
+    """专业脚本分镜预览请求。"""
+
     script: str = Field(..., min_length=1, max_length=MAX_SCRIPT_CHARS)
 
 
 class CreateStoryboardProjectRequest(StoryboardPreviewRequest):
+    """确认预览后创建专业分镜项目。"""
+
     source_asset_id: str
     reference_assets: list[ProductReferenceAssetInput] = Field(default_factory=list)
     continuity_mode: Literal["natural"] = "natural"
@@ -137,6 +145,8 @@ class CreateStoryboardProjectRequest(StoryboardPreviewRequest):
 
 
 class MarketingShotResponse(BaseModel):
+    """单个分镜镜头的公开状态。"""
+
     position: int
     title: str
     purpose: str
@@ -151,6 +161,8 @@ class MarketingShotResponse(BaseModel):
 
 
 class MarketingProjectResponse(BaseModel):
+    """营销视频项目及其分镜、积分和下载状态的统一响应。"""
+
     id: str
     title: str
     product_name: str
@@ -193,6 +205,8 @@ async def _asset_owned(
     user_id,
     context: WorkspaceContext,
 ) -> ImageAsset:
+    """校验商品首帧属于当前用户和工作区。"""
+
     try:
         asset_id = uuid.UUID(source_asset_id)
     except ValueError:
@@ -274,6 +288,8 @@ async def _owned_project(
     user_id,
     context: WorkspaceContext,
 ) -> MarketingVideoProject:
+    """按用户和工作区读取营销视频项目。"""
+
     try:
         parsed_id = uuid.UUID(project_id)
     except ValueError:
@@ -293,6 +309,8 @@ async def _owned_project(
 
 
 def _project_file_path(storage_key: str) -> Path:
+    """解析成片存储路径并阻止目录穿越。"""
+
     base = Path(settings.VIDEO_STORAGE_DIR).resolve()
     target = (base / storage_key).resolve()
     if target != base and base not in target.parents:
@@ -329,6 +347,8 @@ def _attachment_disposition(filename: str) -> str:
 
 
 def _parse_brief(project: MarketingVideoProject) -> dict:
+    """解析项目 brief；损坏 JSON 返回空对象而不是中断详情。"""
+
     try:
         value = json.loads(project.brief_json)
         return value if isinstance(value, dict) else {}
@@ -404,6 +424,8 @@ async def _serialize_project(
     db: AsyncSession,
     project: MarketingVideoProject,
 ) -> MarketingProjectResponse:
+    """组装项目、分镜、时间轴和成片可用性，供 App 与 Web 共用。"""
+
     shots = (
         await db.execute(
             select(MarketingVideoShot)
@@ -519,6 +541,8 @@ async def _serialize_project(
 
 @router.get("/capabilities")
 async def marketing_video_capabilities():
+    """返回供应商、模板、质量档和积分规则，不暴露密钥。"""
+
     video = get_video_capabilities_summary()
     provider_names = {
         str(provider["provider"])
@@ -859,6 +883,8 @@ async def list_marketing_projects(
     context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    """列出当前工作区营销项目，支持按状态和数量筛选。"""
+
     projects = (
         await db.execute(
             select(MarketingVideoProject)
@@ -883,6 +909,8 @@ async def get_marketing_project(
     context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    """读取单个营销项目并返回可继续处理的完整状态。"""
+
     project = await _owned_project(
         db,
         project_id,
@@ -903,6 +931,8 @@ async def render_marketing_project(
     context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    """确认分镜后启动成片渲染；返回排队状态而非伪造完成。"""
+
     project = await _owned_project(
         db,
         project_id,
@@ -925,6 +955,8 @@ async def cancel_project(
     context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    """取消营销渲染并按执行阶段回写最新项目状态。"""
+
     project = await _owned_project(
         db,
         project_id,
@@ -992,6 +1024,8 @@ async def get_marketing_project_file(
     context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    """下载已完成成片，未完成或无文件时返回真实错误。"""
+
     project = await _owned_project(
         db,
         project_id,

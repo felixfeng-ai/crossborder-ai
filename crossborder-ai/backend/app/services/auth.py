@@ -1,7 +1,8 @@
-"""VeyaShip - Authentication Service.
+"""认证领域服务：密码校验、令牌与用户身份相关逻辑。
 
-Higher-level auth logic: registration, login, OAuth integration.
-"""
+VeyaShip - Authentication Service.
+
+Higher-level auth logic: registration, login, OAuth integration."""
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

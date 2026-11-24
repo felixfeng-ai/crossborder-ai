@@ -5,6 +5,7 @@ export interface StoryboardContinuity {
   no_watermark?: boolean
 }
 
+/** 专业分镜时间统一格式化为 mm:ss。 */
 export function formatStoryboardTime(totalSeconds: number): string {
   const value = Math.max(0, Math.floor(totalSeconds || 0))
   const minutes = Math.floor(value / 60)
@@ -12,6 +13,7 @@ export function formatStoryboardTime(totalSeconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
+/** 把连续性约束转换为镜头卡片上的短标签。 */
 export function storyboardConstraintLabels(
   continuity: StoryboardContinuity,
 ): string[] {
@@ -22,6 +24,7 @@ export function storyboardConstraintLabels(
   return labels
 }
 
+/** 输出分镜数量和总时长的摘要。 */
 export function storyboardSummary(shotCount: number, totalDuration: number): string {
   return `${shotCount} 个镜头 · ${totalDuration} 秒`
 }

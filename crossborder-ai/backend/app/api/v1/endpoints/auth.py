@@ -1,7 +1,8 @@
-"""VeyaShip - Authentication Endpoints.
+"""v1 登录、注册、令牌刷新和用户认证接口。
 
-User registration, login, token refresh, and logout.
-"""
+VeyaShip - Authentication Endpoints.
+
+User registration, login, token refresh, and logout."""
 
 from datetime import datetime, timezone
 

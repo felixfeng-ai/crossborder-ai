@@ -1,7 +1,8 @@
-"""VeyaShip - Product Endpoints.
+"""v1 商品管理接口。
 
-CRUD operations for user products.
-"""
+VeyaShip - Product Endpoints.
+
+CRUD operations for user products."""
 
 from typing import Optional, List
 

@@ -1,4 +1,6 @@
-"""VeyaShip - Content Generation Schemas."""
+"""内容生成接口的请求与响应数据结构。
+
+VeyaShip - Content Generation Schemas."""
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional

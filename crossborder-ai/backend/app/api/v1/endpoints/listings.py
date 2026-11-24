@@ -1,7 +1,8 @@
-"""VeyaShip - Listing Endpoints.
+"""v1 Listing 查询、生成和更新接口。
 
-CRUD for multi-platform listings with AI generation triggers.
-"""
+VeyaShip - Listing Endpoints.
+
+CRUD for multi-platform listings with AI generation triggers."""
 
 from typing import Optional
 

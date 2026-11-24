@@ -1,3 +1,4 @@
+/** 视频模型能力来自后端，前端只负责展示和预算，不自行假设可用性。 */
 export interface VideoQualityTier {
   id: string
   name: string
@@ -49,6 +50,7 @@ export function videoProviderLabel(provider: string): string {
   return PROVIDER_LABELS[provider] || provider || '视频供应商'
 }
 
+/** 当前配置实际可选的视频供应商，不把未配置的引擎展示给用户。 */
 export function availableVideoProviders(
   tiers: VideoQualityTier[],
 ): VideoProvider[] {
@@ -56,6 +58,7 @@ export function availableVideoProviders(
   return PROVIDER_ORDER.filter((provider) => configured.has(provider))
 }
 
+/** 过滤某个供应商下的全部质量档位。 */
 export function tiersForProvider(
   tiers: VideoQualityTier[],
   provider: VideoProvider,
@@ -63,6 +66,7 @@ export function tiersForProvider(
   return tiers.filter((tier) => tier.provider === provider)
 }
 
+/** 优先选择供应商默认档位，再回退到首个可用档位。 */
 export function providerDefaultQualityTier(
   tiers: VideoQualityTier[],
   provider: VideoProvider,
@@ -75,6 +79,7 @@ export function providerDefaultQualityTier(
   return candidates[0] || null
 }
 
+/** 根据营销、分镜或单镜头场景推荐质量档位。 */
 export function recommendedQualityTier(
   tiers: VideoQualityTier[],
   context: VideoQualityContext,
@@ -86,6 +91,7 @@ export function recommendedQualityTier(
   return tiers[0] || null
 }
 
+/** 说明不同视频引擎更适合的画面类型，帮助用户做选择。 */
 export function videoProviderHint(provider: string): string {
   if (provider === 'minimax') {
     return '商品结构、多图参考和稳定量产更稳。'
@@ -96,6 +102,7 @@ export function videoProviderHint(provider: string): string {
   return '根据当前创作模式自动匹配视频引擎。'
 }
 
+/** 按秒单价计算视频积分，并至少收取 1 积分。 */
 export function qualityTierCredits(
   tiers: VideoQualityTier[],
   tierId: string,
@@ -106,6 +113,7 @@ export function qualityTierCredits(
   return Math.max(1, Math.ceil(tier.credits_per_second * duration))
 }
 
+/** 档位或风格的兜底名称用于避免空选择器。 */
 export function qualityTierLabel(
   tiers: VideoQualityTier[],
   tierId: string,

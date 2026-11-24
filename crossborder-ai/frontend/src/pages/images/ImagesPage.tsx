@@ -1,3 +1,4 @@
+/** 图片工作台：统一处理上传、平台白底、AI 生成、编辑和历史素材复用。 */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -120,6 +121,7 @@ export default function ImagesPage() {
   const [dragging, setDragging] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<WorkbenchLibraryItem | null>(null)
 
+  // 素材、平台预设、生成历史和服务能力并行加载，页面先展示可用部分。
   const assetsQuery = useQuery<WorkbenchAsset[]>({
     queryKey: ['image-assets'],
     queryFn: async () => {
@@ -201,6 +203,7 @@ export default function ImagesPage() {
   const generationPending =
     generationState === 'submitting' || generationState === 'generating'
 
+  // 全局 Agent 需要知道当前图片和平台上下文，才能回答“处理这张图”之类的指令。
   useAgentPageContext({
     route: '/app/images',
     page: '图片工作台',
@@ -212,6 +215,7 @@ export default function ImagesPage() {
     asset_name: selected?.name,
   })
 
+  // 上传成功后自动把新素材加入当前生成参考图，减少一次重复选择。
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       return uploadImageFile<WorkbenchAsset>(file, {
@@ -242,6 +246,7 @@ export default function ImagesPage() {
     },
   })
 
+  // 生成历史与本地素材的删除接口不同，必须按 item 来源选择真实资源。
   const deleteMutation = useMutation({
     mutationFn: async (item: WorkbenchLibraryItem) => {
       if (item.taskId && !item.assetId) {
@@ -259,6 +264,7 @@ export default function ImagesPage() {
     onError: (error) => setActionError(toErrorMessage(error, '删除失败')),
   })
 
+  // 生成任务先提交并拿到 task_id，再轮询终态，不能把“已提交”误报为完成。
   const generateMutation = useMutation({
     mutationFn: async () => {
       const error = validateImageGeneration({
@@ -1017,6 +1023,7 @@ export default function ImagesPage() {
   )
 }
 
+/** 素材卡片只负责选择与预览，删除等破坏性操作交给上层确认流程。 */
 function AssetCard({
   item,
   selected,

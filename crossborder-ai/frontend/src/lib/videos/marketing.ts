@@ -30,6 +30,7 @@ export interface MarketingProductReference {
   is_primary: boolean
 }
 
+/** 营销成片的项目、镜头和产品参考图契约。 */
 export interface MarketingVideoProject {
   id: string
   title: string
@@ -136,10 +137,12 @@ const TEMPLATE_NAMES: Record<string, string> = {
   professional_script: '专业脚本分镜',
 }
 
+/** 将后端状态码转换为页面稳定的中文状态。 */
 export function projectStatusLabel(status: string): string {
   return PROJECT_STATUS_LABELS[status] || '处理中'
 }
 
+/** 镜头状态与项目状态分开显示，便于定位卡在哪个生成步骤。 */
 export function shotStatusLabel(status: string): string {
   return SHOT_STATUS_LABELS[status] || '处理中'
 }
@@ -148,6 +151,7 @@ export function marketingTemplateName(templateId: string): string {
   return TEMPLATE_NAMES[templateId] || '营销模板'
 }
 
+/** 按镜头时长累计成片总时长。 */
 export function totalShotDuration(shots: MarketingVideoShot[]): number {
   return shots.reduce((total, shot) => total + Math.max(0, shot.duration), 0)
 }
@@ -160,6 +164,10 @@ export interface MarketingRenderProgress {
   detail: string
 }
 
+/**
+ * 将项目和镜头状态压缩成一个可信的进度条结果。
+ * 合成阶段保留 6% 视觉余量，避免镜头全完成时提前显示 100%。
+ */
 export function marketingRenderProgress(
   project: MarketingVideoProject,
 ): MarketingRenderProgress {
@@ -225,6 +233,7 @@ export function safeFilenamePart(value: string, fallback: string): string {
   return cleaned || fallback
 }
 
+/** 估算配音积分；文本越长成本越高，并保留最低起扣值。 */
 export function estimateVoiceoverCredits(brief: MarketingVideoBrief): number {
   const text = [brief.hook, brief.script, brief.cta]
     .map((value) => String(value || '').trim())
@@ -233,6 +242,7 @@ export function estimateVoiceoverCredits(brief: MarketingVideoBrief): number {
   return Math.max(3, Math.ceil(text.length / 100))
 }
 
+/** 生成跨平台安全的视频、字幕或配音下载文件名。 */
 export function downloadFilename(
   project: MarketingVideoProject,
   extension: 'mp4' | 'srt' | 'mp3',
@@ -250,6 +260,7 @@ export function downloadFilename(
   return `${product}-${platform}-${labels[extension]}.${extension}`
 }
 
+/** 根据当前项目状态推导“方案、分镜、成片”三步流程。 */
 export function buildMarketingPipeline(
   project: MarketingVideoProject,
 ): MarketingPipelineStep[] {

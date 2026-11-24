@@ -1,3 +1,4 @@
+/** 专业分镜工作台：先解析脚本镜头，再绑定商品参考图批量生成镜头视频。 */
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -88,6 +89,7 @@ export default function ProfessionalStoryboardPage() {
   const [activeProject, setActiveProject] = useState<MarketingVideoProject | null>(null)
   const [actionError, setActionError] = useState('')
 
+  // 专业分镜复用营销视频能力配置，但只展示 script 模式项目。
   const capabilitiesQuery = useQuery<MarketingCapabilities>({
     queryKey: ['storyboard-capabilities'],
     queryFn: async () => {
@@ -104,6 +106,7 @@ export default function ProfessionalStoryboardPage() {
     },
   })
 
+  // 列表只保留专业脚本项目，避免和自由营销项目混在一起。
   const historyQuery = useQuery<MarketingVideoProject[]>({
     queryKey: ['storyboard-projects'],
     queryFn: async () => {
@@ -141,6 +144,7 @@ export default function ProfessionalStoryboardPage() {
   const project = activeProject || projectQuery.data || null
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) || null
 
+  // 解析能力和项目状态都以服务端为准，失效选项自动回退。
   useEffect(() => {
     if (projectQuery.data) {
       setActiveProject(projectQuery.data)
@@ -190,6 +194,7 @@ export default function ProfessionalStoryboardPage() {
     setActiveProject(history[0])
   }, [history, selectedProjectId])
 
+  // 预览只做脚本解析，不创建项目也不扣减生成积分。
   const previewMutation = useMutation({
     mutationFn: async () => {
       const response = await apiClient.post<ParsedStoryboard>(
@@ -203,6 +208,7 @@ export default function ProfessionalStoryboardPage() {
     onError: (error) => setActionError(toErrorMessage(error, '分镜解析失败')),
   })
 
+  // 用户确认分镜后才创建项目；参考图角色随请求一起持久化。
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!selectedAsset) throw new Error('请先选择商品首帧')

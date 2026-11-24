@@ -1,3 +1,4 @@
+/** 图片生成模式决定参考图、品牌人设和计费规则。 */
 export type ImageGenerationMode =
   | 'product_scene'
   | 'free_creation'
@@ -70,6 +71,7 @@ export const IMAGE_GENERATION_MODES: ImageGenerationModeOption[] = [
   },
 ]
 
+/** 各质量档位对应不同分辨率与积分成本。 */
 export const IMAGE_QUALITY_TIERS: Record<
   ImageQualityTier,
   ImageQualityTierOption
@@ -111,6 +113,7 @@ export const IMAGE_QUALITY_TIERS: Record<
 
 export const IMAGE_ASPECT_RATIOS = ['1:1', '4:5', '3:4', '16:9', '9:16'] as const
 
+/** 按实际计费模式、输出张数和参考图情况估算积分。 */
 export function imageGenerationCredits(
   mode: ImageGenerationMode,
   qualityTier: ImageQualityTier,
@@ -122,6 +125,9 @@ export function imageGenerationCredits(
   return IMAGE_QUALITY_TIERS[qualityTier].credits[billingMode] * safeCount
 }
 
+/**
+ * 商品场景缺少参考图时按自由创作计费，避免前端显示一个无法执行的模式。
+ */
 export function effectiveImageGenerationMode(
   mode: ImageGenerationMode,
   referenceCount?: number,
@@ -132,6 +138,7 @@ export function effectiveImageGenerationMode(
   return mode
 }
 
+/** 提交前校验提示词、参考图和平台白底的最低输入要求。 */
 export function validateImageGeneration(
   draft: Pick<
     ImageGenerationDraft,
@@ -151,6 +158,7 @@ export function validateImageGeneration(
   return ''
 }
 
+/** 把页面草稿转换为后端契约，并统一裁剪数量、默认值和幂等键。 */
 export function buildImageGenerationRequest(
   draft: ImageGenerationDraft,
 ): ImageGenerationRequest {

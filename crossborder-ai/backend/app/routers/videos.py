@@ -1,4 +1,4 @@
-"""MiniMax AI 商品视频路由。"""
+"""AI 商品视频路由：提交商品首帧、解析模型质量档并追踪异步任务状态。"""
 
 import uuid
 from datetime import datetime, timezone
@@ -44,6 +44,8 @@ router = APIRouter(prefix="/videos", tags=["AI 商品视频"])
 
 
 class GenerateVideoRequest(BaseModel):
+    """商品图生视频提交参数；模型和分辨率最终由质量档位解析。"""
+
     source_asset_id: str
     prompt: str = Field(default="", max_length=3000)
     template_id: str = "clean_product"
@@ -57,6 +59,8 @@ class GenerateVideoRequest(BaseModel):
 
 
 class VideoTaskResponse(BaseModel):
+    """视频任务的公开状态和下载入口。"""
+
     id: str
     status: str
     video_url: Optional[str] = None
@@ -77,6 +81,8 @@ class VideoTaskResponse(BaseModel):
 
 
 def _video_file_url(task_id) -> str:
+    """返回稳定的鉴权视频文件路径。"""
+
     return f"{settings.API_V1_PREFIX}/videos/tasks/{task_id}/file"
 
 
@@ -93,6 +99,8 @@ def _video_thumbnail_url(task: VideoGenerationTask) -> str:
 
 
 def _serialize_task(task: VideoGenerationTask) -> VideoTaskResponse:
+    """把视频任务转换为前端契约，仅成功任务暴露文件和封面地址。"""
+
     return VideoTaskResponse(
         id=str(task.id),
         status=task.status,
@@ -119,6 +127,8 @@ def _serialize_task(task: VideoGenerationTask) -> VideoTaskResponse:
 
 
 def _task_path(storage_key: str) -> Path:
+    """解析存储路径并阻止目录穿越。"""
+
     base = Path(settings.VIDEO_STORAGE_DIR).resolve()
     target = (base / storage_key).resolve()
     if target != base and base not in target.parents:
@@ -132,6 +142,8 @@ async def _get_owned_task(
     user_id,
     context: WorkspaceContext,
 ) -> VideoGenerationTask:
+    """读取当前用户和工作区拥有的视频任务。"""
+
     try:
         parsed_id = uuid.UUID(task_id)
     except ValueError:
@@ -157,6 +169,8 @@ async def _get_owned_source_asset(
     user_id,
     context: WorkspaceContext,
 ) -> ImageAsset:
+    """读取当前用户和工作区拥有的商品首帧素材。"""
+
     try:
         parsed_id = uuid.UUID(source_asset_id)
     except ValueError:
@@ -330,6 +344,8 @@ async def get_video_task(
     context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    """读取单个视频任务；未完成时不返回伪成功地址。"""
+
     task = await _get_owned_task(db, task_id, current_user.id, context)
     return _serialize_task(task)
 
@@ -341,6 +357,8 @@ async def list_video_history(
     context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    """返回当前工作区最近视频任务，供工作台和素材中心复用。"""
+
     marketing_task_ids = select(MarketingVideoShot.video_task_id).where(
         MarketingVideoShot.video_task_id.is_not(None)
     )
@@ -403,6 +421,8 @@ async def cancel_task(
     context: WorkspaceContext = Depends(get_web_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    """取消仍可取消的视频任务，并返回最新持久化状态。"""
+
     task = await _get_owned_task(db, task_id, current_user.id, context)
     if task.status not in {"queued", "running"}:
         raise HTTPException(status_code=409, detail="当前任务无法取消")

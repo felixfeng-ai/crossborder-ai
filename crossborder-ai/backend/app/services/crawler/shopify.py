@@ -1,8 +1,9 @@
-"""VeyaShip - Shopify Integration Service.
+"""Shopify 公开页面抓取与商品信息提取服务。
+
+VeyaShip - Shopify Integration Service.
 
 REST API integration for importing products, syncing listings,
-and managing Shopify stores.
-"""
+and managing Shopify stores."""
 
 from typing import Any, Dict, List, Optional
 

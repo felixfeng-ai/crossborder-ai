@@ -1,7 +1,8 @@
-"""VeyaShip - Analytics & Dashboard Endpoints.
+"""v1 分析与仪表盘接口。
 
-Usage statistics, generation metrics, and dashboard data.
-"""
+VeyaShip - Analytics & Dashboard Endpoints.
+
+Usage statistics, generation metrics, and dashboard data."""
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional

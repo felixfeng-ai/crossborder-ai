@@ -1,7 +1,8 @@
-"""VeyaShip - Subscription & Payment Models.
+"""订阅、支付发票与支付状态模型。
 
-Subscription plans and payment invoices via Creem.io.
-"""
+VeyaShip - Subscription & Payment Models.
+
+Subscription plans and payment invoices via Creem.io."""
 
 import enum
 from datetime import datetime

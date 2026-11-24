@@ -1,7 +1,8 @@
-"""VeyaShip - Content Generation & Template Models.
+"""内容生成与模板持久化模型。
 
-Tracks AI-generated content and reusable prompt templates.
-"""
+VeyaShip - Content Generation & Template Models.
+
+Tracks AI-generated content and reusable prompt templates."""
 
 import enum
 from datetime import datetime

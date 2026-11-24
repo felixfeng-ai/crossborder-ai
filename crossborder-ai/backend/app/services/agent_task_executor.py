@@ -135,7 +135,6 @@ async def execute_agent_task(task_id) -> None:
             return
 
         params = json.loads(task.input)
-        now = datetime.now(timezone.utc)
         if task.task_type == "customer_reply":
             from app.services.customer_reply_worker import (
                 process_customer_reply_work_item,
@@ -148,7 +147,7 @@ async def execute_agent_task(task_id) -> None:
                 )
                 task.result = json.dumps(result, ensure_ascii=False)
                 task.status = "succeeded"
-                task.finished_at = now
+                task.finished_at = datetime.now(timezone.utc)
                 await db.commit()
                 logger.info(
                     "客服自动值班任务 %s 完成：%s",
@@ -158,7 +157,7 @@ async def execute_agent_task(task_id) -> None:
             except Exception as exc:
                 task.status = "failed"
                 task.error = str(exc)[:500]
-                task.finished_at = now
+                task.finished_at = datetime.now(timezone.utc)
                 await db.commit()
                 logger.warning(
                     "客服自动值班任务 %s 失败：%s",
@@ -372,7 +371,7 @@ async def execute_agent_task(task_id) -> None:
                 }, ensure_ascii=False)
                 task.status = result_status
                 task.error = result.get("summary", "") if result_status == "failed" else None
-                task.finished_at = now
+                task.finished_at = datetime.now(timezone.utc)
                 # 用户任务必须同步反映 Agent 失败，不能只更新内部任务表。
                 await complete_work_item_from_agent_task(
                     db,
@@ -404,7 +403,7 @@ async def execute_agent_task(task_id) -> None:
             except InsufficientCreditsError as e:
                 task.status = "failed"
                 task.error = str(e)
-                task.finished_at = now
+                task.finished_at = datetime.now(timezone.utc)
                 await complete_work_item_from_agent_task(
                     db,
                     agent_task_id=task.id,
@@ -428,7 +427,7 @@ async def execute_agent_task(task_id) -> None:
                 "created_work_item_ids": result.get("created_work_item_ids", []),
             }, ensure_ascii=False)
             task.status = "succeeded"
-            task.finished_at = now
+            task.finished_at = datetime.now(timezone.utc)
             # 成功状态与用户可见结果同事务提交，避免 App 看到“已完成”但结果为空。
             await complete_work_item_from_agent_task(
                 db,
@@ -448,7 +447,7 @@ async def execute_agent_task(task_id) -> None:
         except Exception as e:
             task.status = "failed"
             task.error = str(e)[:500]
-            task.finished_at = now
+            task.finished_at = datetime.now(timezone.utc)
             await complete_work_item_from_agent_task(
                 db,
                 agent_task_id=task.id,

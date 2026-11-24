@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import copy
 import json
 import uuid
 
@@ -43,6 +44,52 @@ async def test_run_workflow_emits_step_callback(monkeypatch):
 
     assert calls == [1], "单步工作流应恰好触发一次回调，steps 长度 1"
     assert result["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_run_react_emits_running_step_before_tool_completes(monkeypatch):
+    """外部查询开始时就推送阶段，避免用户只看到通用加载动画。"""
+    calls: list[list[dict]] = []
+
+    async def capture_steps(steps: list[dict]) -> None:
+        calls.append(copy.deepcopy(steps))
+
+    orch = AgentOrchestrator(user=None, db=None, on_step=capture_steps)
+    responses = [
+        {
+            "content": "",
+            "tool_calls": [{
+                "id": "call-1",
+                "type": "function",
+                "function": {
+                    "name": "select_products",
+                    "arguments": '{"keyword": "宠物碗"}',
+                },
+            }],
+        },
+        {"content": "推荐完成", "tool_calls": []},
+    ]
+
+    async def fake_chat(messages, tools=None, max_tokens=2000):
+        return responses.pop(0)
+
+    async def fake_execute(action, params):
+        return {
+            "action": action,
+            "status": "success",
+            "summary": "市场数据已读取",
+        }
+
+    monkeypatch.setattr(orch.llm, "chat_with_tools", fake_chat)
+    monkeypatch.setattr(orch, "_execute_step", fake_execute)
+
+    await orch.run_react("推荐几个宠物碗")
+
+    assert len(calls) == 2
+    assert calls[0][0]["action"] == "select_products"
+    assert calls[0][0]["status"] == "running"
+    assert "宠物碗" in calls[0][0]["summary"]
+    assert calls[1][0]["status"] == "success"
 
 
 # ── _sse_event 纯函数 ──────────────────────────────────────────
@@ -87,6 +134,36 @@ def test_sse_event_no_change():
     assert event is None
 
 
+def test_sse_event_detects_same_count_progress_transition():
+    """同一步从 running 变 success 时步骤数不变，也必须推送最新内容。"""
+    running_progress = json.dumps({
+        "steps": [{
+            "action": "select_products",
+            "status": "running",
+            "summary": "正在获取 Amazon 市场样本",
+        }],
+    }, ensure_ascii=False)
+    completed_progress = json.dumps({
+        "steps": [{
+            "action": "select_products",
+            "status": "success",
+            "summary": "市场样本已读取",
+        }],
+    }, ensure_ascii=False)
+
+    changed, event, count = _sse_event(
+        _task(status="running", progress=completed_progress),
+        "running",
+        1,
+        last_progress=running_progress,
+    )
+
+    assert changed
+    assert count == 1
+    assert "event: step" in event
+    assert '"status": "success"' in event
+
+
 def test_sse_event_succeeded():
     """succeeded → 推 event: done，带 summary/steps/conversation_id"""
     steps = [{"action": "answer", "status": "success"}]
@@ -116,6 +193,21 @@ def test_sse_event_failed():
     assert "积分不足" in event
 
 
+def test_sse_event_partial_is_terminal_done():
+    """partial 也是终态，不能继续占着 SSE 到三分钟超时。"""
+    task = _task(
+        status="partial",
+        result=json.dumps(
+            {"summary": "部分完成", "steps": [], "conversation_id": ""},
+            ensure_ascii=False,
+        ),
+    )
+    changed, event, _ = _sse_event(task, "running", 0)
+    assert changed
+    assert "event: done" in event
+    assert '"status": "partial"' in event
+
+
 # ── SSE 端点 HTTP 层 ───────────────────────────────────────────
 async def _register(client, db_session, email: str) -> dict:
     """注册唯一邮箱用户，返回 auth header + user_id。"""
@@ -130,14 +222,23 @@ async def _register(client, db_session, email: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_agent_task_stream_succeeded_done(client, db_session):
-    """succeeded 任务 → 流推 event: done 并自动关闭"""
-    reg = await _register(client, db_session, f"stream-ok{uuid.uuid4().hex[:8]}@test.com")
+@pytest.mark.parametrize("terminal_status", ["succeeded", "partial"])
+async def test_agent_task_stream_terminal_done(
+    client,
+    db_session,
+    terminal_status,
+):
+    """成功和部分成功任务都必须推 event: done 并自动关闭。"""
+    reg = await _register(
+        client,
+        db_session,
+        f"stream-{terminal_status}{uuid.uuid4().hex[:8]}@test.com",
+    )
     steps = [{"action": "store_check", "status": "success", "summary": "巡检完成"}]
     task = AgentTask(
         user_id=reg["user_id"],
         task_type="agent_workflow",
-        status="succeeded",
+        status=terminal_status,
         input=json.dumps({"workflow": "store_check", "params": {}}, ensure_ascii=False),
         result=json.dumps(
             {"summary": "全部完成", "steps": steps, "conversation_id": ""},
@@ -150,22 +251,24 @@ async def test_agent_task_stream_succeeded_done(client, db_session):
     task_id = str(task.id)
 
     lines: list[str] = []
-    async with client.stream(
-        "GET",
-        f"/api/v1/agent/tasks/{task_id}/stream",
-        headers={"Authorization": reg["Authorization"]},
-    ) as resp:
-        assert resp.status_code == 200
-        assert resp.headers["content-type"].startswith("text/event-stream")
-        async for line in resp.aiter_lines():
-            lines.append(line)
-            if line.startswith("data: "):
-                break  # 读到 SSE 数据行才算收到事件（event: done 在其前一行）
+
+    async def read_until_closed():
+        async with client.stream(
+            "GET",
+            f"/api/v1/agent/tasks/{task_id}/stream",
+            headers={"Authorization": reg["Authorization"]},
+        ) as resp:
+            assert resp.status_code == 200
+            assert resp.headers["content-type"].startswith("text/event-stream")
+            async for line in resp.aiter_lines():
+                lines.append(line)
+
+    await asyncio.wait_for(read_until_closed(), timeout=3)
 
     assert any("event: done" in line for line in lines), lines
     data_line = next(line for line in lines if line.startswith("data: "))
     payload = json.loads(data_line[len("data: "):])
-    assert payload["status"] == "succeeded"
+    assert payload["status"] == terminal_status
     assert payload["summary"] == "全部完成"
     assert payload["steps"][0]["action"] == "store_check"
 

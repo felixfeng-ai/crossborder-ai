@@ -13,6 +13,7 @@
 test@example.com（跨测试重复注册会 409）。
 """
 
+import asyncio
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -181,6 +182,12 @@ class _PartialOrchestrator(_FakeOrchestrator):
         }
 
 
+class _SlowOrchestrator(_FakeOrchestrator):
+    async def run(self, instruction, history=None):
+        await asyncio.sleep(0.3)
+        return await super().run(instruction, history)
+
+
 @pytest.mark.asyncio
 async def test_execute_agent_task_success(monkeypatch):
     """执行器成功：助手消息落库、标题生成、扣 1 分、任务 succeeded。"""
@@ -222,6 +229,50 @@ async def test_execute_agent_task_success(monkeypatch):
             select(ConversationMessage).where(ConversationMessage.conversation_id == conv_id)
         )).scalars().all()
         assert any(m.role == "assistant" and m.content == "可以做" for m in msgs)
+
+
+@pytest.mark.asyncio
+async def test_execute_agent_task_finished_at_reflects_real_completion(monkeypatch):
+    """完成时间必须取任务结束时，不能复用执行开始时的 now。"""
+    engine, factory = _make_static_factory()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    monkeypatch.setattr(exe, "async_session_factory", factory)
+    monkeypatch.setattr(exe, "AgentOrchestrator", _SlowOrchestrator)
+
+    async with factory() as db:
+        user = User(
+            email="task-finished-at@test.com",
+            username="taskfinishedat",
+            password_hash="x",
+            credits=30,
+        )
+        db.add(user)
+        await db.flush()
+        task = AgentTask(
+            user_id=user.id,
+            task_type="agent_run",
+            status="running",
+            input=json.dumps({"instruction": "慢任务", "conversation_id": ""}),
+            cost=1,
+            started_at=datetime.now(timezone.utc),
+        )
+        db.add(task)
+        await db.commit()
+        task_id = task.id
+
+    before = datetime.now(timezone.utc)
+    await exe.execute_agent_task(task_id)
+
+    async with factory() as db:
+        finished = (
+            await db.execute(select(AgentTask).where(AgentTask.id == task_id))
+        ).scalar_one().finished_at
+
+    assert finished is not None
+    if finished.tzinfo is None:
+        finished = finished.replace(tzinfo=timezone.utc)
+    assert finished >= before + timedelta(seconds=0.2)
 
 
 @pytest.mark.asyncio

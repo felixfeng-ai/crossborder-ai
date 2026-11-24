@@ -400,6 +400,41 @@ async def test_analyze_category_structured_ok(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_market_analysis_reuses_same_keyword_within_one_task(monkeypatch):
+    """同一任务里选品和品类分析相同关键词时，只请求一次市场数据。"""
+    service = AmazonMarketDecisionService(_StructuredMarketProvider())
+    calls = 0
+    original_analyze = service.analyze
+
+    async def counted_analyze(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return await original_analyze(*args, **kwargs)
+
+    monkeypatch.setattr(service, "analyze", counted_analyze)
+    monkeypatch.setattr(
+        orchestrator_module.provider_config,
+        "refresh",
+        _no_provider_refresh,
+    )
+    monkeypatch.setattr(
+        orchestrator_module,
+        "build_runtime_amazon_market_service",
+        lambda **_kwargs: service,
+    )
+
+    orch = make_orchestrator()
+    selected = await orch._do_select_products({"keyword": "蓝牙耳机"})
+    category = await orch._do_analyze_category({"keyword": "蓝牙耳机"})
+
+    assert selected["status"] == "success"
+    assert category["status"] == "success"
+    assert calls == 1
+    assert selected["data"]["structured"]["products"]
+    assert category["data"]["structured"]["products"] == []
+
+
+@pytest.mark.asyncio
 async def test_analyze_category_does_not_fallback_to_llm(monkeypatch):
     """Provider 失败时不把 LLM 文本当市场报告。"""
     async def no_refresh(_db):

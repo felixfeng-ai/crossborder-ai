@@ -25,6 +25,7 @@
 - calculate_profit(params) → 净利计算
 """
 
+import copy
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -107,6 +108,41 @@ def _extract_json(text: str) -> Optional[dict]:
         return json.loads(match.group())
     except json.JSONDecodeError:
         return None
+
+
+def _running_step(func_name: str, params: dict[str, Any]) -> dict[str, Any]:
+    """在耗时工具开始前生成可读阶段，避免页面只显示通用加载动画。"""
+
+    keyword = str(
+        params.get("keyword")
+        or params.get("category")
+        or params.get("query")
+        or params.get("product_name")
+        or ""
+    ).strip()
+    summaries = {
+        "select_products": (
+            f"正在获取「{keyword}」Amazon 市场样本"
+            if keyword
+            else "正在获取 Amazon 市场样本"
+        ),
+        "analyze_category": (
+            f"正在分析「{keyword}」Amazon 品类数据"
+            if keyword
+            else "正在分析 Amazon 品类数据"
+        ),
+        "analyze_product_decision": "正在读取商品与 Amazon 竞品数据",
+        "find_1688_sources": (
+            f"正在搜索「{keyword}」1688 相似货源"
+            if keyword
+            else "正在搜索 1688 相似货源"
+        ),
+    }
+    return {
+        "action": func_name,
+        "status": "running",
+        "summary": summaries.get(func_name, "正在执行任务步骤"),
+    }
 
 
 def _amazon_search_url(query: str | None) -> str:
@@ -1633,6 +1669,9 @@ class AgentOrchestrator:
         self.campaign_id = campaign_id
         self.workspace = workspace
         self.workspace_id = workspace_id
+        # 同一任务内复用相同关键词的市场事实，避免重复等待外部 Amazon API。
+        self._amazon_market_service = None
+        self._market_analysis_cache: dict[str, dict[str, Any]] = {}
 
     def _status_from_steps(self) -> str:
         failed = any(step.get("status") == "failed" for step in self.steps)
@@ -1703,10 +1742,12 @@ class AgentOrchestrator:
                 except (json.JSONDecodeError, KeyError):
                     func_args = {}
 
-                # 执行工具
+                # 先推送工具开始阶段，再执行外部查询；完成后用真实结果替换占位。
+                self.steps.append(_running_step(func_name, func_args))
+                await self._emit_step()
                 result = await self._execute_step(func_name, func_args)
-                self.steps.append(result)
-                await self._emit_step()  # 流式输出：每完成一步推送进度
+                self.steps[-1] = result
+                await self._emit_step()
 
                 # 报告类工具只回传 summary，避免模型在最终回答里复述整份报告
                 if func_name in ("select_products", "analyze_category") and result.get("status") == "success":
@@ -2884,6 +2925,25 @@ class AgentOrchestrator:
             ),
         }
 
+    async def _get_amazon_market_analysis(self, keyword: str) -> dict[str, Any]:
+        """获取同一任务内可复用的 Amazon 市场事实。"""
+
+        clean_keyword = str(keyword or "").strip()
+        cache_key = re.sub(r"\s+", "", clean_keyword).lower()
+        cached = self._market_analysis_cache.get(cache_key)
+        if cached is not None:
+            return copy.deepcopy(cached)
+
+        if self._amazon_market_service is None:
+            await provider_config.refresh(self.db)
+            self._amazon_market_service = build_runtime_amazon_market_service()
+        structured = await self._amazon_market_service.analyze(
+            clean_keyword,
+            include_products=True,
+        )
+        self._market_analysis_cache[cache_key] = copy.deepcopy(structured)
+        return copy.deepcopy(structured)
+
     async def _do_select_products(self, params: dict) -> dict:
         """选品决策：用真实 Amazon US 样本返回细分方向和参考商品。"""
         marketplace = str(params.get("marketplace") or "us").strip().lower()
@@ -2897,12 +2957,7 @@ class AgentOrchestrator:
         if not keyword:
             return {"action": "select_products", "status": "failed", "error": "缺少品类关键词"}
         try:
-            await provider_config.refresh(self.db)
-            service = build_runtime_amazon_market_service()
-            structured = await service.analyze(
-                str(keyword).strip(),
-                include_products=True,
-            )
+            structured = await self._get_amazon_market_analysis(str(keyword))
             structured = normalize_selection_report(
                 structured,
                 include_products=True,
@@ -3021,9 +3076,7 @@ class AgentOrchestrator:
         if not keyword:
             return {"action": "analyze_category", "status": "failed", "error": "缺少品类关键词"}
         try:
-            await provider_config.refresh(self.db)
-            service = build_runtime_amazon_market_service()
-            structured = await service.analyze_category(str(keyword).strip())
+            structured = await self._get_amazon_market_analysis(str(keyword))
             structured = normalize_selection_report(
                 structured,
                 include_products=False,

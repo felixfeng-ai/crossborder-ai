@@ -234,7 +234,12 @@ def _task_response(task: AgentTask) -> dict:
 STREAM_POLL_INTERVAL = 1.0
 
 
-def _sse_event(fresh: AgentTask, last_status: str | None, last_step_count: int) -> tuple[bool, str | None, int]:
+def _sse_event(
+    fresh: AgentTask,
+    last_status: str | None,
+    last_step_count: int,
+    last_progress: str | None = None,
+) -> tuple[bool, str | None, int]:
     """根据任务最新状态计算要推送的 SSE 事件（纯函数，便于测试）。
 
     Args:
@@ -246,7 +251,7 @@ def _sse_event(fresh: AgentTask, last_status: str | None, last_step_count: int) 
         (changed, event_text, step_count)：
         - changed=False 时 event_text 为 None（状态没变，无需推送）
         - 执行中推送 `event: step`（携带累计 steps）
-        - 结束推送 `event: done`（succeeded 带 summary/steps / failed 带 error）
+        - 结束推送 `event: done`（succeeded/partial 带 summary/steps，failed 带 error）
     """
     status = fresh.status
     steps: list = []
@@ -256,7 +261,15 @@ def _sse_event(fresh: AgentTask, last_status: str | None, last_step_count: int) 
         except (json.JSONDecodeError, AttributeError, TypeError):
             steps = []
 
-    changed = status != last_status or len(steps) != last_step_count
+    # 同一步从 running 更新为 success 时步骤数不变，必须同时比较 progress 内容。
+    changed = (
+        status != last_status
+        or len(steps) != last_step_count
+        or (
+            last_progress is not None
+            and (fresh.progress or "") != last_progress
+        )
+    )
     if not changed:
         return False, None, len(steps)
 
@@ -473,6 +486,7 @@ async def stream_agent_task(
     async def event_stream():
         last_status = None
         last_step_count = 0
+        last_progress = None
         last_heartbeat = asyncio.get_running_loop().time()
         while True:
             fresh = (await db.execute(
@@ -485,18 +499,25 @@ async def stream_agent_task(
                 yield "event: done\ndata: {\"status\":\"failed\",\"error\":\"任务不存在\"}\n\n"
                 return
 
-            changed, event, step_count = _sse_event(fresh, last_status, last_step_count)
+            changed, event, step_count = _sse_event(
+                fresh,
+                last_status,
+                last_step_count,
+                last_progress,
+            )
             # 释放本轮读事务：长连接不能一直攥着快照/锁（SQLite 单连接下也避免阻塞写入）。
             # 注意：rollback 会让 fresh 过期，必须在 rollback 前把要用的状态快照出来，
             # 否则 yield 之后访问 fresh.status 会触发异步刷新，抛 MissingGreenlet。
             status_now = fresh.status
+            progress_now = fresh.progress
             await db.rollback()
 
             if changed:
                 yield event
                 last_status = status_now
                 last_step_count = step_count
-                if status_now in ("succeeded", "failed"):
+                last_progress = progress_now
+                if status_now in ("succeeded", "partial", "failed"):
                     return
 
             # 心跳：防 Nginx/浏览器代理超时断开（15s 一次）

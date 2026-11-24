@@ -1,30 +1,51 @@
 import { router, useLocalSearchParams } from "expo-router";
 import {
   Activity,
+  ArrowUp,
   Check,
   ChevronRight,
   Circle,
   TriangleAlert,
 } from "lucide-react-native";
+import { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
+  type TextStyle,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { PREVIEW_MODE } from "@/api/client";
-import { useAgentTurnQuery, useWorkItemQuery } from "@/api/queries";
+import {
+  useAgentTurnQuery,
+  useSubmitAgentTurnMutation,
+  useWorkItemQuery,
+} from "@/api/queries";
 import type { AgentStep } from "@/api/types";
+import { AgentMarkdown } from "@/components/AgentMarkdown";
 import { ModalScreenHeader } from "@/components/ModalScreenHeader";
 import { QueryErrorState } from "@/components/QueryErrorState";
 import { SourceSupplierList } from "@/components/SourceSupplierList";
-import { colors, fonts, radii } from "@/design/tokens";
+import {
+  colors,
+  fonts,
+  radii,
+  type as typeScale,
+} from "@/design/tokens";
 import { resolveQueryState } from "@/features/query-state/query-state";
 import { buildSourceProfitPrompt } from "@/features/sourcing/prompt";
+import {
+  buildAgentFollowUpText,
+  turnNeedsUserInput,
+} from "@/features/agent/result-presentation";
 import { useAgentComposerStore } from "@/stores/agentComposer";
 import { useAuthStore } from "@/stores/auth";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -36,14 +57,31 @@ function stepIcon(status: string) {
   if (status === "running") {
     return <Activity color={colors.mutedStrong} size={13} strokeWidth={1.9} />;
   }
+  if (status === "needs_input") {
+    return <Circle color={colors.amberDot} size={11} strokeWidth={1.9} />;
+  }
   return <Circle color={colors.faint} size={11} strokeWidth={1.7} />;
 }
 
 function stepStatusLabel(status: string) {
   if (status === "completed") return "完成";
   if (status === "running") return "进行中";
+  if (status === "needs_input") return "待补充";
   return "待执行";
 }
+
+function createIdempotencyKey(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+const webInputReset =
+  Platform.OS === "web"
+    ? ({
+        outlineColor: "transparent",
+        outlineStyle: "none",
+        outlineWidth: 0,
+      } as unknown as TextStyle)
+    : undefined;
 
 export default function AgentTurnScreen() {
   const params = useLocalSearchParams<{
@@ -72,6 +110,7 @@ export default function AgentTurnScreen() {
     workspaceId,
     workItemId,
   );
+  const sendTurn = useSubmitAgentTurnMutation(effectiveToken, workspaceId);
   const queryState = resolveQueryState({
     isLoading: detail.isLoading,
     isError: detail.isError,
@@ -101,6 +140,7 @@ export default function AgentTurnScreen() {
     );
   }
 
+  const needsUserInput = turnNeedsUserInput(item.status, item.steps);
   const isWorking =
     item.status === "pending" || item.status === "running";
   const completedStepCount =
@@ -120,6 +160,8 @@ export default function AgentTurnScreen() {
       : item?.result_summary || "结果已经整理好，可以查看下一步。";
   const resultMeta = isWorking
     ? "进度会自动保留"
+    : needsUserInput
+      ? null
     : failed
       ? "执行没有完成，仍然保留了当前上下文"
       : [
@@ -129,36 +171,89 @@ export default function AgentTurnScreen() {
           .filter(Boolean)
           .join(" · ");
 
-  return (
-    <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
-      <ModalScreenHeader title="执行结果" onBack={() => router.back()} />
+  const submitFollowUp = async (reply: string) => {
+    const cleanReply = reply.trim();
+    if (!cleanReply || !workspaceId) return;
+    const isLink = /^https?:\/\/\S+$/i.test(cleanReply);
+    try {
+      const turn = await sendTurn.mutateAsync({
+        input_type: isLink ? "link" : "text",
+        text: buildAgentFollowUpText({
+          previousInput: item.text,
+          previousResult: item.result_summary,
+          reply: cleanReply,
+        }),
+        source_url: isLink ? cleanReply : undefined,
+        work_item_id: workItemId || undefined,
+        idempotencyKey: createIdempotencyKey("follow-up"),
+      });
+      router.replace({
+        pathname: "/agent/[turnId]",
+        params: {
+          turnId: turn.agent_turn_id,
+          workspaceId,
+          workItemId: turn.created_work_item_ids[0] ?? "",
+        },
+      });
+    } catch (reason) {
+      const message =
+        reason instanceof Error ? reason.message : "补充信息没有提交，请重试。";
+      Alert.alert("没有发送", message);
+    }
+  };
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
+  return (
+    <KeyboardAvoidingView
+      style={styles.keyboard}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
+        <ModalScreenHeader title="执行结果" onBack={() => router.back()} />
+
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            needsUserInput && styles.contentWithComposer,
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         <View style={styles.receipt}>
           <View style={styles.statusLine}>
             {isWorking ? (
               <ActivityIndicator color={colors.muted} size="small" />
+            ) : needsUserInput ? (
+              <View style={styles.inputDot} />
             ) : failed ? (
               <TriangleAlert color={colors.danger} size={12} strokeWidth={1.9} />
             ) : (
               <View style={styles.greenDot} />
             )}
             <Text
-              style={[styles.statusLineText, failed && styles.statusLineTextFailed]}
+              style={[
+                styles.statusLineText,
+                needsUserInput && styles.statusLineTextNeedsInput,
+                failed && styles.statusLineTextFailed,
+              ]}
             >
-              {isWorking ? "处理中" : failed ? "需接手" : "已完成"}
+              {isWorking
+                ? "处理中"
+                : needsUserInput
+                  ? "待补充"
+                  : failed
+                    ? "需接手"
+                    : "已完成"}
             </Text>
           </View>
 
           <Text style={styles.headline} numberOfLines={3}>
             {isWorking
               ? "还在处理这条指令"
+              : needsUserInput
+                ? "补充一项信息后继续"
               : failed
                 ? "这件事需要你接手"
-                : item?.result_summary || "已经处理完，结果如下。"}
+                : "结果已整理好"}
           </Text>
 
           {!!item?.text && (
@@ -169,7 +264,9 @@ export default function AgentTurnScreen() {
 
           <View style={styles.resultSection}>
             <Text style={styles.sectionLabel}>执行结果</Text>
-            <Text style={styles.resultText}>{resultCopy}</Text>
+            <View style={styles.resultContent}>
+              <AgentMarkdown content={resultCopy} />
+            </View>
             {!!resultMeta && (
               <Text style={styles.resultMeta}>{resultMeta}</Text>
             )}
@@ -196,6 +293,8 @@ export default function AgentTurnScreen() {
                           styles.stepMarkerComplete,
                         step.status === "running" &&
                           styles.stepMarkerRunning,
+                        step.status === "needs_input" &&
+                          styles.stepMarkerNeedsInput,
                       ]}
                     >
                       {stepIcon(step.status)}
@@ -208,6 +307,8 @@ export default function AgentTurnScreen() {
                           styles.stepStatusComplete,
                         step.status === "running" &&
                           styles.stepStatusRunning,
+                        step.status === "needs_input" &&
+                          styles.stepStatusNeedsInput,
                       ]}
                     >
                       {stepStatusLabel(step.status)}
@@ -285,35 +386,101 @@ export default function AgentTurnScreen() {
             </View>
           )}
         </View>
-      </ScrollView>
+        </ScrollView>
 
-      {!isWorking && workItemId && (
-        <View style={styles.footer}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() =>
-              router.replace({
-                pathname: "/task/[workItemId]",
-                params: {
-                  workItemId,
-                  workspaceId: workspaceId ?? "",
-                },
-              })
-            }
-            style={({ pressed }) => [
-              styles.primary,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.primaryText}>查看完整记录</Text>
-          </Pressable>
-        </View>
-      )}
-    </SafeAreaView>
+        {needsUserInput ? (
+          <FollowUpComposer
+            sending={sendTurn.isPending}
+            onSend={submitFollowUp}
+          />
+        ) : (
+          !isWorking &&
+          workItemId && (
+            <View style={styles.footer}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  router.replace({
+                    pathname: "/task/[workItemId]",
+                    params: {
+                      workItemId,
+                      workspaceId: workspaceId ?? "",
+                    },
+                  })
+                }
+                style={({ pressed }) => [
+                  styles.primary,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.primaryText}>查看完整记录</Text>
+              </Pressable>
+            </View>
+          )
+        )}
+      </SafeAreaView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function FollowUpComposer({
+  sending,
+  onSend,
+}: {
+  sending: boolean;
+  onSend: (text: string) => Promise<void>;
+}) {
+  const [value, setValue] = useState("");
+  const canSend = Boolean(value.trim()) && !sending;
+
+  const submit = async () => {
+    if (!canSend) return;
+    const text = value.trim();
+    setValue("");
+    await onSend(text);
+  };
+
+  return (
+    <View style={styles.composer}>
+      <View style={styles.composerField}>
+        <TextInput
+          value={value}
+          onChangeText={setValue}
+          placeholder="粘贴 1688 链接，或补充信息…"
+          placeholderTextColor={colors.faint}
+          style={[styles.composerInput, webInputReset]}
+          multiline
+          maxLength={2000}
+          editable={!sending}
+          accessibilityLabel="补充 Agent 任务信息"
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="发送补充信息"
+          disabled={!canSend}
+          onPress={() => void submit()}
+          style={({ pressed }) => [
+            styles.composerSend,
+            !canSend && styles.composerSendDisabled,
+            pressed && canSend && styles.pressed,
+          ]}
+        >
+          {sending ? (
+            <ActivityIndicator color={colors.white} size="small" />
+          ) : (
+            <ArrowUp color={colors.white} size={18} strokeWidth={2.2} />
+          )}
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+  },
   safe: {
     flex: 1,
     backgroundColor: colors.surface,
@@ -328,17 +495,20 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 112,
   },
+  contentWithComposer: {
+    paddingBottom: 28,
+  },
   receipt: {
-    padding: 18,
+    padding: 16,
     borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: radii.large,
+    borderRadius: radii.medium,
     backgroundColor: colors.white,
     shadowColor: colors.ink,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 24,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.035,
+    shadowRadius: 18,
+    elevation: 1,
   },
   statusLine: {
     flexDirection: "row",
@@ -351,6 +521,12 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: colors.green,
   },
+  inputDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.amberDot,
+  },
   statusLineText: {
     color: colors.mutedStrong,
     fontFamily: fonts.medium,
@@ -360,13 +536,15 @@ const styles = StyleSheet.create({
   statusLineTextFailed: {
     color: colors.danger,
   },
+  statusLineTextNeedsInput: {
+    color: colors.amberInk,
+  },
   headline: {
     marginTop: 10,
     color: colors.ink,
     fontFamily: fonts.semibold,
-    fontSize: 30,
-    lineHeight: 38,
-    letterSpacing: -0.4,
+    fontSize: 24,
+    lineHeight: 32,
   },
   subcopy: {
     marginTop: 10,
@@ -432,12 +610,8 @@ const styles = StyleSheet.create({
   resultSection: {
     marginTop: 22,
   },
-  resultText: {
+  resultContent: {
     marginTop: 9,
-    color: colors.ink,
-    fontFamily: fonts.semibold,
-    fontSize: 21,
-    lineHeight: 32,
   },
   resultMeta: {
     marginTop: 6,
@@ -491,6 +665,10 @@ const styles = StyleSheet.create({
     borderColor: colors.infoLine,
     backgroundColor: colors.infoSoft,
   },
+  stepMarkerNeedsInput: {
+    borderColor: colors.amberLine,
+    backgroundColor: colors.amber,
+  },
   stepText: {
     flex: 1,
     minWidth: 0,
@@ -510,6 +688,9 @@ const styles = StyleSheet.create({
   },
   stepStatusRunning: {
     color: colors.infoInk,
+  },
+  stepStatusNeedsInput: {
+    color: colors.amberInk,
   },
   error: {
     marginTop: 20,
@@ -564,6 +745,49 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 12,
     lineHeight: 16,
+  },
+  composer: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.line,
+    backgroundColor: colors.surface,
+  },
+  composerField: {
+    minHeight: 52,
+    paddingLeft: 14,
+    paddingRight: 5,
+    paddingVertical: 5,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: 16,
+    backgroundColor: colors.white,
+  },
+  composerInput: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 104,
+    paddingTop: 8,
+    paddingBottom: 8,
+    color: colors.ink,
+    fontFamily: fonts.regular,
+    fontSize: typeScale.body,
+    lineHeight: 22,
+  },
+  composerSend: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    backgroundColor: colors.ink,
+  },
+  composerSendDisabled: {
+    backgroundColor: colors.graySoft,
   },
   footer: {
     position: "absolute",

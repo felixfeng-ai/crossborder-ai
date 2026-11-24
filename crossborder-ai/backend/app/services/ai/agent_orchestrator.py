@@ -25,9 +25,11 @@
 - calculate_profit(params) → 净利计算
 """
 
+import asyncio
 import copy
 import json
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
@@ -143,6 +145,19 @@ def _running_step(func_name: str, params: dict[str, Any]) -> dict[str, Any]:
         "status": "running",
         "summary": summaries.get(func_name, "正在执行任务步骤"),
     }
+
+
+class MarketAnalysisLimitExceeded(RuntimeError):
+    """本次任务已完成一次实时市场分析，禁止继续串行扩展查询。"""
+
+
+# 只有不写业务数据、可重复执行的读取工具才允许在同一轮并发。
+PARALLEL_SAFE_TOOLS = frozenset({
+    "select_products",
+    "analyze_category",
+    "analyze_product_decision",
+    "find_1688_sources",
+})
 
 
 def _amazon_search_url(query: str | None) -> str:
@@ -1672,6 +1687,8 @@ class AgentOrchestrator:
         # 同一任务内复用相同关键词的市场事实，避免重复等待外部 Amazon API。
         self._amazon_market_service = None
         self._market_analysis_cache: dict[str, dict[str, Any]] = {}
+        self._live_market_analysis_count = 0
+        self._market_analysis_lock = asyncio.Lock()
 
     def _status_from_steps(self) -> str:
         failed = any(step.get("status") == "failed" for step in self.steps)
@@ -1690,6 +1707,37 @@ class AgentOrchestrator:
         """
         if self.on_step:
             await self.on_step(self.steps)
+
+    async def _execute_timed_tool(
+        self,
+        func_name: str,
+        func_args: dict[str, Any],
+    ) -> dict[str, Any]:
+        """执行单个工具并记录真实耗时，供后续性能诊断。"""
+
+        started = time.perf_counter()
+        result = await self._execute_step(func_name, func_args)
+        item = dict(result) if isinstance(result, dict) else {
+            "action": func_name,
+            "status": "failed",
+            "error": "工具返回格式异常",
+        }
+        item["duration_ms"] = max(
+            0,
+            int(round((time.perf_counter() - started) * 1000)),
+        )
+        return item
+
+    @staticmethod
+    def _tool_result_content(func_name: str, result: dict[str, Any]) -> str:
+        """报告类工具只回传摘要，避免模型重复复述完整报告。"""
+
+        if (
+            func_name in ("select_products", "analyze_category")
+            and result.get("status") == "success"
+        ):
+            return str(result.get("summary", ""))[:1000]
+        return json.dumps(result, ensure_ascii=False, default=str)[:2000]
 
     async def run_react(
         self,
@@ -1735,32 +1783,58 @@ class AgentOrchestrator:
                 "tool_calls": tool_calls,
             })
 
+            parsed_calls: list[tuple[dict, str, dict]] = []
             for tc in tool_calls:
                 func_name = tc["function"]["name"]
                 try:
                     func_args = json.loads(tc["function"]["arguments"])
                 except (json.JSONDecodeError, KeyError):
                     func_args = {}
+                parsed_calls.append((tc, func_name, func_args))
 
-                # 先推送工具开始阶段，再执行外部查询；完成后用真实结果替换占位。
-                self.steps.append(_running_step(func_name, func_args))
-                await self._emit_step()
-                result = await self._execute_step(func_name, func_args)
-                self.steps[-1] = result
-                await self._emit_step()
-
-                # 报告类工具只回传 summary，避免模型在最终回答里复述整份报告
-                if func_name in ("select_products", "analyze_category") and result.get("status") == "success":
-                    tool_content = result.get("summary", "")[:1000]
-                else:
-                    tool_content = json.dumps(result, ensure_ascii=False, default=str)[:2000]
-
-                # 把工具结果返回给模型
+            def append_tool_message(
+                tc: dict,
+                func_name: str,
+                result: dict[str, Any],
+            ) -> None:
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.get("id", str(round_num)),
-                    "content": tool_content,
+                    "content": self._tool_result_content(func_name, result),
                 })
+
+            if (
+                len(parsed_calls) > 1
+                and all(name in PARALLEL_SAFE_TOOLS for _, name, _ in parsed_calls)
+            ):
+                # 安全读取工具并发执行；gather 保留原始 tool_calls 顺序。
+                start_index = len(self.steps)
+                self.steps.extend(
+                    _running_step(func_name, func_args)
+                    for _, func_name, func_args in parsed_calls
+                )
+                await self._emit_step()
+                parallel_results = await asyncio.gather(*[
+                    self._execute_timed_tool(func_name, func_args)
+                    for _, func_name, func_args in parsed_calls
+                ])
+                for offset, result in enumerate(parallel_results):
+                    self.steps[start_index + offset] = result
+                await self._emit_step()
+                for (tc, func_name, _), result in zip(
+                    parsed_calls,
+                    parallel_results,
+                ):
+                    append_tool_message(tc, func_name, result)
+            else:
+                for tc, func_name, func_args in parsed_calls:
+                    # 有副作用的工具保持串行，避免并发破坏业务状态。
+                    self.steps.append(_running_step(func_name, func_args))
+                    await self._emit_step()
+                    result = await self._execute_timed_tool(func_name, func_args)
+                    self.steps[-1] = result
+                    await self._emit_step()
+                    append_tool_message(tc, func_name, result)
 
         # 达到最大轮数
         return {
@@ -2930,19 +3004,23 @@ class AgentOrchestrator:
 
         clean_keyword = str(keyword or "").strip()
         cache_key = re.sub(r"\s+", "", clean_keyword).lower()
-        cached = self._market_analysis_cache.get(cache_key)
-        if cached is not None:
-            return copy.deepcopy(cached)
+        async with self._market_analysis_lock:
+            cached = self._market_analysis_cache.get(cache_key)
+            if cached is not None:
+                return copy.deepcopy(cached)
+            if self._live_market_analysis_count >= 1:
+                raise MarketAnalysisLimitExceeded(clean_keyword)
 
-        if self._amazon_market_service is None:
-            await provider_config.refresh(self.db)
-            self._amazon_market_service = build_runtime_amazon_market_service()
-        structured = await self._amazon_market_service.analyze(
-            clean_keyword,
-            include_products=True,
-        )
-        self._market_analysis_cache[cache_key] = copy.deepcopy(structured)
-        return copy.deepcopy(structured)
+            if self._amazon_market_service is None:
+                await provider_config.refresh(self.db)
+                self._amazon_market_service = build_runtime_amazon_market_service()
+            structured = await self._amazon_market_service.analyze(
+                clean_keyword,
+                include_products=True,
+            )
+            self._live_market_analysis_count += 1
+            self._market_analysis_cache[cache_key] = copy.deepcopy(structured)
+            return copy.deepcopy(structured)
 
     async def _do_select_products(self, params: dict) -> dict:
         """选品决策：用真实 Amazon US 样本返回细分方向和参考商品。"""
@@ -2980,6 +3058,19 @@ class AgentOrchestrator:
                     ),
                 },
                 "summary": summary,
+            }
+        except MarketAnalysisLimitExceeded as exc:
+            return {
+                "action": "select_products",
+                "status": "success",
+                "data": {
+                    "limit_reached": True,
+                    "requested_keyword": str(exc),
+                },
+                "summary": (
+                    "本次任务已完成一次实时市场分析。"
+                    "请先基于已有结果总结；如确需其他关键词，请由用户单独发起。"
+                ),
             }
         except (AmazonMarketDataNotConfigured, AmazonMarketQueryError) as exc:
             return {
@@ -3099,6 +3190,19 @@ class AgentOrchestrator:
                     ),
                 },
                 "summary": summary,
+            }
+        except MarketAnalysisLimitExceeded as exc:
+            return {
+                "action": "analyze_category",
+                "status": "success",
+                "data": {
+                    "limit_reached": True,
+                    "requested_keyword": str(exc),
+                },
+                "summary": (
+                    "本次任务已完成一次实时市场分析。"
+                    "请先基于已有结果总结；如确需其他关键词，请由用户单独发起。"
+                ),
             }
         except (AmazonMarketDataNotConfigured, AmazonMarketQueryError) as exc:
             return {

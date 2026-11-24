@@ -91,11 +91,14 @@ async def test_mobile_media_library_supports_order_replace_delete_and_private_fi
     assert replaced.json()["id"] == second_id
     assert replaced.json()["name"] == "replacement"
     image_file = await client.get(
-        f"{base}/{second_id}/file",
+        replaced.json()["url"],
         headers=headers,
     )
     assert image_file.status_code == 200
-    assert image_file.headers["content-type"].startswith("image/webp")
+    assert image_file.headers["content-type"].startswith("image/jpeg")
+    assert "inline" in image_file.headers["content-disposition"]
+    rendered = Image.open(io.BytesIO(image_file.content))
+    assert rendered.format == "JPEG"
 
     deleted = await client.delete(
         f"{base}/{first_id}",

@@ -8,10 +8,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_task import AgentTask
-from app.models.agent_work import AgentTurn, AgentTurnInput, WorkItem
+from app.models.agent_work import (
+    AgentTurn,
+    AgentTurnInput,
+    WorkItem,
+    WorkItemEvent,
+)
 from app.models.audio_asset import AudioAsset
 from app.models.image_asset import ImageAsset
-from app.services.work_items import create_work_item
+from app.services.agent_result_state import result_needs_user_input
+from app.services.work_items import (
+    complete_work_item_from_agent_task,
+    create_work_item,
+)
 
 
 class AgentTurnConflict(ValueError):
@@ -44,6 +53,7 @@ async def sync_agent_turn_status(
     *,
     turn: AgentTurn,
     task_status: str,
+    task_result: dict | None = None,
 ) -> bool:
     """把后台任务状态同步到移动端 AgentTurn 和输入明细。
 
@@ -51,13 +61,25 @@ async def sync_agent_turn_status(
     造成的 pending/running 残留。
     """
 
-    turn_status = TURN_STATUS_BY_TASK_STATUS.get(task_status)
+    needs_user_input = (
+        task_status == "succeeded"
+        and result_needs_user_input(task_result)
+    )
+    turn_status = (
+        "waiting_user"
+        if needs_user_input
+        else TURN_STATUS_BY_TASK_STATUS.get(task_status)
+    )
     if turn_status is None:
         return False
     changed = turn.status != turn_status
     turn.status = turn_status
 
-    input_status = INPUT_STATUS_BY_TASK_STATUS[task_status]
+    input_status = (
+        "waiting_user"
+        if needs_user_input
+        else INPUT_STATUS_BY_TASK_STATUS[task_status]
+    )
     inputs = (
         await db.execute(
             select(AgentTurnInput).where(
@@ -86,6 +108,7 @@ async def create_agent_turn(
     asset_ids: list[UUID],
     idempotency_key: str,
     audio_asset_id: UUID | None = None,
+    parent_work_item_id: UUID | None = None,
 ) -> tuple[AgentTurn, AgentTask, WorkItem]:
     audio_asset: AudioAsset | None = None
     final_text = text
@@ -285,6 +308,32 @@ async def create_agent_turn(
         source_type="agent_task",
         source_id=str(task.id),
     )
+    if parent_work_item_id is not None:
+        parent_work_item = await db.get(WorkItem, parent_work_item_id)
+        if (
+            parent_work_item is not None
+            and parent_work_item.workspace_id == workspace_id
+            and parent_work_item.status == "waiting_user"
+        ):
+            parent_work_item.status = "succeeded"
+            parent_work_item.requires_action = "none"
+            parent_work_item.current_step = "已继续处理"
+            parent_work_item.version += 1
+            db.add(
+                WorkItemEvent(
+                    workspace_id=workspace_id,
+                    work_item_id=parent_work_item.id,
+                    event_type="work_item.follow_up.started",
+                    actor_user_id=actor_user_id,
+                    payload_json=json.dumps(
+                        {
+                            "agent_turn_id": str(turn.id),
+                            "version": parent_work_item.version,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            )
     await db.flush()
     return turn, task, work_item
 
@@ -315,12 +364,29 @@ async def get_agent_turn_detail(
             )
         )
     ).scalar_one_or_none()
-    if task is not None and await sync_agent_turn_status(
-        db,
-        turn=turn,
-        task_status=task.status,
-    ):
-        await db.commit()
+    if task is not None:
+        try:
+            task_result = json.loads(task.result) if task.result else None
+        except (TypeError, json.JSONDecodeError):
+            task_result = None
+        changed = await sync_agent_turn_status(
+            db,
+            turn=turn,
+            task_status=task.status,
+            task_result=task_result,
+        )
+        if task.status in {"succeeded", "partial", "failed"}:
+            synced_work_item = await complete_work_item_from_agent_task(
+                db,
+                agent_task_id=task.id,
+                status=task.status,
+                summary=str((task_result or {}).get("summary") or ""),
+                error=task.error,
+                task_result=task_result,
+            )
+            changed = changed or synced_work_item is not None
+        if changed:
+            await db.commit()
     work_item = None
     if task is not None:
         work_item = (

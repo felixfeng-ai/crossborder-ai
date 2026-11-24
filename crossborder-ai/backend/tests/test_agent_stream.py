@@ -90,6 +90,64 @@ async def test_run_react_emits_running_step_before_tool_completes(monkeypatch):
     assert calls[0][0]["status"] == "running"
     assert "宠物碗" in calls[0][0]["summary"]
     assert calls[1][0]["status"] == "success"
+    assert isinstance(calls[1][0]["duration_ms"], int)
+    assert calls[1][0]["duration_ms"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_run_react_parallelizes_safe_reads_and_preserves_order(monkeypatch):
+    """只并发安全读取工具，结果仍按模型原始 tool_calls 顺序落库。"""
+    orch = AgentOrchestrator(user=None, db=None)
+    started: set[str] = set()
+    both_started = asyncio.Event()
+    responses = [
+        {
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {
+                        "name": "analyze_category",
+                        "arguments": '{"keyword": "蓝牙耳机"}',
+                    },
+                },
+                {
+                    "id": "call-2",
+                    "type": "function",
+                    "function": {
+                        "name": "find_1688_sources",
+                        "arguments": '{"keyword": "蓝牙耳机"}',
+                    },
+                },
+            ],
+        },
+        {"content": "完成", "tool_calls": []},
+    ]
+
+    async def fake_chat(messages, tools=None, max_tokens=2000):
+        return responses.pop(0)
+
+    async def fake_execute(action, params):
+        started.add(action)
+        if len(started) == 2:
+            both_started.set()
+        await asyncio.wait_for(both_started.wait(), timeout=0.5)
+        if action == "analyze_category":
+            await asyncio.sleep(0.03)
+        return {"action": action, "status": "success", "summary": action}
+
+    monkeypatch.setattr(orch.llm, "chat_with_tools", fake_chat)
+    monkeypatch.setattr(orch, "_execute_step", fake_execute)
+
+    result = await orch.run_react("比较品类和货源")
+
+    assert started == {"analyze_category", "find_1688_sources"}
+    assert [step["action"] for step in result["steps"]] == [
+        "analyze_category",
+        "find_1688_sources",
+    ]
+    assert all(isinstance(step["duration_ms"], int) for step in result["steps"])
 
 
 # ── _sse_event 纯函数 ──────────────────────────────────────────

@@ -273,16 +273,16 @@ export function getPreviewNotifications() {
 export function getPreviewAgentTurn(_turnId: string) {
   return {
     agent_turn_id: _turnId,
-    status: "succeeded",
+    status: "waiting_user",
     input_type: "text",
-    text: "帮我看看今天的订单，有超时的先处理。",
+    text: "帮我上架一个新品",
     task_status: "succeeded",
-    result_summary: "已找到 2 个即将超时的订单，并准备好延迟说明和履约方案。",
+    result_summary:
+      "## 需要补充\n1. **商品来源**：请发 1688 商品链接\n2. **目标平台**：Amazon、Shopify 还是 Temu？\n3. **已有素材**：商品主图是否已上传？\n\n你把链接发我后，我会继续抓取商品、核算利润并生成 Listing。",
     error: null,
     steps: [
       { label: "理解你的指令", status: "completed" },
-      { label: "检查今天订单和物流状态", status: "completed" },
-      { label: "整理需要你决定的事项", status: "completed" },
+      { label: "确认上架所需信息", status: "needs_input" },
     ],
     created_work_item_ids: [primaryId],
   };

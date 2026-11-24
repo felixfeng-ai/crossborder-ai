@@ -449,6 +449,7 @@ class AgentStepSummary(BaseModel):
     label: str
     status: str
     action: str | None = None
+    duration_ms: int | None = None
     structured: dict[str, Any] | None = None
 
 

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_work import WorkItem, WorkItemCommand, WorkItemEvent
 from app.models.workspace import Workspace
+from app.services.agent_result_state import result_needs_user_input
 from app.services.notifications import create_notification
 from app.services.action_runtime import ACTION_DEFINITIONS, plan_action_run
 from app.services.business_time import business_day_utc_bounds
@@ -273,6 +274,7 @@ async def complete_work_item_from_agent_task(
     status: str,
     summary: str,
     error: str | None,
+    task_result: dict | None = None,
 ) -> WorkItem | None:
     """把技术任务结果同步到用户可见的工作项。
 
@@ -292,15 +294,29 @@ async def complete_work_item_from_agent_task(
         return None
 
     succeeded = status == "succeeded"
-    item.status = "succeeded" if succeeded else "failed"
-    item.current_step = "已完成" if succeeded else "处理失败，可重试"
-    item.requires_action = "none" if succeeded else "retry"
-    item.result_json = _payload_json(
-        {
-            "summary": summary,
-            "error": error,
-        }
-    )
+    needs_user_input = succeeded and result_needs_user_input(task_result)
+    if needs_user_input:
+        next_status = "waiting_user"
+        next_step = "等待你补充信息"
+        next_action = "input"
+    else:
+        next_status = "succeeded" if succeeded else "failed"
+        next_step = "已完成" if succeeded else "处理失败，可重试"
+        next_action = "none" if succeeded else "retry"
+    next_result = _payload_json({"summary": summary, "error": error})
+    changed = any((
+        item.status != next_status,
+        item.current_step != next_step,
+        item.requires_action != next_action,
+        item.result_json != next_result,
+    ))
+    if not changed:
+        return item
+
+    item.status = next_status
+    item.current_step = next_step
+    item.requires_action = next_action
+    item.result_json = next_result
     item.version += 1
 
     db.add(
@@ -308,9 +324,13 @@ async def complete_work_item_from_agent_task(
             workspace_id=item.workspace_id,
             work_item_id=item.id,
             event_type=(
-                "work_item.agent_task.succeeded"
-                if succeeded
-                else "work_item.agent_task.failed"
+                "work_item.agent_task.needs_input"
+                if needs_user_input
+                else (
+                    "work_item.agent_task.succeeded"
+                    if succeeded
+                    else "work_item.agent_task.failed"
+                )
             ),
             payload_json=_payload_json(
                 {

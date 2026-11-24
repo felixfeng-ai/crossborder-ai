@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+import os
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -21,6 +22,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, Response, StreamingResponse
+from PIL import Image as PILImage, UnidentifiedImageError
 from sqlalchemy import desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -180,6 +182,17 @@ ACTION_LABELS = {
     "retry": "重新处理",
 }
 
+AGENT_STEP_LABELS = {
+    "select_products": "选品分析",
+    "analyze_category": "品类分析",
+    "analyze_product_decision": "商品判断",
+    "find_1688_sources": "1688 找货源",
+    "generate_listing": "生成 Listing",
+    "check_compliance": "合规检查",
+    "store_check": "店铺巡检",
+    "monitor_products": "商品监控",
+}
+
 AUDIO_CONTENT_TYPES = {
     "audio/mp4": "m4a",
     "audio/x-m4a": "m4a",
@@ -225,6 +238,29 @@ def _mobile_asset_path(storage_key: str) -> Path:
     return target
 
 
+def _mobile_jpeg_path(source: Path) -> Path:
+    """为 Android 生成可内联显示的 JPEG 缓存，兼容 WebP 解码差异。"""
+
+    target = source.with_name(f"{source.stem}.mobile.jpg")
+    if target.is_file() and target.stat().st_mtime >= source.stat().st_mtime:
+        return target
+    temp = target.with_name(f"{target.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with PILImage.open(source) as image:
+            if "A" in image.getbands():
+                rgba = image.convert("RGBA")
+                rendered = PILImage.new("RGB", rgba.size, "white")
+                rendered.paste(rgba, mask=rgba.getchannel("A"))
+            else:
+                rendered = image.convert("RGB")
+            rendered.save(temp, format="JPEG", quality=88, optimize=True)
+        os.replace(temp, target)
+    except (UnidentifiedImageError, OSError):
+        temp.unlink(missing_ok=True)
+        raise HTTPException(status_code=404, detail="素材文件无法转换") from None
+    return target
+
+
 async def _normalize_mobile_image(file: UploadFile) -> tuple[bytes, int, int]:
     """读取并统一转换 App 图片，限制解码炸弹和超大文件。"""
 
@@ -249,7 +285,7 @@ def _mobile_image_response(
         name=asset.name,
         url=(
             f"/api/mobile/v1/workspaces/{workspace_id}"
-            f"/assets/images/{asset.id}/file"
+            f"/assets/images/{asset.id}/file?format=jpeg"
         ),
         content_type=asset.content_type,
         width=asset.width,
@@ -1137,6 +1173,11 @@ async def delete_mobile_image_asset(
 @router.get("/workspaces/{workspace_id}/assets/images/{asset_id}/file")
 async def get_mobile_image_asset_file(
     asset_id: UUID,
+    delivery_format: str = Query(
+        "original",
+        alias="format",
+        pattern="^(original|jpeg)$",
+    ),
     context: WorkspaceContext = Depends(get_current_workspace),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1158,10 +1199,23 @@ async def get_mobile_image_asset_file(
         raise HTTPException(status_code=404, detail="素材文件不存在") from exc
     if not path.is_file():
         raise HTTPException(status_code=404, detail="素材文件不存在")
+    if delivery_format == "jpeg":
+        delivery = await run_in_threadpool(_mobile_jpeg_path, path)
+        return FileResponse(
+            delivery,
+            media_type="image/jpeg",
+            headers={
+                "Content-Disposition": f'inline; filename="asset-{asset.id}.jpg"',
+                "Cache-Control": "private, max-age=3600",
+            },
+        )
     return FileResponse(
         path,
         media_type=asset.content_type,
-        filename=f"{asset.name}.webp",
+        headers={
+            "Content-Disposition": f'inline; filename="asset-{asset.id}.webp"',
+            "Cache-Control": "private, max-age=3600",
+        },
     )
 
 
@@ -2571,6 +2625,7 @@ async def create_turn(
             asset_ids=payload.asset_ids,
             audio_asset_id=payload.audio_asset_id,
             idempotency_key=idempotency_key,
+            parent_work_item_id=payload.work_item_id,
         )
     except AgentTurnConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -2624,8 +2679,16 @@ async def get_turn_detail(
             raw_steps = progress.get("steps") if isinstance(progress, dict) else []
             if isinstance(raw_steps, list):
                 for step in raw_steps:
-                    if isinstance(step, dict) and step.get("label"):
+                    if isinstance(step, dict):
                         action = str(step.get("action") or "").strip() or None
+                        label = str(
+                            step.get("label")
+                            or AGENT_STEP_LABELS.get(action or "", "")
+                            or action
+                            or ""
+                        ).strip()
+                        if not label:
+                            continue
                         step_data = step.get("data")
                         structured = (
                             step_data.get("structured")
@@ -2636,9 +2699,14 @@ async def get_turn_detail(
                         )
                         steps.append(
                             AgentStepSummary(
-                                label=str(step["label"]),
+                                label=label,
                                 status=str(step.get("status") or "pending"),
                                 action=action,
+                                duration_ms=(
+                                    int(step["duration_ms"])
+                                    if isinstance(step.get("duration_ms"), (int, float))
+                                    else None
+                                ),
                                 structured=structured,
                             )
                         )

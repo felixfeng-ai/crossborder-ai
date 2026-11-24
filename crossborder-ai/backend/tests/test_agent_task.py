@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base
-from app.models.agent_work import AgentTurn, AgentTurnInput
+from app.models.agent_work import AgentTurn, AgentTurnInput, WorkItem
 from app.models.agent_task import AgentTask
 from app.models.conversation import Conversation, ConversationMessage
 from app.models.marketing_campaign import MarketingCampaign
@@ -179,6 +179,23 @@ class _PartialOrchestrator(_FakeOrchestrator):
             "summary": "部分完成",
             "status": "partial",
             "steps": [{"action": "scrape_1688", "status": "failed", "error": "抓取失败"}],
+        }
+
+
+class _NeedsInputOrchestrator(_FakeOrchestrator):
+    async def run(self, instruction, history=None):
+        steps = [{
+            "action": "analyze_product_decision",
+            "label": "商品判断",
+            "status": "needs_input",
+            "summary": "请补充 1688 商品链接",
+        }]
+        if self.on_step:
+            await self.on_step(steps)
+        return {
+            "summary": "请补充 1688 商品链接后继续。",
+            "status": "success",
+            "steps": steps,
         }
 
 
@@ -354,6 +371,102 @@ async def test_execute_agent_task_syncs_mobile_turn_to_succeeded(monkeypatch):
     assert task_now.status == "succeeded"
     assert turn_now.status == "succeeded"
     assert input_now.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_execute_agent_task_keeps_needs_input_waiting_for_user(monkeypatch):
+    """需要用户补充信息时，任务可结束但 Turn/WorkItem 不能标成已完成。"""
+    engine, factory = _make_static_factory()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    monkeypatch.setattr(exe, "async_session_factory", factory)
+    monkeypatch.setattr(exe, "AgentOrchestrator", _NeedsInputOrchestrator)
+
+    async with factory() as db:
+        user = User(
+            email="task-needs-input@test.com",
+            username="taskneedsinput",
+            password_hash="x",
+            credits=30,
+        )
+        db.add(user)
+        await db.flush()
+        workspace = Workspace(
+            name="等待补充工作区",
+            slug="task-needs-input",
+            owner_user_id=user.id,
+        )
+        db.add(workspace)
+        await db.flush()
+        turn = AgentTurn(
+            workspace_id=workspace.id,
+            created_by_user_id=user.id,
+            input_type="text",
+            text="帮我上架",
+            status="pending",
+            idempotency_key="task-needs-input-turn",
+        )
+        db.add(turn)
+        await db.flush()
+        turn_input = AgentTurnInput(
+            workspace_id=workspace.id,
+            agent_turn_id=turn.id,
+            input_type="text",
+            text_content=turn.text,
+            status="received",
+        )
+        db.add(turn_input)
+        task = AgentTask(
+            user_id=user.id,
+            workspace_id=workspace.id,
+            task_type="agent_run",
+            status="running",
+            input=json.dumps({
+                "instruction": turn.text,
+                "conversation_id": "",
+                "workspace": "general",
+                "page_context": {
+                    "source": "mobile_app",
+                    "agent_turn_id": str(turn.id),
+                },
+            }, ensure_ascii=False),
+            idempotency_key=f"mobile:{turn.id}",
+            cost=1,
+        )
+        db.add(task)
+        await db.flush()
+        work_item = WorkItem(
+            workspace_id=workspace.id,
+            kind="agent_request",
+            source="agent",
+            title="帮我上架",
+            summary="Agent 正在处理",
+            status="running",
+            requires_action="none",
+            current_step="Agent 正在处理",
+            source_type="agent_task",
+            source_id=str(task.id),
+        )
+        db.add(work_item)
+        await db.commit()
+        task_id = task.id
+        turn_id = turn.id
+        turn_input_id = turn_input.id
+        work_item_id = work_item.id
+
+    await exe.execute_agent_task(task_id)
+
+    async with factory() as db:
+        task_now = await db.get(AgentTask, task_id)
+        turn_now = await db.get(AgentTurn, turn_id)
+        input_now = await db.get(AgentTurnInput, turn_input_id)
+        work_now = await db.get(WorkItem, work_item_id)
+
+    assert task_now.status == "succeeded"
+    assert turn_now.status == "waiting_user"
+    assert input_now.status == "waiting_user"
+    assert work_now.status == "waiting_user"
+    assert work_now.requires_action == "input"
 
 
 @pytest.mark.parametrize(
@@ -649,9 +762,42 @@ async def test_dispatch_agent_tasks_wires_execution(monkeypatch):
 
     sched = sched_module.SchedulerService()
     await sched._dispatch_agent_tasks()
+    await sched.wait_for_background_tasks()
 
     assert len(executed) == 1
     assert executed[0] == str(task_id)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_agent_tasks_does_not_block_scheduler(monkeypatch):
+    """慢 Agent 必须在后台运行，调度 job 本身立即返回避免占满实例槽。"""
+    from types import SimpleNamespace
+
+    from app.services import scheduler as sched_module
+    from app.services import agent_task_executor as exe_module
+
+    task = SimpleNamespace(id=uuid.uuid4())
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fake_claim():
+        return [task]
+
+    async def fake_execute(_task_id):
+        started.set()
+        await release.wait()
+
+    monkeypatch.setattr(exe_module, "execute_agent_task", fake_execute)
+
+    sched = sched_module.SchedulerService()
+    monkeypatch.setattr(sched, "_claim_agent_tasks", fake_claim)
+
+    await asyncio.wait_for(sched._dispatch_agent_tasks(), timeout=0.3)
+    await asyncio.wait_for(started.wait(), timeout=0.3)
+    assert started.is_set()
+
+    release.set()
+    await sched.wait_for_background_tasks()
 
 
 @pytest.mark.asyncio

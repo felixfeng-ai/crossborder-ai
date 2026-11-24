@@ -322,6 +322,7 @@ export type AgentStep = {
   label: string;
   status: string;
   action?: string | null;
+  duration_ms?: number | null;
   structured?: SourcingSearchReport | null;
 };
 

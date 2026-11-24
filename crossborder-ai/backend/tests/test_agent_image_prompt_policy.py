@@ -51,3 +51,14 @@ def test_agent_system_prompt_forbids_model_rendered_marketing_copy():
     prompt = build_system_prompt("marketing")
     assert "默认不生成任何文字" in prompt
     assert "模板" in prompt
+
+
+def test_agent_system_prompt_limits_generic_selection_and_separates_history():
+    from app.services.agent_context import build_system_prompt
+
+    prompt = build_system_prompt("general")
+
+    assert "泛化的同品类推荐只调用一次 select_products" in prompt
+    assert "本次任务结果" in prompt
+    assert "历史结果" in prompt
+    assert "不得把历史结果写成累计执行次数" in prompt

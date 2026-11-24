@@ -379,12 +379,14 @@ async def execute_agent_task(task_id) -> None:
                     status="failed",
                     summary=result.get("summary", ""),
                     error=task.error,
+                    task_result=result,
                 )
                 if agent_turn is not None:
                     await sync_agent_turn_status(
                         db,
                         turn=agent_turn,
                         task_status=result_status,
+                        task_result=result,
                     )
                 await db.commit()
                 logger.info("Agent 任务 %s 结束（%s），未扣积分", task.id, result_status)
@@ -435,12 +437,14 @@ async def execute_agent_task(task_id) -> None:
                 status="succeeded",
                 summary=result.get("summary", ""),
                 error=None,
+                task_result=result,
             )
             if agent_turn is not None:
                 await sync_agent_turn_status(
                     db,
                     turn=agent_turn,
                     task_status="succeeded",
+                    task_result=result,
                 )
             await db.commit()
             logger.info("Agent 任务 %s 执行成功（%s）", task.id, task.task_type)

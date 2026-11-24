@@ -342,6 +342,132 @@ async def test_mobile_agent_turn_detail_exposes_progress_and_result(
 
 
 @pytest.mark.asyncio
+async def test_mobile_agent_turn_needs_input_remains_continuable(
+    client,
+    db_session,
+):
+    headers, workspace = await _register_and_workspace(
+        client,
+        db_session,
+        email="mobile-agent-needs-input@example.com",
+        username="mobile-agent-needs-input",
+    )
+    submitted = await client.post(
+        f"/api/mobile/v1/workspaces/{workspace.id}/agent-turns",
+        headers={**headers, "Idempotency-Key": "agent-needs-input-turn-1"},
+        json={
+            "input_type": "text",
+            "text": "帮我上架一个新品",
+        },
+    )
+    turn_id = UUID(submitted.json()["agent_turn_id"])
+    task = (
+        await db_session.execute(
+            select(AgentTask).where(
+                AgentTask.idempotency_key == f"mobile:{turn_id}",
+            )
+        )
+    ).scalar_one()
+    task.status = "succeeded"
+    task.progress = json.dumps({
+        "steps": [{
+            "action": "analyze_product_decision",
+            "status": "needs_input",
+            "duration_ms": 120,
+            "summary": "请补充 1688 商品链接",
+        }],
+    }, ensure_ascii=False)
+    task.result = json.dumps({
+        "summary": "请补充 1688 商品链接后继续。",
+        "steps": [{
+            "action": "analyze_product_decision",
+            "status": "needs_input",
+            "summary": "请补充 1688 商品链接",
+        }],
+    }, ensure_ascii=False)
+    await db_session.commit()
+
+    detail = await client.get(
+        f"/api/mobile/v1/workspaces/{workspace.id}/agent-turns/{turn_id}",
+        headers=headers,
+    )
+
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["status"] == "waiting_user"
+    assert payload["task_status"] == "succeeded"
+    assert payload["steps"][0]["label"] == "商品判断"
+    assert payload["steps"][0]["status"] == "needs_input"
+    assert payload["steps"][0]["duration_ms"] == 120
+
+    work_item = await db_session.get(
+        WorkItem,
+        UUID(payload["created_work_item_ids"][0]),
+    )
+    assert work_item.status == "waiting_user"
+    assert work_item.requires_action == "input"
+
+
+@pytest.mark.asyncio
+async def test_agent_turn_follow_up_resolves_parent_work_item(
+    client,
+    db_session,
+):
+    headers, workspace = await _register_and_workspace(
+        client,
+        db_session,
+        email="mobile-agent-follow-up@example.com",
+        username="mobile-agent-follow-up",
+    )
+    first = await client.post(
+        f"/api/mobile/v1/workspaces/{workspace.id}/agent-turns",
+        headers={**headers, "Idempotency-Key": "agent-follow-up-first"},
+        json={"input_type": "text", "text": "帮我上架一个新品"},
+    )
+    first_turn_id = UUID(first.json()["agent_turn_id"])
+    parent_item = (
+        await db_session.execute(
+            select(WorkItem).where(
+                WorkItem.source_type == "agent_task",
+                WorkItem.source_id.like(
+                    f"%{first_turn_id}%",
+                ),
+            )
+        )
+    ).scalar_one_or_none()
+    if parent_item is None:
+        parent_item = (
+            await db_session.execute(
+                select(WorkItem).where(
+                    WorkItem.workspace_id == workspace.id,
+                    WorkItem.kind == "agent_request",
+                ).order_by(WorkItem.created_at.desc())
+            )
+        ).scalars().first()
+    assert parent_item is not None
+    parent_item.status = "waiting_user"
+    parent_item.requires_action = "input"
+    await db_session.commit()
+
+    follow_up = await client.post(
+        f"/api/mobile/v1/workspaces/{workspace.id}/agent-turns",
+        headers={**headers, "Idempotency-Key": "agent-follow-up-second"},
+        json={
+            "input_type": "link",
+            "text": "上一轮信息：帮我上架一个新品\n本次补充：https://detail.1688.com/offer/1.html",
+            "source_url": "https://detail.1688.com/offer/1.html",
+            "work_item_id": str(parent_item.id),
+        },
+    )
+
+    assert follow_up.status_code == 202
+    await db_session.refresh(parent_item)
+    assert parent_item.status == "succeeded"
+    assert parent_item.requires_action == "none"
+    assert parent_item.current_step == "已继续处理"
+
+
+@pytest.mark.asyncio
 async def test_mobile_agent_turn_detail_exposes_1688_sources(
     client,
     db_session,

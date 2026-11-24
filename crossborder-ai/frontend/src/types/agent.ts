@@ -96,7 +96,8 @@ export interface AgentStepLink {
 
 export interface AgentStep {
   action: string
-  status: 'success' | 'failed' | 'partial'
+  status: 'running' | 'success' | 'failed' | 'partial' | 'needs_input'
+  duration_ms?: number
   summary?: string
   error?: string
   links?: AgentStepLink[]

@@ -5,6 +5,7 @@
 2. LLM 返回乱文本 → structured 为 None，report 为原始文本兜底（fail-open，不抛异常）
 """
 
+import asyncio
 from uuid import UUID
 
 import pytest
@@ -432,6 +433,43 @@ async def test_market_analysis_reuses_same_keyword_within_one_task(monkeypatch):
     assert calls == 1
     assert selected["data"]["structured"]["products"]
     assert category["data"]["structured"]["products"] == []
+
+
+@pytest.mark.asyncio
+async def test_second_distinct_market_analysis_is_blocked(monkeypatch):
+    """泛推荐任务只允许一次实时市场查询，避免不同关键词连续串行等待。"""
+    service = AmazonMarketDecisionService(_StructuredMarketProvider())
+    calls = 0
+    original_analyze = service.analyze
+
+    async def counted_analyze(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return await original_analyze(*args, **kwargs)
+
+    monkeypatch.setattr(service, "analyze", counted_analyze)
+    monkeypatch.setattr(
+        orchestrator_module.provider_config,
+        "refresh",
+        _no_provider_refresh,
+    )
+    monkeypatch.setattr(
+        orchestrator_module,
+        "build_runtime_amazon_market_service",
+        lambda **_kwargs: service,
+    )
+
+    orch = make_orchestrator()
+    first, second = await asyncio.gather(
+        orch._do_select_products({"keyword": "蓝牙耳机"}),
+        orch._do_select_products({"keyword": "宠物饮水机"}),
+    )
+
+    assert first["status"] == "success"
+    assert second["status"] == "success"
+    assert second["data"]["limit_reached"] is True
+    assert "一次实时市场分析" in second["summary"]
+    assert calls == 1
 
 
 @pytest.mark.asyncio

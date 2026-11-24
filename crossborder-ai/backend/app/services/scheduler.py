@@ -7,6 +7,7 @@ credit management, and cleanup operations."""
 
 import asyncio
 import hashlib
+import logging
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,12 +21,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import async_session_factory, engine
 
+logger = logging.getLogger("veyaship")
+
 
 class SchedulerService:
     """Manages periodic background tasks."""
 
     def __init__(self):
         self.scheduler = AsyncIOScheduler()
+        # 持有后台引用，防止 asyncio 在任务完成前回收协程。
+        self._background_tasks: set[asyncio.Task] = set()
 
     async def start(self):
         """Register and start all scheduled tasks."""
@@ -267,7 +272,7 @@ class SchedulerService:
                 text("SELECT pg_try_advisory_lock(:k)"), {"k": lock_id}
             )).scalar()
             if not got:
-                print(f"[Scheduler] 跳过 {lock_key}：其他 worker 正在执行")
+                logger.debug("跳过 %s：其他 worker 正在执行", lock_key)
                 return None
             try:
                 return await job()
@@ -548,10 +553,21 @@ class SchedulerService:
     # ── Agent 异步任务队列 ────────────────────────────────────────
     # 每 tick 每个 worker 最多抢占的任务数；4 worker 下并发上限约 4×4
     async def _dispatch_agent_tasks(self):
-        """分发待执行的 Agent 任务：锁内抢占，锁外并发执行。"""
+        """分发待执行的 Agent 任务：调度 job 只负责领取，不等待任务完成。"""
         claimed = await self._run_with_lock("dispatch_agent_tasks", self._claim_agent_tasks)
-        if claimed:
-            await asyncio.gather(*[self._execute_claimed_task(t) for t in claimed])
+        for task in claimed or []:
+            background = asyncio.create_task(self._execute_claimed_task(task))
+            self._background_tasks.add(background)
+            background.add_done_callback(self._background_tasks.discard)
+
+    async def wait_for_background_tasks(self) -> None:
+        """等待当前进程内 Agent 后台任务结束，供关闭流程和测试使用。"""
+
+        while self._background_tasks:
+            await asyncio.gather(
+                *tuple(self._background_tasks),
+                return_exceptions=True,
+            )
 
     async def _claim_agent_tasks(self):
         """在跨进程锁内抢占 pending 任务为 running，并恢复僵尸任务。

@@ -379,6 +379,7 @@ export function useSubmitAgentTurnMutation(
       source_url?: string;
       asset_ids?: string[];
       audio_asset_id?: string;
+      work_item_id?: string;
       idempotencyKey: string;
     }) => {
       if (PREVIEW_MODE) {

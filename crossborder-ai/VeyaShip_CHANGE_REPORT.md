@@ -4,6 +4,80 @@
 
 # Web 发布记录
 
+## v1.3.3 - 2026-11-24
+
+### 交付主题
+
+修复 App 素材白屏、Agent 结果排版简陋和待补充任务被误判完成。
+
+### 业务变化
+
+- App 素材文件默认返回内联 JPEG，避免 Android 对私有 WebP 响应解码失败后只显示白色占位。
+- Agent 执行结果按标题、编号列表、加粗和段落分层展示，不再把 Markdown 星号和大字号纯文本直接铺满页面。
+- “需要补充信息”的 Turn 和 WorkItem 保持 `waiting_user`，不再显示为已完成。
+- 待补充页面底部提供固定输入框，可直接粘贴 1688 链接或继续补充信息。
+- 后续输入会携带上一轮任务上下文创建新 Turn，并自动关闭旧待确认 WorkItem。
+
+### 技术变化
+
+- 移动图片 URL 带 `format=jpeg`，服务端把 WebP 转为可缓存的 JPEG，并使用
+  `Content-Disposition: inline`。
+- 新增 Agent 结果 Markdown 轻量解析器和 React Native 渲染组件。
+- `needs_input` 从工具步骤向 AgentTurn、AgentTurnInput 和 WorkItem 同步。
+- `complete_work_item_from_agent_task` 改为幂等更新，详情读取也会修复历史遗留状态。
+- 移动 Agent 工具步骤支持从 action 推导中文标签，并透传真实 `duration_ms`。
+- 新 Turn 支持 `work_item_id` 指向上一轮待确认项，创建成功后记录
+  `work_item.follow_up.started` 事件。
+
+### 验证
+
+- 后端全量：`1112 passed, 4 skipped`
+- 移动端：`26 files / 94 tests passed`
+- 移动端 TypeScript、ESLint：通过
+- Web 全量：`69 files / 231 tests passed`
+- Web TypeScript、Vite 生产构建：通过
+- Expo Web 实际页面：`390 × 844`、`375 × 812` 无横向溢出，结果层级和底部输入正常
+- 发送按钮实际尺寸：`44 × 44`
+
+### 当前边界
+
+- Expo Web 不能替代 Android 真机解码验证；JPEG 转换链路已有后端测试，但仍需下一次 App
+  内测包确认真机素材显示。
+- 当前补充信息通过新 Turn 携带上一轮文本上下文，没有新增数据库会话外键。
+- 当前代码未提交、未推送、未部署。
+
+## v1.3.2 - 2026-11-24
+
+### 交付主题
+
+进一步限制 Agent 泛选品重复查询，并降低长任务对调度器的影响。
+
+### 业务变化
+
+- 单个 Agent 任务只允许一次实时 Amazon 市场分析，避免不同近义词连续串行查询。
+- 同类安全读取工具可在同一轮并发执行，结果仍严格保持模型原始调用顺序。
+- 每个工具步骤记录 `duration_ms`，便于定位模型和外部供应商耗时。
+- 最终回答要求先列本次结果，引用历史时必须明确标注，不得混写成本次执行次数。
+- Agent 调度 job 只负责领取任务，长任务转入后台执行，不再长期占用调度器实例槽。
+
+### 技术变化
+
+- Amazon 市场分析增加互斥锁和单次实时查询预算。
+- 仅 `select_products`、`analyze_category`、`analyze_product_decision`、
+  `find_1688_sources` 等安全读取工具允许并发。
+- `SchedulerService` 持有后台任务引用，并提供测试/关闭用等待方法。
+- 非当前 worker 的调度锁跳过日志降级为 DEBUG。
+
+### 验证
+
+- Agent 流式、结构化、任务执行和 Amazon 市场组合：`66 passed`
+- 后续与移动结果页改动合并后，全量后端：`1112 passed, 4 skipped`
+
+### 当前边界
+
+- 不同用户、不同任务之间不共享市场缓存。
+- 显式多关键词比较目前仍按一次实时市场分析上限执行，后续可按明确比较意图单独放开。
+
 ## v1.3.1 - 2026-11-24
 
 ### 交付主题

@@ -19,6 +19,7 @@ const ACTION_LABELS: Record<string, string> = {
   generate_image_asset: '生成图片资产',
   generate_product_image: '生成商品图片',
   generate_product_video: '生成商品视频',
+  create_marketing_campaign_plan: '生成营销方案',
   create_marketing_video_plan: '生成营销视频方案',
   get_listing: '读取 Listing',
   edit_listing: '编辑 Listing',

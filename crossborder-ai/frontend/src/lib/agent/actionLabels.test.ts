@@ -7,6 +7,7 @@ describe('agent action labels', () => {
     expect(getActionLabel('generate_image_asset')).toBe('生成图片资产')
     expect(getActionLabel('generate_product_image')).toBe('生成商品图片')
     expect(getActionLabel('generate_product_video')).toBe('生成商品视频')
+    expect(getActionLabel('create_marketing_campaign_plan')).toBe('生成营销方案')
     expect(getActionLabel('create_marketing_video_plan')).toBe('生成营销视频方案')
     expect(getActionLabel('search_platform_policies')).toBe('检索平台政策')
     expect(getActionLabel('get_listing')).toBe('读取 Listing')

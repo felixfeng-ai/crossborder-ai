@@ -25,6 +25,10 @@ import { Badge } from '@/components/ui/badge'
 import Markdown from '@/components/common/Markdown'
 import ProductReportCard from '@/components/agent/ProductReportCard'
 import SourceSupplierCard from '@/components/agent/SourceSupplierCard'
+import {
+  MarketingCampaignPlanCard,
+  type MarketingCampaignPlan,
+} from '@/components/agent/MarketingCampaignPlanCard'
 import { AssistantMark } from '@/components/brand/AssistantMark'
 import { UserAvatar as AccountUserAvatar } from '@/components/account/UserAvatar'
 import type {
@@ -38,6 +42,7 @@ import { MarketingCampaignBar } from '@/components/agent/MarketingCampaignBar'
 import { readSseUntil, TaskTimeoutError } from '@/api/sse'
 import { toErrorMessage } from '@/utils/errorMessage'
 import { getActionLabel } from '@/lib/agent/actionLabels'
+import { splitAgentMessageSteps } from '@/lib/agent/messageSteps'
 import {
   agentWorkspaceCopy,
   type AgentActionIcon,
@@ -363,17 +368,8 @@ export default function AgentPage({
     const isUser = msg.role === 'user'
     // 报告卡片步骤：所有带结构化数据的步骤都渲染为数据卡（品类分析 + 选品可并存）；
     // 历史消息的完整报告折叠为"文字版"
-    const reportSteps = (msg.actionResults || []).filter((s) => s.data?.structured != null)
-    const policySteps = (msg.actionResults || []).filter(
-      (step) =>
-        step.action === 'search_platform_policies' &&
-        Array.isArray(step.data?.items),
-    )
-    const plainSteps = (msg.actionResults || []).filter(
-      (step) =>
-        step.data?.structured == null &&
-        step.action !== 'search_platform_policies',
-    )
+    const { planSteps, reportSteps, policySteps, plainSteps } =
+      splitAgentMessageSteps(msg.actionResults || [])
     const hasReportCard = reportSteps.length > 0
     const collapseText = hasReportCard && msg.content.length > 400
     return (
@@ -437,6 +433,13 @@ export default function AgentPage({
               />
             ),
           )}
+
+          {planSteps.map((step, idx) => (
+            <MarketingCampaignPlanCard
+              key={`marketing-plan-${idx}`}
+              plan={step.data!.plan as unknown as MarketingCampaignPlan}
+            />
+          ))}
 
           {policySteps.map((step, idx) => (
             <PolicyEvidenceCard key={idx} step={step} />

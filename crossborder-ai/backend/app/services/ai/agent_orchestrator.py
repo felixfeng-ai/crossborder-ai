@@ -17,6 +17,7 @@
 - get_listing / edit_listing(listing_id) → 回查与编辑 Listing
 - generate_image_asset / generate_product_video → 提交异步素材任务
 - generate_product_image → 兼容旧客户端的商品图片生成工具
+- create_marketing_campaign_plan → 生成跨渠道营销活动方案
 - create_marketing_video_plan → 生成营销方案与分镜
 - generate_marketing_copy → 生成多平台 A/B 文案资产
 - prepare_review_reply → 为 Judge.me 中差评创建可编辑回复并等待确认
@@ -43,6 +44,7 @@ from app.models.product_variant import ProductVariant
 from app.models.publication import Publication
 from app.models.image_asset import ImageAsset
 from app.models.listing_draft import ListingDraft
+from app.models.marketing_campaign import MarketingCampaign
 from app.services.ai.deepseek import DeepSeekService
 from app.services.listing_service import (
     generate_and_persist_listing,
@@ -76,6 +78,10 @@ from app.services.source_discovery import (
     SourceDiscoveryError,
     SourceDiscoveryInputError,
     search_1688_sources,
+)
+from app.services.marketing_campaign_plan import (
+    generate_marketing_campaign_plan,
+    render_marketing_campaign_plan_markdown,
 )
 from app.services.amazon_market_data import (
     AmazonMarketDataNotConfigured,
@@ -157,6 +163,30 @@ PARALLEL_SAFE_TOOLS = frozenset({
     "analyze_category",
     "analyze_product_decision",
     "find_1688_sources",
+})
+
+# 营销工作区默认只开放营销资产和内容能力，避免模型把营销任务误解为选品任务。
+MARKETING_ALLOWED_TOOLS = frozenset({
+    "list_materials",
+    "generate_product_image",
+    "generate_image_asset",
+    "generate_product_video",
+    "create_marketing_campaign_plan",
+    "create_marketing_video_plan",
+    "generate_marketing_copy",
+    "screen_ip_risk",
+    "search_platform_policies",
+})
+
+# 只有用户明确询问市场、选品或商品判断时，营销工作区才临时开放分析工具。
+MARKETING_MARKET_INTENT_RE = re.compile(
+    r"选品|市场分析|品类分析|市场判断|竞争分析|值不值得做|能不能做|"
+    r"是否值得|利润测算|净利|毛利"
+)
+MARKETING_MARKET_TOOLS = frozenset({
+    "select_products",
+    "analyze_category",
+    "analyze_product_decision",
 })
 
 
@@ -608,6 +638,47 @@ class AgentOrchestrator:
                             "description": "返回最近素材数量，1-50",
                         }
                     },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_marketing_campaign_plan",
+                "description": (
+                    "根据商品名、营销目标和目标平台生成跨渠道营销活动方案，"
+                    "包含人群、定位、核心信息、渠道、内容、发布步骤和指标。"
+                    "用户要求营销方案/活动方案时优先使用；不要求视频首帧，也不自动生成素材。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "product_name": {
+                            "type": "string",
+                            "description": "要推广的商品名称",
+                        },
+                        "objective": {
+                            "type": "string",
+                            "description": "营销目标，如 conversion、traffic、launch、retention",
+                        },
+                        "platform": {
+                            "type": "string",
+                            "description": "主投放平台，如 tiktok、meta、amazon、shopify",
+                        },
+                        "market": {
+                            "type": "string",
+                            "description": "目标市场，如 US、UK、DE",
+                        },
+                        "language": {
+                            "type": "string",
+                            "description": "方案语言，如 zh、en",
+                        },
+                        "campaign_goal": {
+                            "type": "string",
+                            "description": "用户本次的具体营销诉求或活动想法",
+                        },
+                    },
+                    "required": ["product_name"],
                 },
             },
         },
@@ -1690,6 +1761,20 @@ class AgentOrchestrator:
         self._live_market_analysis_count = 0
         self._market_analysis_lock = asyncio.Lock()
 
+    def tools_for_workspace(self, instruction: str) -> list[dict]:
+        """返回当前工作区允许模型看到的工具，避免跨工作区误路由。"""
+
+        if self.workspace != "marketing":
+            return self.TOOLS
+        allowed = set(MARKETING_ALLOWED_TOOLS)
+        if MARKETING_MARKET_INTENT_RE.search(instruction or ""):
+            allowed.update(MARKETING_MARKET_TOOLS)
+        return [
+            item
+            for item in self.TOOLS
+            if item.get("function", {}).get("name") in allowed
+        ]
+
     def _status_from_steps(self) -> str:
         failed = any(step.get("status") == "failed" for step in self.steps)
         succeeded = any(step.get("status") == "success" for step in self.steps)
@@ -1737,6 +1822,11 @@ class AgentOrchestrator:
             and result.get("status") == "success"
         ):
             return str(result.get("summary", ""))[:1000]
+        if (
+            func_name == "create_marketing_campaign_plan"
+            and result.get("status") == "success"
+        ):
+            return str(result.get("summary", ""))[:2400]
         return json.dumps(result, ensure_ascii=False, default=str)[:2000]
 
     async def run_react(
@@ -1751,6 +1841,11 @@ class AgentOrchestrator:
         """
         self.steps = []
         system_prompt = build_system_prompt(self.workspace)
+        available_tools = self.tools_for_workspace(instruction)
+        allowed_tool_names = {
+            str(item.get("function", {}).get("name") or "")
+            for item in available_tools
+        }
 
         # 历史只保留用户/助手文本；当前指令始终作为最后一条用户消息。
         messages = [{"role": "system", "content": system_prompt}]
@@ -1764,7 +1859,10 @@ class AgentOrchestrator:
 
         for round_num in range(max_rounds):
             # 让模型思考并决定是否调用工具
-            response = await self.llm.chat_with_tools(messages, tools=self.TOOLS)
+            response = await self.llm.chat_with_tools(
+                messages,
+                tools=available_tools,
+            )
             tool_calls = response.get("tool_calls", [])
 
             # 没有工具调用 → 模型认为任务完成，返回最终回答
@@ -1805,6 +1903,10 @@ class AgentOrchestrator:
 
             if (
                 len(parsed_calls) > 1
+                and all(
+                    name in allowed_tool_names
+                    for _, name, _ in parsed_calls
+                )
                 and all(name in PARALLEL_SAFE_TOOLS for _, name, _ in parsed_calls)
             ):
                 # 安全读取工具并发执行；gather 保留原始 tool_calls 顺序。
@@ -1828,6 +1930,19 @@ class AgentOrchestrator:
                     append_tool_message(tc, func_name, result)
             else:
                 for tc, func_name, func_args in parsed_calls:
+                    if func_name not in allowed_tool_names:
+                        result = {
+                            "action": func_name,
+                            "status": "failed",
+                            "error": (
+                                f"工具 {func_name} 不在当前营销工作区允许范围内，"
+                                "已拒绝执行"
+                            ),
+                        }
+                        self.steps.append(result)
+                        await self._emit_step()
+                        append_tool_message(tc, func_name, result)
+                        continue
                     # 有副作用的工具保持串行，避免并发破坏业务状态。
                     self.steps.append(_running_step(func_name, func_args))
                     await self._emit_step()
@@ -2043,6 +2158,7 @@ class AgentOrchestrator:
 - 商品主图、场景图 → 优先用 generate_image_asset，必须带真实参考图
 - generate_product_image 仅用于旧客户端兼容，不主动选择
 - 用户明确要求生成商品视频并接受积分 → 用 generate_product_video
+- 用户要求营销方案、活动方案或投放方案 → 用 create_marketing_campaign_plan
 - 用户提到营销视频想法、分镜或方案 → 用 create_marketing_video_plan
 - 用户提到广告文案、TikTok/Amazon/Shopify 文案或 A/B 测试 → 用 generate_marketing_copy
 - 用户提到素材、最近图片/视频 → 用 list_materials
@@ -2133,6 +2249,10 @@ class AgentOrchestrator:
 18. create_marketing_video_plan — 创建营销视频 Brief 和分镜
    参数: {"source_asset_id": "...", "product_name": "...", "idea": "...", "duration": 15}
    注意: 只生成方案，不自动渲染
+
+18a. create_marketing_campaign_plan — 创建跨渠道营销活动方案
+   参数: {"product_name": "...", "objective": "conversion", "platform": "tiktok", "market": "US"}
+   注意: 有商品名即可，不要求视频首帧；不自动生成图片或视频
 
 18. generate_marketing_copy — 生成多平台 A/B 文案资产
    参数: {"platforms": ["tiktok", "amazon", "shopify"], "language": "en", "instructions": "..."}
@@ -2249,6 +2369,8 @@ class AgentOrchestrator:
                 return await self._do_generate_image_asset(params)
             elif action == "generate_product_video":
                 return await self._do_generate_product_video(params)
+            elif action == "create_marketing_campaign_plan":
+                return await self._do_create_marketing_campaign_plan(params)
             elif action == "create_marketing_video_plan":
                 return await self._do_create_marketing_video_plan(params)
             elif action == "generate_marketing_copy":
@@ -2939,6 +3061,105 @@ class AgentOrchestrator:
                 }
             ],
             "summary": f"营销方案已生成，预计渲染消耗 {credits} 积分，尚未开始渲染",
+        }
+
+    async def _do_create_marketing_campaign_plan(self, params: dict) -> dict:
+        """生成跨渠道营销活动方案，不要求视频首帧或已有活动。"""
+
+        campaign = None
+        product = None
+        if self.campaign_id and self.user is not None and self.db is not None:
+            campaign_query = select(MarketingCampaign).where(
+                MarketingCampaign.id == UUID(str(self.campaign_id)),
+                MarketingCampaign.user_id == self.user.id,
+            )
+            if self.workspace_id is not None:
+                campaign_query = campaign_query.where(
+                    MarketingCampaign.workspace_id == self.workspace_id
+                )
+            campaign = (
+                await self.db.execute(campaign_query)
+            ).scalar_one_or_none()
+            if campaign is not None and campaign.product_id:
+                product = await self.db.get(Product, campaign.product_id)
+
+        product_name = (
+            str(getattr(product, "title", "") or "").strip()
+            or str(getattr(product, "url", "") or "").strip()
+            or str(params.get("product_name") or "").strip()
+        )
+        if not product_name:
+            return {
+                "action": "create_marketing_campaign_plan",
+                "status": "failed",
+                "error": "请先告诉我需要推广的商品名称",
+            }
+
+        objective = (
+            str(getattr(campaign, "objective", "") or "").strip()
+            or str(params.get("objective") or "").strip()
+            or "conversion"
+        )
+        platform = (
+            str(getattr(campaign, "platform", "") or "").strip()
+            or str(params.get("platform") or "").strip()
+            or "tiktok"
+        )
+        market = (
+            str(getattr(campaign, "market", "") or "").strip()
+            or str(params.get("market") or "").strip()
+            or "US"
+        )
+        language = (
+            str(getattr(campaign, "language", "") or "").strip()
+            or str(params.get("language") or "").strip()
+            or "zh"
+        )
+        plan = await generate_marketing_campaign_plan(
+            product_name=product_name,
+            objective=objective,
+            platform=platform,
+            market=market,
+            language=language,
+            campaign_goal=str(params.get("campaign_goal") or "").strip(),
+        )
+
+        campaign_id = ""
+        if campaign is not None:
+            campaign_id = str(campaign.id)
+            try:
+                brief = json.loads(campaign.brief_json or "{}")
+            except (json.JSONDecodeError, TypeError):
+                brief = {}
+            if not isinstance(brief, dict):
+                brief = {}
+            brief["agent_campaign_plan"] = {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "plan": plan,
+            }
+            campaign.brief_json = json.dumps(brief, ensure_ascii=False)
+            await self.db.flush()
+
+        links = [
+            {
+                "label": "继续制作营销素材",
+                "href": (
+                    f"/app/marketing-agent?campaign={campaign_id}"
+                    if campaign_id
+                    else "/app/marketing-agent"
+                ),
+            }
+        ]
+        return {
+            "action": "create_marketing_campaign_plan",
+            "status": "success",
+            "data": {
+                "plan": plan,
+                "campaign_id": campaign_id,
+                "campaign_bound": bool(campaign_id),
+            },
+            "links": links,
+            "summary": render_marketing_campaign_plan_markdown(plan),
         }
 
     async def _do_generate_marketing_copy(self, params: dict) -> dict:

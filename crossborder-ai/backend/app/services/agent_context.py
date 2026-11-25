@@ -153,6 +153,11 @@ def build_system_prompt(workspace: str) -> str:
             "你是 VeyaShip 营销 Agent，服务跨境电商卖家的营销活动。\n"
             "优先围绕当前活动、商品、目标市场、预算和素材，完成营销方案、营销图片、"
             "商品视频、广告文案和效果数据任务。\n"
+            "15. 用户要求营销方案、活动方案或投放方案时，必须调用 "
+            "create_marketing_campaign_plan；有明确商品名即可开始，不要求视频首帧。\n"
+            "16. 只有用户明确要求选品、市场分析、竞争分析或商品判断时，才可使用 "
+            "select_products、analyze_category、analyze_product_decision；"
+            "生成营销方案时不得调用 select_products。\n"
         )
     else:
         role = (

@@ -4,6 +4,66 @@
 
 # Web 发布记录
 
+## v1.3.4 - 2026-11-25
+
+### 交付主题
+
+重新构建 Android 内测包，并把官网下载二维码切换到可长期使用的稳定安装地址。
+
+### 业务变化
+
+- Android 内测包升级为 `1.0.0 (18)`，包含 v1.3.3 的素材 JPEG 兼容、Agent Markdown
+  结果和待补充任务继续对话能力。
+- App 下载弹窗改为展示 Build 18，二维码与“直接下载 APK”按钮指向同一官网地址。
+- 安装包不再直接引用 2026-12-08 过期的 EAS 临时 artifact，二维码可长期使用。
+
+### 技术变化
+
+- Web 下载地址统一为
+  `https://veyaship.com/downloads/veyaship-1.0.0-18.apk`。
+- APK 同步到生产静态目录，下载前执行文件大小与 ZIP 包结构校验。
+- 下载 Build 和版本号改为单一配置派生，并新增稳定 HTTPS 地址测试，避免标签与
+  二维码目标漂移。
+- `frontend/.env.production` 与源码默认值保持同一产物地址。
+
+### 构建与产物
+
+- EAS Build：`fc1cd071-6054-4902-8dae-4bc440d6dd3b`，状态 `FINISHED`。
+- 构建 profile：`preview`，Android APK，versionCode `18`。
+- 构建提交：`54533348b71ca8feee29416bc34df1c538ab82d4`。
+- EAS 原始产物：
+  `https://expo.dev/artifacts/eas/ovPILWtZWjCOl6GJyvX8IQMN373SB8ap5_g2T_p-pXs.apk`。
+- 官网稳定产物：`https://veyaship.com/downloads/veyaship-1.0.0-18.apk`。
+- 文件大小：`150,763,485` 字节。
+- SHA-256：`8c4b6bc038cbb5c838660d70c0554ab4e32646608d023393daab47d96766ec38`。
+
+### 验证
+
+- 移动端：`26 files / 94 tests passed`。
+- 移动端 TypeScript、ESLint：通过。
+- Web：`69 files / 232 tests passed`。
+- Web TypeScript、Vite 生产构建、包体积检查：通过。
+- 本地真实页面：`1440 × 1000`、`390 × 844` 下载弹窗完整，无横向溢出，console
+  错误为 0。
+- 生产真实页面：刷新后显示 `Android 内测版 · 1.0.0 (18)`，二维码与 APK 按钮链接
+  均为官网稳定地址，移动视口无横向溢出。
+- 公网 APK：`HEAD 200`，Content-Length `150,763,485`。
+- 生产 `/health`：`200`，数据库已连接。
+
+### 发布
+
+- Web 下载入口提交：`b012f08 feat(web): publish Android build 18 download`。
+- GitHub Deploy：`45536847803`，结果 `success`。
+- GitHub CI：`45536847800`，结果 `success`。
+- 生产静态资源已确认包含 Build 18 下载地址。
+- 生产后端服务 `active`，部署后 20 分钟 warning 日志为空。
+
+### 当前边界
+
+- 本次仅构建 Android APK；iOS 内测包仍未构建。
+- 已验证 APK 文件结构与公网下载响应，但当前环境没有直接执行华为真机安装。
+- 真机仍需重点确认私有素材 JPEG 解码、Agent Markdown 结果和“待补充”继续对话。
+
 ## v1.3.3 - 2026-11-24
 
 ### 交付主题
